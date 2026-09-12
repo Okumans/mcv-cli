@@ -97,6 +97,7 @@ mcv courses 2110575 materials download 12345 --output ./lecture.pdf
 # Read-only assignment and announcement views
 mcv courses 2110575 assignments list
 mcv courses 2110575 assignments show 2160997
+mcv courses 2110575 assignments show --full 2160997
 mcv courses 2110575 assignments list --ids
 mcv courses 2110575 assignments list --refs
 mcv courses 2110575 announcements list
@@ -120,6 +121,12 @@ or course number. Command-specific options follow the action, for example
 `courses 2110575 materials archive "Week 1" --format tar`. Singular course
 pages are direct actions: use `courses 2110575 about` and
 `courses 2110575 portfolio`.
+
+Assignment details use a compact human-readable question-set view by default.
+Use the assignment-specific `--full` option when you need worksheet ids,
+question types, instructions, grading metadata, and all assignment links. This
+only changes human-readable output; `--json` and `--jsonl` always return the
+complete structured assignment data.
 
 Running `mcv courses COURSE` is shorthand for the course overview. It shows
 the resolved CourseVille id, course number, title, semester, section, and
@@ -339,6 +346,12 @@ Assignment detail output keeps the worksheet detail page separate from an
 optional submission page. Rich-text instruction links are normalized to
 absolute URLs, and file-based assignments expose submitted files as the
 `submission_files` list when MyCourseVille provides them.
+Question-set work modes are exposed separately as `question_set_submission`
+with the visible action/title, worksheet status, optional link, submission
+timestamp, and the extracted questions. Each question includes its prompt,
+type, answer, choices, points, and any answer key/feedback visible to the
+student. This is read-only metadata for now; it is not a question-set answer
+or submission API.
 
 In human-readable mode, `get` displays every referenced resource with its
 resource-specific detail format, separated by a blank line. Use the list

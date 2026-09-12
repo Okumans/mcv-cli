@@ -11,6 +11,7 @@ from typing import Any, Literal
 from pydantic import BaseModel
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
 
 from .constants import MACHINE_SCHEMA_VERSION
 from .errors import MCVError
@@ -26,6 +27,9 @@ from .models import (
     MeetingRecording,
     OnlineMeeting,
     Portfolio,
+    QuestionSetChoice,
+    QuestionSetQuestion,
+    QuestionSetSubmission,
     ScheduleEvent,
     StudentGroup,
     User,
@@ -40,7 +44,7 @@ class ShellIdList(list[int | str]):
 
 DisplayMethod = Callable[[Any, Console], None]
 CollectionDisplayMethod = Callable[[list[Any], Console], None]
-DisplayMode = Literal["collection", "detail"]
+DisplayMode = Literal["collection", "detail", "short"]
 
 
 @dataclass(frozen=True)
@@ -55,9 +59,16 @@ class ResourceDisplay:
 
     single: DisplayMethod
     collection: CollectionDisplayMethod | None = None
+    short: DisplayMethod | None = None
 
     def display(self, resource: Any, console: Console) -> None:
         self.single(resource, console)
+
+    def display_short(self, resource: Any, console: Console) -> None:
+        if self.short is not None:
+            self.short(resource, console)
+            return
+        self.display(resource, console)
 
     def display_many(self, resources: list[Any], console: Console) -> None:
         if self.collection is not None:
@@ -194,7 +205,7 @@ def display_resource(
     if isinstance(value, list):
         _display_resources(value, console, display_mode=display_mode)
         return
-    _display_one(value, console)
+    _display_one(value, console, display_mode=display_mode)
 
 
 def _display_resources(
@@ -207,14 +218,14 @@ def _display_resources(
         console.print("No results.")
         return
 
-    if display_mode == "detail":
+    if display_mode in ("detail", "short"):
         has_mixed_types = any(type(item) is not type(items[0]) for item in items[1:])
         for index, item in enumerate(items):
             if index:
                 console.print()
             if has_mixed_types:
                 console.print(f"[bold cyan]{type(item).__name__}[/bold cyan]")
-            _display_one(item, console)
+            _display_one(item, console, display_mode=display_mode)
         return
 
     display = _display_for(items[0])
@@ -232,10 +243,18 @@ def _display_resources(
         _display_one(item, console)
 
 
-def _display_one(value: Any, console: Console) -> None:
+def _display_one(
+    value: Any,
+    console: Console,
+    *,
+    display_mode: DisplayMode = "collection",
+) -> None:
     display = _display_for(value)
     if display is not None:
-        display.display(value, console)
+        if display_mode == "short":
+            display.display_short(value, console)
+        else:
+            display.display(value, console)
     elif isinstance(value, BaseModel):
         _display_model_fields(value, console)
     elif isinstance(value, Mapping):
@@ -475,6 +494,146 @@ def _display_assignment(assignment: Assignment, console: Console) -> None:
         ],
         console,
     )
+    if assignment.question_set_submission is not None:
+        console.print("\n[bold]Question set submission[/bold]")
+        _display_question_set_submission(assignment.question_set_submission, console)
+
+
+def _display_assignment_short(assignment: Assignment, console: Console) -> None:
+    """Display the useful assignment summary without worksheet internals."""
+
+    _display_fields(
+        [
+            ("ref", _resource_ref(assignment)),
+            ("id", assignment.itemid),
+            ("course", assignment.course_no or assignment.cv_cid),
+            ("title", assignment.title),
+            ("status", assignment.status or "unknown"),
+            ("due", assignment.duedate or assignment.duetime),
+            ("submitted", assignment.submitted_at),
+        ],
+        console,
+    )
+    if assignment.question_set_submission is not None:
+        console.print("\n[bold]Question set submission[/bold]")
+        _display_question_set_submission_short(assignment.question_set_submission, console)
+        return
+
+    # Keep important links/files discoverable for non-question-set work, while
+    # leaving technical worksheet metadata to `--full`.
+    optional_fields = [
+        ("instruction", assignment.instruction),
+        ("feedback", assignment.feedback),
+        ("detail", assignment.detail_url),
+        ("submission files", assignment.submission_files),
+        ("external links", assignment.external_links),
+    ]
+    if any(value not in (None, "", []) for _, value in optional_fields):
+        _display_fields(optional_fields, console)
+
+
+def _display_question_set_submission(
+    submission: QuestionSetSubmission,
+    console: Console,
+) -> None:
+    _display_fields(
+        [
+            ("action", submission.action),
+            ("title", submission.title),
+            ("status", submission.status),
+            ("submitted", submission.submitted_at),
+            ("link", submission.url),
+            ("questions", len(submission.questions)),
+        ],
+        console,
+    )
+    for question in submission.questions:
+        console.print(f"\n[bold cyan]Question {question.number}[/bold cyan]")
+        _display_question_set_question(question, console)
+
+
+def _display_question_set_submission_short(
+    submission: QuestionSetSubmission,
+    console: Console,
+) -> None:
+    _display_fields(
+        [
+            ("action", submission.action),
+            ("title", submission.title),
+            ("status", submission.status),
+            ("submitted", submission.submitted_at),
+            ("questions", len(submission.questions)),
+        ],
+        console,
+    )
+    for question in submission.questions:
+        _display_question_set_question_short(question, console)
+
+
+def _display_question_set_question(
+    question: QuestionSetQuestion,
+    console: Console,
+) -> None:
+    _display_fields(
+        [
+            ("id", question.question_id),
+            ("type", question.type),
+            ("question", question.question),
+            ("instruction", question.instruction),
+            ("answer", question.answer),
+            ("correct answer", question.correct_answer),
+            ("points", question.points),
+            ("status", question.status),
+            ("choices", [_question_choice_label(choice) for choice in question.choices]),
+        ],
+        console,
+    )
+
+
+def _display_question_set_question_short(
+    question: QuestionSetQuestion,
+    console: Console,
+) -> None:
+    """Display the student-facing question summary.
+
+    The short view intentionally omits upstream ids, question types,
+    instructions, and grading metadata. Choice marks represent the student's
+    selected answer; correctness is kept for the full view and machine data.
+    """
+
+    points = _question_points_label(question.points)
+    question_text = _human_value(question.question) if question.question else "Question"
+    heading = f"{question.number}. {question_text}"
+    if points:
+        heading += f" ({points})"
+    console.print(Text(f"\n{heading}", style="bold cyan"))
+
+    for choice in question.choices:
+        marker = "☑" if choice.selected else "☐"
+        console.print(f"  {marker} {_human_value(choice.label)}")
+
+    answer = _human_value(question.answer) if question.answer is not None else "--"
+    console.print(f"  [bold]Answer:[/bold] {answer}")
+
+
+def _question_points_label(points: str | None) -> str | None:
+    if points is None or not points.strip():
+        return None
+    normalized = points.strip()
+    lowered = normalized.casefold()
+    if lowered.endswith(" point") or lowered.endswith(" points"):
+        return normalized
+    return f"{normalized} point" if lowered in {"1", "1.0"} else f"{normalized} points"
+
+
+def _question_choice_label(choice: QuestionSetChoice) -> str:
+    markers: list[str] = []
+    if choice.selected:
+        markers.append("selected")
+    if choice.correct is True:
+        markers.append("correct")
+    suffix = f" ({', '.join(markers)})" if markers else ""
+    return f"{choice.label}{suffix}"
 
 
 def _display_announcements(items: list[Any], console: Console) -> None:
@@ -731,7 +890,21 @@ _RESOURCE_DISPLAYS: tuple[tuple[type[Any], ResourceDisplay], ...] = (
     (Course, ResourceDisplay(_display_course, _display_courses)),
     (Material, ResourceDisplay(_display_material, _display_materials)),
     (MaterialFolder, ResourceDisplay(_display_material_folder, _display_material_folders)),
-    (Assignment, ResourceDisplay(_display_assignment, _display_assignments)),
+    (
+        QuestionSetSubmission,
+        ResourceDisplay(
+            _display_question_set_submission,
+            short=_display_question_set_submission_short,
+        ),
+    ),
+    (
+        Assignment,
+        ResourceDisplay(
+            _display_assignment,
+            _display_assignments,
+            _display_assignment_short,
+        ),
+    ),
     (Announcement, ResourceDisplay(_display_announcement, _display_announcements)),
     (MeetingRecording, ResourceDisplay(_display_recording, _display_recordings)),
     (OnlineMeeting, ResourceDisplay(_display_meeting, _display_meetings)),

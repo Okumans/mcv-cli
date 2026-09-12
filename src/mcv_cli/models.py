@@ -78,6 +78,42 @@ class Material(BaseModel):
     )
 
 
+class QuestionSetChoice(BaseModel):
+    """One choice and the student's selection state in a question set."""
+
+    label: str
+    value: str | None = None
+    selected: bool = False
+    correct: bool | None = None
+
+
+class QuestionSetQuestion(BaseModel):
+    """A read-only question, answer, and choices from a question set."""
+
+    question_id: int | None = None
+    number: int
+    type: str | None = None
+    question: str | None = None
+    instruction: str | None = None
+    answer: str | list[str] | None = None
+    correct_answer: str | list[str] | None = None
+    points: str | None = None
+    status: str | None = None
+    choices: list[QuestionSetChoice] = Field(default_factory=list)
+
+
+class QuestionSetSubmission(BaseModel):
+    """The question-set work mode exposed by an assignment worksheet."""
+
+    kind: Literal["question_set"] = "question_set"
+    action: str | None = None
+    title: str | None = None
+    url: str | None = None
+    status: str | None = None
+    submitted_at: str | None = None
+    questions: list[QuestionSetQuestion] = Field(default_factory=list)
+
+
 class Assignment(BaseModel):
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
@@ -92,6 +128,7 @@ class Assignment(BaseModel):
     detail_url: str | None = None
     submission_url: str | None = None
     submission_files: list[str] = Field(default_factory=list)
+    question_set_submission: QuestionSetSubmission | None = None
     is_group: bool | None = None
     submitted_at: str | None = None
     feedback: str | None = None
@@ -231,6 +268,7 @@ Resource = (
     | Course
     | Material
     | MaterialFolder
+    | QuestionSetSubmission
     | Assignment
     | Announcement
     | MeetingRecording

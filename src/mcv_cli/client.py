@@ -12,7 +12,7 @@ import zipfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol, TypeVar
-from urllib.parse import parse_qs, unquote, urljoin, urlparse
+from urllib.parse import parse_qs, unquote, unquote_plus, urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -45,6 +45,9 @@ from .models import (
     MeetingRecording,
     OnlineMeeting,
     Portfolio,
+    QuestionSetChoice,
+    QuestionSetQuestion,
+    QuestionSetSubmission,
     ScheduleEvent,
     StudentGroup,
     WebResource,
@@ -1180,6 +1183,12 @@ class MCVClient:
         detail_status = self._assignment_status_from_text(work_status)
         if detail_status is None:
             detail_status = self._assignment_status_text(work_status_element)
+        question_set_submission = self._parse_question_set_submission(
+            soup,
+            detail_url,
+            work_status,
+            submitted_at,
+        )
         instruction_element = soup.select_one("#courseville-worksheet-instruction-body")
         instruction, instruction_links = self._rich_text(instruction_element)
         return assignment.model_copy(
@@ -1197,6 +1206,9 @@ class MCVClient:
                 "is_group": assignment.is_group or representing is not None,
                 "external_links": instruction_links or assignment.external_links,
                 "submission_files": self._assignment_submission_links(soup, detail_url),
+                "question_set_submission": (
+                    question_set_submission or assignment.question_set_submission
+                ),
             }
         )
 
@@ -1429,6 +1441,340 @@ class MCVClient:
                         continue
                     links.append(href)
         return links
+
+    def _parse_question_set_submission(
+        self,
+        soup: Any,
+        detail_url: str,
+        work_status: str | None,
+        submitted_at: str | None,
+    ) -> QuestionSetSubmission | None:
+        """Parse the question-set work mode exposed by an assignment page.
+
+        MyCourseVille renders worksheet work modes as HTML rather than a
+        stable API response. The exact classes have varied, so this parser
+        uses the worksheet work container when available and then looks for
+        visible action/title text containing ``question set``. It records the
+        available question-set link, current worksheet status, and the
+        read-only question/choice/answer data. It does not attempt to answer
+        or submit the question set.
+        """
+
+        work_scope = self._assignment_work_scope(soup)
+        search_root = work_scope or soup
+        action_element = next(
+            (
+                element
+                for element in search_root.find_all(
+                    ["a", "button", "input", "label", "summary"]
+                )
+                if self._question_set_marker(self._assignment_element_label(element))
+            ),
+            None,
+        )
+        heading_element = next(
+            (
+                element
+                for element in search_root.find_all(
+                    ["h1", "h2", "h3", "h4", "h5", "h6"]
+                )
+                if self._question_set_marker(self._text(element))
+            ),
+            None,
+        )
+        if action_element is None and heading_element is None:
+            return None
+
+        action = self._assignment_element_label(action_element)
+        title = self._text(heading_element)
+        if title == action:
+            title = None
+        if action is None:
+            action_candidates = [
+                self._text(element)
+                for element in search_root.find_all(["div", "span", "p", "li"])
+            ]
+            action = next(
+                (
+                    candidate
+                    for candidate in sorted(
+                        (item for item in action_candidates if item),
+                        key=len,
+                    )
+                    if self._question_set_marker(candidate)
+                    and candidate != title
+                    and re.match(
+                        r"^(?:answer|start|open|take|begin)\b",
+                        candidate,
+                        re.IGNORECASE,
+                    )
+                ),
+                None,
+            )
+        if title is None:
+            title_candidates = [
+                self._text(element)
+                for element in search_root.find_all(["div", "span", "p", "li"])
+            ]
+            title = next(
+                (
+                    candidate
+                    for candidate in sorted(
+                        (item for item in title_candidates if item),
+                        key=len,
+                    )
+                    if self._question_set_marker(candidate) and candidate != action
+                ),
+                None,
+            )
+
+        url = self._assignment_action_url(action_element)
+        if url is None and heading_element is not None:
+            url = self._assignment_action_url(heading_element)
+        if url is None:
+            marker_elements = search_root.find_all(
+                lambda element: self._question_set_marker(self._text(element))
+            )
+            for element in marker_elements:
+                url = self._assignment_action_url(element)
+                if url is not None:
+                    break
+        if url == detail_url:
+            url = None
+
+        status_element = search_root.select_one("#courseville-worksheet-work-status")
+        return QuestionSetSubmission(
+            action=action,
+            title=title or "Question set",
+            url=url,
+            status=self._assignment_status_from_text(work_status)
+            or self._assignment_status_text(status_element),
+            submitted_at=submitted_at,
+            questions=self._parse_question_set_questions(search_root),
+        )
+
+    def _parse_question_set_questions(self, work_scope: Any) -> list[QuestionSetQuestion]:
+        question_set = work_scope.select_one(
+            "#courseville-worksheet-work-tabpanel-qs, .cvqs-qs-wrapper"
+        )
+        if question_set is None:
+            return []
+
+        questions: list[QuestionSetQuestion] = []
+        for number, wrapper in enumerate(
+            question_set.select(".cvqs-qstn-wrapper"),
+            start=1,
+        ):
+            answer_wrapper = wrapper.select_one(".cvqs-qstn-answer-wrapper")
+            choices: list[QuestionSetChoice] = []
+            selected_answers: list[str] = []
+            correct_answers = self._question_set_correct_answers(wrapper)
+            if answer_wrapper is not None:
+                for choice_item in answer_wrapper.select(
+                    ".cvqs-answer-multiplechoice-choiceitem"
+                ):
+                    input_element = choice_item.select_one("input")
+                    content_element = choice_item.select_one(
+                        ".cvqs-answer-multiplechoice-content"
+                    )
+                    label = self._text(content_element) or self._text(choice_item.find("label"))
+                    if label is None:
+                        continue
+                    value = self._question_set_input_value(input_element)
+                    selected = (
+                        input_element is not None and input_element.has_attr("checked")
+                    )
+                    if selected:
+                        selected_answers.append(label)
+                    correct = self._question_set_choice_correct(
+                        label,
+                        value,
+                        correct_answers,
+                    )
+                    choices.append(
+                        QuestionSetChoice(
+                            label=label,
+                            value=value,
+                            selected=selected,
+                            correct=correct,
+                        )
+                    )
+
+            question_type = self._question_set_question_type(answer_wrapper, choices)
+            answer: str | list[str] | None = None
+            if question_type == "open_text":
+                answer = self._question_set_text_answer(answer_wrapper)
+            elif selected_answers:
+                answer = self._question_set_answer_value(selected_answers)
+
+            question_element = wrapper.select_one(".cvqs-qstn-question")
+            question, _ = self._rich_text(question_element)
+            instruction = self._text(wrapper.select_one(".cvqs-qstn-instruction"))
+            if instruction is None and answer_wrapper is not None:
+                instruction = self._text(
+                    answer_wrapper.select_one("legend, .cvqs-answer-instruction")
+                )
+            points = self._text(wrapper.select_one(".cvqs-qstn-weight [data-part='weight']"))
+            if points is None:
+                points = self._text(wrapper.select_one(".cvqs-qstn-weight"))
+            status = self._text(wrapper.select_one(".cvqs-floating-mark .sr-only"))
+
+            questions.append(
+                QuestionSetQuestion(
+                    question_id=self._parse_int(wrapper.get("qstn_nid")),
+                    number=number,
+                    type=question_type,
+                    question=question,
+                    instruction=instruction,
+                    answer=answer,
+                    correct_answer=self._question_set_answer_value(correct_answers),
+                    points=points,
+                    status=status,
+                    choices=choices,
+                )
+            )
+        return questions
+
+    @classmethod
+    def _question_set_correct_answers(cls, wrapper: Any) -> list[str]:
+        answer_list = wrapper.select_one(".cvqs-creator-answer-list")
+        if answer_list is None:
+            return []
+        answers: list[str] = []
+        for item in answer_list.select("li"):
+            value = cls._text(item)
+            if value is not None and value not in answers:
+                answers.append(value)
+        return answers
+
+    @staticmethod
+    def _question_set_input_value(element: Any) -> str | None:
+        if element is None:
+            return None
+        value = element.get("value")
+        if not isinstance(value, str) or not value:
+            return None
+        return unquote_plus(value)
+
+    @staticmethod
+    def _question_set_choice_correct(
+        label: str,
+        value: str | None,
+        correct_answers: list[str],
+    ) -> bool | None:
+        if not correct_answers:
+            return None
+        return label in correct_answers or value in correct_answers
+
+    @staticmethod
+    def _question_set_question_type(
+        answer_wrapper: Any,
+        choices: list[QuestionSetChoice],
+    ) -> str:
+        if answer_wrapper is None:
+            return "unknown"
+        if answer_wrapper.select_one(".cvqs-answer-opentext, textarea") is not None:
+            return "open_text"
+        if choices or answer_wrapper.select_one(".cvqs-answer-multiplechoice") is not None:
+            return "multiple_choice"
+        return "unknown"
+
+    @staticmethod
+    def _question_set_text_answer(answer_wrapper: Any) -> str | None:
+        if answer_wrapper is None:
+            return None
+        control = answer_wrapper.select_one("textarea, input[type='text'], input:not([type])")
+        if control is None:
+            return None
+        value = control.get("value")
+        if value is None and getattr(control, "name", None) == "textarea":
+            value = control.get_text()
+        if not isinstance(value, str):
+            return None
+        value = value.strip()
+        return value or None
+
+    @staticmethod
+    def _question_set_answer_value(values: list[str]) -> str | list[str] | None:
+        if not values:
+            return None
+        return values[0] if len(values) == 1 else values
+
+    @staticmethod
+    def _assignment_work_scope(soup: Any) -> Any | None:
+        selectors = (
+            "#courseville-worksheet-work-wrapper",
+            "#courseville-worksheet-work",
+            "#courseville-worksheet-my-work",
+            "#courseville-worksheet-work-area",
+        )
+        for selector in selectors:
+            element = soup.select_one(selector)
+            if element is not None:
+                return element
+
+        candidates = []
+        for element in soup.find_all(True):
+            identity = " ".join(
+                [
+                    str(element.get("id", "")),
+                    " ".join(str(item) for item in element.get("class", [])),
+                ]
+            ).casefold()
+            if "worksheet" not in identity or "work" not in identity:
+                continue
+            if any(marker in identity for marker in ("status", "submission", "feedback")):
+                continue
+            candidates.append(element)
+        if not candidates:
+            return None
+        return max(candidates, key=lambda element: len(element.find_all(True)))
+
+    @staticmethod
+    def _question_set_marker(value: str | None) -> bool:
+        return (
+            value is not None
+            and re.search(r"\bquestion[\s-]+set\b", value, re.IGNORECASE) is not None
+        )
+
+    @classmethod
+    def _assignment_element_label(cls, element: Any) -> str | None:
+        if element is None:
+            return None
+        if getattr(element, "name", None) == "input":
+            for attribute in ("value", "aria-label", "title"):
+                value = element.get(attribute)
+                if isinstance(value, str) and value.strip():
+                    return " ".join(value.split())
+            return None
+        return cls._text(element)
+
+    @classmethod
+    def _assignment_action_url(cls, element: Any) -> str | None:
+        if element is None:
+            return None
+        href = cls._absolute_href(element)
+        if href is not None:
+            return href
+        for attribute in ("data-href", "data-url", "data-link", "data-target", "action"):
+            value = element.get(attribute)
+            if isinstance(value, str):
+                href = cls._absolute_url(value)
+                if href is not None:
+                    return href
+        onclick = element.get("onclick")
+        if isinstance(onclick, str):
+            match = re.search(r"['\"]((?:https?://|/|\?)[^'\"]+)['\"]", onclick)
+            if match:
+                href = cls._absolute_url(match.group(1))
+                if href is not None:
+                    return href
+        form = element.find_parent("form")
+        if form is not None:
+            action = form.get("action")
+            if isinstance(action, str):
+                return cls._absolute_url(action)
+        return None
 
     @staticmethod
     def _is_assignment_page_url(value: str) -> bool:

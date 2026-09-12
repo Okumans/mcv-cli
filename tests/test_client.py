@@ -109,12 +109,91 @@ ASSIGNMENT_DETAIL_HTML = f"""
   </p>
 </div>
 <div id="courseville-worksheet-work-status">No submission has been made.</div>
+<div id="courseville-worksheet-work-wrapper">
+  <div class="courseville-worksheet-work-tabs">
+    <a class="work-mode-question-set"
+       href="?q=courseville/worksheet/85386/2174162&amp;mode=question_set">
+      Answer a question set
+    </a>
+  </div>
+  <h3>Complete the question set</h3>
+</div>
 <div id="courseville-worksheet-work-submission-wrapper">
   <a href="/sites/all/modules/courseville/files/submissions/hw05.pdf">hw05.pdf</a>
   <a href="?q=courseville/worksheet/85386/2174162">Assignment page</a>
 </div>
 <div id="courseville-worksheet-work-feedback-wrapper">
   -- No feedback to this submission has been made by any of the course staffs yet. --
+</div>
+"""
+
+QUESTION_SET_DETAIL_HTML = """
+<div id="courseville-worksheet-work">
+  <div id="courseville-worksheet-work-tabs">
+    <button id="courseville-worksheet-work-tab-qs">Answer a question set</button>
+  </div>
+  <div id="courseville-worksheet-work-tabpanel-qs">
+    <div class="cvui-section-title">Complete the question set</div>
+    <div class="cvqs-qs-wrapper" qs_nid="1234">
+      <ol class="cvqs-qs-ol">
+        <li>
+          <div class="cvqs-qstn-wrapper locked" qstn_nid="5678">
+            <div class="cvqs-qstn-weight"><div data-part="weight">1</div></div>
+            <div class="cvqs-qstn-content">
+              <div class="cvqs-qstn-question"><p>Which answer is correct?</p></div>
+              <div class="cvqs-qstn-answer-wrapper">
+                <div class="cvqs-answer-multiplechoice">
+                  <fieldset>
+                    <legend class="cvqs-answer-instruction">Pick a choice:</legend>
+                    <div class="cvqs-answer-multiplechoice-choiceitem">
+                      <label>
+                        <input type="radio" name="cvqs-answer-5678" value="First+choice" />
+                        <span class="cvqs-answer-multiplechoice-content">First choice</span>
+                      </label>
+                    </div>
+                    <div class="cvqs-answer-multiplechoice-choiceitem">
+                      <label>
+                        <input type="radio" name="cvqs-answer-5678"
+                               value="Second+choice" checked="checked" />
+                        <span class="cvqs-answer-multiplechoice-content">Second choice</span>
+                      </label>
+                    </div>
+                  </fieldset>
+                  <div class="cvqs-creator-answer-list">
+                    <div class="cvqs-creator-answer-list-header">Correct Answer(s)</div>
+                    <ul><li>Second choice</li></ul>
+                  </div>
+                </div>
+              </div>
+              <div class="cvqs-qstn-info-on-point">
+                <span data-part="point">1</span><span data-part="unit">point</span>
+              </div>
+            </div>
+          </div>
+        </li>
+        <li>
+          <div class="cvqs-qstn-wrapper form" qstn_nid="5679">
+            <div class="cvqs-qstn-weight"><div data-part="weight">2</div></div>
+            <div class="cvqs-qstn-content">
+              <div class="cvqs-qstn-question"><p>Explain your answer.</p></div>
+              <div class="cvqs-qstn-answer-wrapper">
+                <div class="cvqs-answer-opentext">
+                  <label class="cvqs-answer-instruction">Compose an answer</label>
+                  <textarea id="cvqs-answer-5679">A written answer.</textarea>
+                </div>
+              </div>
+              <div class="cvqs-qstn-info-on-point">
+                <span data-part="point">2</span><span data-part="unit">points</span>
+              </div>
+            </div>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </div>
+  <div id="courseville-worksheet-work-status">
+    The latest submission was made at 02 Sep 2026 10:00
+  </div>
 </div>
 """
 
@@ -398,6 +477,87 @@ def test_assignment_detail_extracts_rich_text_and_submission_files() -> None:
     assert assignment.external_links == [instruction_url]
     assert assignment.submission_url is None
     assert assignment.submission_files == [submission_url]
+    assert assignment.question_set_submission is not None
+    assert assignment.question_set_submission.action == "Answer a question set"
+    assert assignment.question_set_submission.title == "Complete the question set"
+    assert assignment.question_set_submission.url == (
+        f"{BASE_URL}/?q=courseville/worksheet/85386/2174162&mode=question_set"
+    )
+    assert assignment.question_set_submission.status == "Not submitted"
+
+
+def test_question_set_submission_can_be_exposed_without_a_link() -> None:
+    detail_url = f"{BASE_URL}/?q=courseville/worksheet/85386/2174162"
+    html = """
+    <div id="courseville-worksheet-work-wrapper">
+      <h3>Complete the question set</h3>
+      <div>Answer a question set</div>
+    </div>
+    <div id="courseville-worksheet-work-status">No submission has been made.</div>
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=html, request=request)
+
+    with httpx.Client(
+        base_url=BASE_URL,
+        transport=httpx.MockTransport(handler),
+    ) as http_client:
+        client = MCVClient(FakeAuth(), http_client=http_client)
+        assignment = client._parse_assignment_detail(
+            Assignment(itemid=2174162, cv_cid=85386),
+            detail_url,
+        )
+
+    assert assignment.question_set_submission is not None
+    assert assignment.question_set_submission.action == "Answer a question set"
+    assert assignment.question_set_submission.title == "Complete the question set"
+    assert assignment.question_set_submission.status == "Not submitted"
+
+
+def test_question_set_submission_extracts_questions_choices_and_answers() -> None:
+    detail_url = f"{BASE_URL}/?q=courseville/worksheet/85386/2174162"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=QUESTION_SET_DETAIL_HTML, request=request)
+
+    with httpx.Client(
+        base_url=BASE_URL,
+        transport=httpx.MockTransport(handler),
+    ) as http_client:
+        client = MCVClient(FakeAuth(), http_client=http_client)
+        assignment = client._parse_assignment_detail(
+            Assignment(itemid=2174162, cv_cid=85386),
+            detail_url,
+        )
+
+    assert assignment.question_set_submission is not None
+    questions = assignment.question_set_submission.questions
+    assert len(questions) == 2
+
+    multiple_choice = questions[0]
+    assert multiple_choice.question_id == 5678
+    assert multiple_choice.type == "multiple_choice"
+    assert multiple_choice.question == "Which answer is correct?"
+    assert multiple_choice.instruction == "Pick a choice:"
+    assert multiple_choice.answer == "Second choice"
+    assert multiple_choice.correct_answer == "Second choice"
+    assert multiple_choice.points == "1"
+    assert [choice.label for choice in multiple_choice.choices] == [
+        "First choice",
+        "Second choice",
+    ]
+    assert multiple_choice.choices[0].selected is False
+    assert multiple_choice.choices[0].correct is False
+    assert multiple_choice.choices[1].selected is True
+    assert multiple_choice.choices[1].correct is True
+
+    open_text = questions[1]
+    assert open_text.question_id == 5679
+    assert open_text.type == "open_text"
+    assert open_text.answer == "A written answer."
+    assert open_text.instruction == "Compose an answer"
+    assert open_text.choices == []
 
 
 def test_client_downloads_material_folder_as_zip_and_tar(tmp_path: Path) -> None:

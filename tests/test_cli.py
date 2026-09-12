@@ -146,6 +146,29 @@ def test_course_scoped_resource_actions_are_consistent() -> None:
 
     assert result.exit_code == 0
     assert "Assignment id" in result.stdout
+    assert "--full" in result.stdout
+
+
+def test_assignment_show_uses_short_display_by_default_and_full_on_request(monkeypatch) -> None:
+    modes: list[str] = []
+
+    def fake_run(_ctx, _action, *, display_mode="collection") -> None:
+        modes.append(display_mode)
+
+    monkeypatch.setattr("mcv_cli.cli._run", fake_run)
+
+    short_result = runner.invoke(
+        app,
+        ["courses", "2110575", "assignments", "show", "1889120"],
+    )
+    full_result = runner.invoke(
+        app,
+        ["courses", "2110575", "assignments", "show", "--full", "1889120"],
+    )
+
+    assert short_result.exit_code == 0, short_result.output
+    assert full_result.exit_code == 0, full_result.output
+    assert modes == ["short", "detail"]
 
 
 def test_singular_course_resources_do_not_require_show() -> None:

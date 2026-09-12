@@ -88,6 +88,7 @@ Useful commands:
  mcv courses 2110575 materials show 2160993
  mcv courses 2110575 assignments list
  mcv courses 2110575 assignments show 2160997
+ mcv courses 2110575 assignments show --full 2160997
  mcv courses 2110575 announcements list
  mcv courses 2110575 announcements show 2177455
  mcv courses 2110575 meetings list
@@ -102,6 +103,23 @@ Useful commands:
 
 Meetings exclude past events by default. Meeting results expose a preferred
 `url`, using the direct join URL when available and otherwise the detail page.
+
+Assignment `show` uses a compact student-facing display by default. For a
+question-set assignment, each question is rendered as one numbered heading
+containing the prompt and point value, followed by checkbox choices and the
+student's answer:
+
+```text
+1. Which answer is correct? (1 point)
+  ☐ First choice
+  ☑ Second choice
+  Answer: Second choice
+```
+
+Use the assignment-specific `--full` option for worksheet ids, question types,
+instructions, grading/status metadata, answer keys when visible, assignment
+links, and submission details. `--full` affects human output only; `--json`
+and `--jsonl` always expose the complete structured assignment model.
 
 ## Cross-course queries and refs
 
@@ -162,6 +180,12 @@ collections use resource-specific tables, details use labeled summaries, and
 downloads/archives use concise completion messages. Human mode should not be
 parsed as JSON.
 
+The course-scoped assignment detail command uses its compact display unless
+`--full` is supplied. `mcv get REF...` always uses the full resource display so
+mixed-resource dereferencing remains informative. In the compact question-set
+view, `☑` means the student selected the choice and `☐` means they did not; the
+marks do not indicate correctness.
+
 Use machine modes explicitly:
 
 ```bash
@@ -179,6 +203,15 @@ ordinary machine output. Put global output options before the command.
 Use `--ids` only when the receiving command already has the course context.
 Use `--refs` for reusable, cross-course-safe addresses. Errors go to stderr;
 machine modes serialize them as JSON.
+
+Assignment detail parsing keeps the worksheet detail URL separate from an
+optional submission page. It normalizes MyCourseVille rich-text links to
+absolute URLs, exposes file-based submissions as `submission_files`, and
+extracts question-set work as `question_set_submission`. Question-set data
+includes the visible action/title, status, submission timestamp, question
+prompts, answers, choices, points, selected state, and any answer key or
+grading text visible to the student. These operations are read-only: the CLI
+does not answer, submit, upload, edit, or delete assignment work.
 
 ## Downloads and archives
 

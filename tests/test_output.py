@@ -19,6 +19,9 @@ from mcv_cli.models import (
     MeetingRecording,
     OnlineMeeting,
     Portfolio,
+    QuestionSetChoice,
+    QuestionSetQuestion,
+    QuestionSetSubmission,
     ScheduleEvent,
     StudentGroup,
     User,
@@ -211,6 +214,163 @@ def test_assignment_human_detail_separates_submission_page_and_files() -> None:
     assert "submission files" in rendered
     assert "https://www.mycourseville.com/sites/submissions/hw05.pdf" in rendered
     assert "submission page" not in rendered
+
+
+def test_assignment_human_detail_displays_question_set_submission() -> None:
+    console = Console(record=True, width=200)
+
+    emit(
+        Assignment(
+            itemid=2174162,
+            cv_cid=85386,
+            title="HW05 Cyclic Code",
+            question_set_submission=QuestionSetSubmission(
+                action="Answer a question set",
+                title="Complete the question set",
+                url=(
+                    "https://www.mycourseville.com/?q=courseville/worksheet/85386/2174162"
+                    "&mode=question_set"
+                ),
+                status="Not submitted",
+                questions=[
+                    QuestionSetQuestion(
+                        question_id=5678,
+                        number=1,
+                        type="multiple_choice",
+                        question="Which answer is correct?",
+                        answer="Second choice",
+                        choices=[
+                            QuestionSetChoice(label="First choice"),
+                            QuestionSetChoice(
+                                label="Second choice",
+                                selected=True,
+                                correct=True,
+                            ),
+                        ],
+                    )
+                ],
+            ),
+        ),
+        json_mode=False,
+        console=console,
+    )
+
+    rendered = console.export_text()
+    assert "Question set submission" in rendered
+    assert "Answer a question set" in rendered
+    assert "Complete the question set" in rendered
+    assert "Question 1" in rendered
+    assert "Second choice (selected, correct)" in rendered
+    assert "https://www.mycourseville.com/?q=courseville/worksheet/85386/2174162" in rendered
+
+
+def test_assignment_short_human_display_summarizes_question_set() -> None:
+    console = Console(record=True, width=200)
+
+    emit(
+        Assignment(
+            itemid=2174162,
+            cv_cid=85386,
+            title="Homework",
+            question_set_submission=QuestionSetSubmission(
+                title="Complete the question set",
+                questions=[
+                    QuestionSetQuestion(
+                        question_id=5678,
+                        number=1,
+                        type="multiple_choice",
+                        question="Which answer is correct?",
+                        instruction="Pick a choice:",
+                        answer="Second choice",
+                        correct_answer="Second choice",
+                        points="1",
+                        status="Graded as correct",
+                        choices=[
+                            QuestionSetChoice(label="First choice"),
+                            QuestionSetChoice(
+                                label="Second choice",
+                                selected=True,
+                                correct=True,
+                            ),
+                        ],
+                    )
+                ],
+            ),
+        ),
+        json_mode=False,
+        display_mode="short",
+        console=console,
+    )
+
+    rendered = console.export_text()
+    assert "1. Which answer is correct? (1 point)" in rendered
+    assert "☐ First choice" in rendered
+    assert "☑ Second choice" in rendered
+    assert "Answer: Second choice" in rendered
+    assert "question_id" not in rendered
+    assert "instruction" not in rendered
+    assert "correct answer" not in rendered
+    assert "Graded as correct" not in rendered
+
+
+def test_assignment_machine_data_includes_question_set_submission() -> None:
+    data = to_jsonable(
+        Assignment(
+            itemid=2174162,
+            cv_cid=85386,
+            question_set_submission=QuestionSetSubmission(
+                action="Answer a question set",
+                title="Complete the question set",
+                status="Not submitted",
+                questions=[
+                    QuestionSetQuestion(
+                        question_id=5678,
+                        number=1,
+                        type="multiple_choice",
+                        question="Which answer is correct?",
+                        answer="Second choice",
+                        choices=[
+                            QuestionSetChoice(
+                                label="First choice",
+                                value="First choice",
+                            ),
+                            QuestionSetChoice(
+                                label="Second choice",
+                                value="Second choice",
+                                selected=True,
+                                correct=True,
+                            ),
+                        ],
+                    )
+                ],
+            ),
+        )
+    )
+
+    assert data["question_set_submission"] == {
+        "kind": "question_set",
+        "action": "Answer a question set",
+        "title": "Complete the question set",
+        "status": "Not submitted",
+        "questions": [
+            {
+                "question_id": 5678,
+                "number": 1,
+                "type": "multiple_choice",
+                "question": "Which answer is correct?",
+                "answer": "Second choice",
+                "choices": [
+                    {"label": "First choice", "value": "First choice", "selected": False},
+                    {
+                        "label": "Second choice",
+                        "value": "Second choice",
+                        "selected": True,
+                        "correct": True,
+                    },
+                ],
+            }
+        ],
+    }
 
 
 @mark.parametrize(

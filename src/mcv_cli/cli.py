@@ -989,6 +989,11 @@ def courses_assignment(
         help="Assignment id or resource ref.",
         autocompletion=complete_refs,
     ),
+    full: bool = typer.Option(
+        False,
+        "--full",
+        help="Show full assignment and question-set details.",
+    ),
 ) -> None:
     def action() -> Any:
         manager = _make_manager()
@@ -1003,7 +1008,7 @@ def courses_assignment(
                 ),
             )
 
-    _run(ctx, action)
+    _run(ctx, action, display_mode="detail" if full else "short")
 
 
 @courses_app.command("announcements", hidden=True)

@@ -440,14 +440,25 @@ The `status` field preserves the text from MyCourseVille's Status column;
 
 ```bash
 uv run mcv courses "$MCV_COURSE" assignments show 2160997
+uv run mcv courses "$MCV_COURSE" assignments show --full 2160997
 uv run mcv --json courses "$MCV_COURSE" assignments show 2160997
 ```
 
+The default human-readable assignment view is compact and presents question-set
+questions as numbered prompts, selected choices, answers, and points. Use
+`--full` for the complete worksheet-oriented display, including question ids,
+types, instructions, grading metadata, and all links. Machine output is not
+affected by this option.
+
 Detail parsing adds instruction text, due/out dates, latest submission state,
 feedback, representing-group text, normalized links from MyCourseVille rich
-text, and submitted file URLs when they are exposed by the worksheet. The
-assignment detail page is kept separate from an optional submission page, and
-the client does not submit, upload, edit, or delete assignment work.
+text, submitted file URLs, and question-set work-mode metadata when they are
+exposed by the worksheet. Question-set metadata includes the visible action
+and title, status, optional link, latest submission timestamp, and questions.
+Questions include their prompt, type, current answer, choices, points, and any
+answer key or grading text visible to the student. The assignment detail page
+is kept separate from an optional submission page, and the client does not
+answer, submit, upload, edit, or delete assignment work.
 
 ## 8. Announcement API
 
@@ -714,7 +725,10 @@ The public Pydantic models are:
 | `Course` | `cv_cid`, `course_no`, `title`, `year`, `semester`, `section`, `role` |
 | `Material` | `itemid`, `cv_cid`, `title`, folder fields, URLs, metadata |
 | `MaterialFolder` | `folder_id`, `name`, `materials` |
-| `Assignment` | `itemid`, `cv_cid`, optional `course_no`, title, due dates, status, feedback, links |
+| `Assignment` | `itemid`, `cv_cid`, optional `course_no`, title, due dates, status, feedback, links, `question_set_submission` |
+| `QuestionSetSubmission` | visible action/title, optional link, status, latest submission timestamp, questions |
+| `QuestionSetQuestion` | question id/number, type, prompt, answer, choices, points, status |
+| `QuestionSetChoice` | label, upstream value, selected state, optional correctness |
 | `Announcement` | `itemid`, `cv_cid`, optional `course_no`, title, body, posted/modified dates, links |
 | `OnlineMeeting` | `itemid`, `cv_cid`, optional `course_no`, provider, schedule, preferred `url`, join/detail URLs, recordings |
 | `MeetingRecording` | recording type, play/download URL, timing, password |
