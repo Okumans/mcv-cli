@@ -19,7 +19,6 @@ from bs4 import BeautifulSoup
 from pydantic import BaseModel
 
 from .constants import (
-    ACTIVE_PANEL_URL,
     BASE_URL,
     COURSE_AJAX_URL,
     COURSE_FILTER_URL,
@@ -35,6 +34,7 @@ from .errors import (
 )
 from .models import (
     Announcement,
+    ArchiveFormat,
     ArchiveResult,
     Assignment,
     Course,
@@ -52,11 +52,26 @@ from .models import (
 from .transport import MCVTransport
 
 T = TypeVar("T", bound=BaseModel)
-_ASSIGNMENT_PATTERN = re.compile(
-    r"<strong>\s*(?:&ldquo;|“)(.*?)\s*(?:&rdquo;|”)\s*</strong>"
-    r"(.*?)<strong>(.*?)</strong>",
-    re.IGNORECASE | re.DOTALL,
-)
+
+
+def _resolve_archive_format(output: Path, requested: str | None) -> ArchiveFormat:
+    if requested is not None:
+        if requested == "zip":
+            return "zip"
+        if requested == "tar":
+            return "tar"
+        if requested == "tar.gz":
+            return "tar.gz"
+        raise DownloadError("Archive format must be zip, tar, or tar.gz.")
+
+    filename = output.name.casefold()
+    if filename.endswith(".tar.gz") or filename.endswith(".tgz"):
+        return "tar.gz"
+    if filename.endswith(".tar"):
+        return "tar"
+    if filename.endswith(".zip"):
+        return "zip"
+    return "zip"
 
 
 class SessionProvider(Protocol):
@@ -242,22 +257,12 @@ class MCVClient:
             operation="get",
         )
 
-    def list_assignments(self, cv_cid: int | None = None) -> list[Assignment]:
-        if cv_cid is not None:
-            try:
-                response = self._request(
-                    "GET",
-                    self._course_subpage_url(cv_cid, "assignment"),
-                )
-                return self._parse_course_assignments(self._html_from_response(response), cv_cid)
-            except UpstreamError as error:
-                if error.details != {"status_code": 404}:
-                    raise
-        response = self._request("POST", ACTIVE_PANEL_URL, data={})
-        html_doc = self._html_from_response(response)
-        courses = {course.cv_cid: course for course in self.list_courses()}
-        assignments = self._parse_assignments(html_doc, courses)
-        return assignments
+    def list_assignments(self, cv_cid: int) -> list[Assignment]:
+        response = self._request(
+            "GET",
+            self._course_subpage_url(cv_cid, "assignment"),
+        )
+        return self._parse_course_assignments(self._html_from_response(response), cv_cid)
 
     def get_assignment(self, cv_cid: int, item_id: int) -> Assignment:
         for item in self.list_assignments(cv_cid):
@@ -550,11 +555,10 @@ class MCVClient:
         folder: str,
         output: Path,
         *,
-        archive_format: str = "zip",
+        archive_format: ArchiveFormat | None = None,
         force: bool = False,
     ) -> ArchiveResult:
-        if archive_format not in {"zip", "tar"}:
-            raise DownloadError("Archive format must be either zip or tar.")
+        resolved_format = _resolve_archive_format(output, archive_format)
         if output.exists() and not force:
             raise DownloadError(f"Refusing to overwrite existing file: {output}")
         if not output.parent.exists():
@@ -589,8 +593,10 @@ class MCVClient:
         file_count = 0
         try:
             archive: zipfile.ZipFile | tarfile.TarFile
-            if archive_format == "zip":
+            if resolved_format == "zip":
                 archive = zipfile.ZipFile(temporary_path, "w", zipfile.ZIP_DEFLATED)
+            elif resolved_format == "tar.gz":
+                archive = tarfile.open(temporary_path, "w:gz")
             else:
                 archive = tarfile.open(temporary_path, "w")
             with archive:
@@ -612,7 +618,7 @@ class MCVClient:
                     material_path = Path(material_name)
                     try:
                         self._download_url_to_path(current.filepath, material_path)
-                        if archive_format == "zip":
+                        if resolved_format == "zip":
                             assert isinstance(archive, zipfile.ZipFile)
                             archive.write(material_path, arcname=filename)
                         else:
@@ -630,7 +636,7 @@ class MCVClient:
             os.chmod(output, 0o600)
             return ArchiveResult(
                 path=str(output),
-                format=archive_format,  # type: ignore[arg-type]
+                format=resolved_format,
                 files=file_count,
                 bytes=output.stat().st_size,
                 skipped=skipped,
@@ -1227,41 +1233,6 @@ class MCVClient:
     def _is_download_href(value: str) -> bool:
         parsed = urlparse(value)
         return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
-
-    @staticmethod
-    def _parse_assignments(
-        html_doc: str,
-        courses: dict[int, Course],
-    ) -> list[Assignment]:
-        soup = BeautifulSoup(html_doc, "html.parser")
-        course_links = [
-            href
-            for anchor in soup.find_all("a", target="_blank", href=True)
-            if isinstance((href := anchor.get("href")), str)
-        ]
-        triples = _ASSIGNMENT_PATTERN.findall(html_doc)
-        assignments: list[Assignment] = []
-        for index, triple in enumerate(triples, start=1):
-            title_html, middle_html, due_html = triple
-            course_id = (
-                MCVClient._extract_id(course_links[index - 1], 0)
-                if index <= len(course_links)
-                else 0
-            )
-            assignments.append(
-                Assignment(
-                    itemid=index,
-                    cv_cid=course_id or None,
-                    title=MCVClient._fragment_text(title_html),
-                    instruction=MCVClient._fragment_text(middle_html),
-                    duedate=MCVClient._fragment_text(due_html),
-                )
-            )
-        return assignments
-
-    @staticmethod
-    def _fragment_text(fragment: str) -> str:
-        return BeautifulSoup(fragment, "html.parser").get_text(" ", strip=True)
 
     @staticmethod
     def _extract_id(value: str, fallback: int) -> int:

@@ -29,6 +29,7 @@ from .models import (
     User,
     WebResource,
 )
+from .refs import ref_for_resource
 
 
 class ShellIdList(list[int | str]):
@@ -37,7 +38,23 @@ class ShellIdList(list[int | str]):
 
 def to_jsonable(value: Any) -> Any:
     if isinstance(value, BaseModel):
-        return value.model_dump(mode="json", exclude_none=True)
+        data = value.model_dump(mode="json", exclude_none=True)
+        if isinstance(value, MaterialFolder):
+            data["materials"] = [to_jsonable(item) for item in value.materials]
+        else:
+            data = {key: to_jsonable(item) for key, item in data.items()}
+        if isinstance(value, (Material, Assignment, Announcement, OnlineMeeting)):
+            try:
+                ref = ref_for_resource(value)
+            except ValueError:
+                ref = None
+            if ref is not None:
+                data = {
+                    "resource_type": ref.resource_type.value,
+                    "ref": str(ref),
+                    **data,
+                }
+        return data
     if isinstance(value, list):
         return [to_jsonable(item) for item in value]
     if isinstance(value, tuple):
@@ -62,22 +79,31 @@ def machine_envelope(value: Any) -> dict[str, Any]:
     }
 
 
+def machine_error_payload(error: MCVError, *, envelope: bool) -> dict[str, Any]:
+    """Serialize an error using the requested machine-output shape."""
+
+    return error.as_envelope() if envelope else error.as_dict()
+
+
 def emit(
     value: Any,
     *,
     json_mode: bool,
     jsonl_mode: bool = False,
+    envelope: bool = False,
     console: Console | None = None,
 ) -> None:
     if json_mode:
-        print(json.dumps(machine_envelope(value), ensure_ascii=False, indent=2))
+        payload = machine_envelope(value) if envelope else to_jsonable(value)
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
         return
     if jsonl_mode:
         values = value if isinstance(value, list) else [value]
         for item in values:
+            payload = machine_envelope(item) if envelope else to_jsonable(item)
             print(
                 json.dumps(
-                    machine_envelope(item),
+                    payload,
                     ensure_ascii=False,
                     separators=(",", ":"),
                 )
@@ -116,24 +142,34 @@ def emit(
         render_console.print(value)
 
 
-def emit_error(error: MCVError, *, json_mode: bool, jsonl_mode: bool = False) -> None:
-    if json_mode:
-        import sys
+def emit_error(
+    error: MCVError,
+    *,
+    json_mode: bool,
+    jsonl_mode: bool = False,
+    envelope: bool = False,
+) -> None:
+    import sys
 
+    if json_mode:
         print(
-            json.dumps(error.as_dict(), ensure_ascii=False, indent=2),
+            json.dumps(
+                machine_error_payload(error, envelope=envelope),
+                ensure_ascii=False,
+                indent=2,
+            ),
             file=sys.stderr,
         )
     elif jsonl_mode:
-        import sys
-
         print(
-            json.dumps(error.as_dict(), ensure_ascii=False, separators=(",", ":")),
+            json.dumps(
+                machine_error_payload(error, envelope=envelope),
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
             file=sys.stderr,
         )
     else:
-        import sys
-
         print(f"Error: {error.message}", file=sys.stderr)
 
 
@@ -142,6 +178,9 @@ def _emit_list(items: list[Any], console: Console) -> None:
         console.print("No results.")
         return
     first = items[0]
+    if any(not isinstance(item, type(first)) for item in items[1:]):
+        console.print(JSON(json.dumps(to_jsonable(items), ensure_ascii=False)))
+        return
     table = Table(show_header=True, header_style="bold cyan")
     if isinstance(first, Course):
         table.add_column("ID")
@@ -176,35 +215,64 @@ def _emit_list(items: list[Any], console: Console) -> None:
         for item in items:
             table.add_row(item.name, item.folder_id, str(len(item.materials)))
     elif isinstance(first, Assignment):
+        has_course_context = any(item.course_no for item in items)
+        if has_course_context:
+            table.add_column("Course")
         table.add_column("ID")
         table.add_column("Title")
         table.add_column("Due")
         table.add_column("Status")
         for item in items:
+            row = []
+            if has_course_context:
+                row.append(item.course_no or "")
+            row.extend(
+                [
+                    str(item.itemid),
+                    item.title or "",
+                    item.duedate or str(item.duetime or ""),
+                    item.status or "not submitted",
+                ]
+            )
             table.add_row(
-                str(item.itemid),
-                item.title or "",
-                item.duedate or str(item.duetime or ""),
-                item.status or "not submitted",
+                *row,
             )
     elif isinstance(first, Announcement):
+        has_course_context = any(item.course_no for item in items)
+        if has_course_context:
+            table.add_column("Course")
         table.add_column("ID")
         table.add_column("Posted")
         table.add_column("Title")
         for item in items:
-            table.add_row(str(item.itemid), item.posted or "", item.title)
+            row = []
+            if has_course_context:
+                row.append(item.course_no or "")
+            row.extend([str(item.itemid), item.posted or "", item.title])
+            table.add_row(*row)
     elif isinstance(first, OnlineMeeting):
+        has_course_context = any(item.course_no for item in items)
+        if has_course_context:
+            table.add_column("Course")
         table.add_column("ID")
         table.add_column("Scheduled")
         table.add_column("Provider")
         table.add_column("Meeting")
+        table.add_column("Link", overflow="fold")
         for item in items:
-            table.add_row(
-                str(item.itemid),
-                item.scheduled_at or "",
-                item.provider or "",
-                item.name or "",
+            row = []
+            if has_course_context:
+                row.append(item.course_no or "")
+            row.extend(
+                [
+                    str(item.itemid),
+                    item.scheduled_at or "",
+                    item.provider or "",
+                    item.name or "",
+                    item.url or "",
+                ]
             )
+            table.add_row(*row)
     elif isinstance(first, ScheduleEvent):
         table.add_column("#")
         table.add_column("Date")

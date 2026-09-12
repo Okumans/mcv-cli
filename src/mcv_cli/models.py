@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, computed_field
 
 
 class AuthProvider(StrEnum):
@@ -83,6 +83,7 @@ class Assignment(BaseModel):
 
     itemid: int
     cv_cid: int | None = None
+    course_no: str | None = None
     title: str | None = None
     status: int | str | None = None
     created: int | str | datetime | None = None
@@ -108,6 +109,7 @@ class MaterialFolder(BaseModel):
 class Announcement(BaseModel):
     itemid: int
     cv_cid: int
+    course_no: str | None = None
     title: str
     posted: str | None = None
     detail_url: str | None = None
@@ -128,6 +130,7 @@ class MeetingRecording(BaseModel):
 class OnlineMeeting(BaseModel):
     itemid: int
     cv_cid: int
+    course_no: str | None = None
     name: str | None = None
     provider: str | None = None
     scheduled_at: str | None = None
@@ -137,6 +140,13 @@ class OnlineMeeting(BaseModel):
     detail_url: str | None = None
     join_url: str | None = None
     recordings: list[MeetingRecording] = Field(default_factory=list)
+
+    @computed_field
+    @property
+    def url(self) -> str | None:
+        """Return the most useful link for opening this meeting."""
+
+        return self.join_url or self.detail_url
 
 
 class ScheduleEvent(BaseModel):
@@ -201,9 +211,12 @@ class DownloadResult(BaseModel):
     sha256: str
 
 
+ArchiveFormat = Literal["zip", "tar", "tar.gz"]
+
+
 class ArchiveResult(BaseModel):
     path: str
-    format: Literal["zip", "tar"]
+    format: ArchiveFormat
     files: int
     bytes: int
     skipped: list[str] = Field(default_factory=list)

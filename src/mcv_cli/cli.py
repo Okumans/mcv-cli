@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import typer
 from typer.core import TyperGroup
@@ -11,10 +12,23 @@ from . import __version__
 from .auth import AuthManager, normalize_provider
 from .client import MCVClient
 from .config import Settings
-from .constants import MATERIAL_REF_PREFIX
-from .errors import MCVError, NotFoundError, UsageError
-from .models import AuthProvider, Material
-from .output import ShellIdList, emit, emit_error
+from .errors import (
+    InvalidRefError,
+    MCVError,
+    NotFoundError,
+    ReferenceCourseMismatchError,
+    UnsupportedResourceError,
+    UsageError,
+)
+from .models import ArchiveFormat, AuthProvider, Material
+from .output import ShellIdList, emit, emit_error, machine_error_payload
+from .refs import ResourceRef, ResourceType, ref_for_resource
+from .services import (
+    AnnouncementService,
+    AssignmentService,
+    MeetingService,
+    get_resource,
+)
 
 app = typer.Typer(
     help="Access MyCourseVille from a Unix command line.",
@@ -25,6 +39,12 @@ auth_app = typer.Typer(
     help="Log in and manage MyCourseVille authentication.",
     no_args_is_help=True,
 )
+assignments_app = typer.Typer(help="List assignments across current courses.", no_args_is_help=True)
+announcements_app = typer.Typer(
+    help="List announcements across current courses.",
+    no_args_is_help=True,
+)
+meetings_app = typer.Typer(help="List meetings across current courses.", no_args_is_help=True)
 
 _COURSE_RESOURCE_ACTIONS = {
     "materials": {
@@ -81,6 +101,9 @@ courses_app = typer.Typer(
 
 app.add_typer(auth_app, name="auth")
 app.add_typer(courses_app, name="courses")
+app.add_typer(assignments_app, name="assignments")
+app.add_typer(announcements_app, name="announcements")
+app.add_typer(meetings_app, name="meetings")
 
 
 @app.callback()
@@ -92,14 +115,23 @@ def main(
         "--jsonl",
         help="Emit one JSON value per line for pipeline-friendly output.",
     ),
+    envelope: bool = typer.Option(
+        False,
+        "--envelope",
+        help="Wrap machine output in the versioned schema envelope.",
+    ),
     version: bool = typer.Option(False, "--version", is_eager=True, help="Show the version."),
 ) -> None:
     ctx.ensure_object(dict)
     if json_output and jsonl_output:
         typer.echo("Error: choose either --json or --jsonl, not both.", err=True)
         raise typer.Exit(2)
+    if envelope and not (json_output or jsonl_output):
+        typer.echo("Error: --envelope requires --json or --jsonl.", err=True)
+        raise typer.Exit(2)
     ctx.obj["json"] = json_output
     ctx.obj["jsonl"] = jsonl_output
+    ctx.obj["envelope"] = envelope
     if version:
         typer.echo(__version__)
         raise typer.Exit()
@@ -116,6 +148,10 @@ def _jsonl_mode(ctx: typer.Context) -> bool:
     return bool(ctx.ensure_object(dict).get("jsonl", False))
 
 
+def _envelope_mode(ctx: typer.Context) -> bool:
+    return bool(ctx.ensure_object(dict).get("envelope", False))
+
+
 def _run(ctx: typer.Context, action: Callable[[], Any]) -> None:
     try:
         result = action()
@@ -124,10 +160,16 @@ def _run(ctx: typer.Context, action: Callable[[], Any]) -> None:
             error,
             json_mode=_json_mode(ctx),
             jsonl_mode=_jsonl_mode(ctx),
+            envelope=_envelope_mode(ctx),
         )
         raise typer.Exit(error.exit_code) from error
     if result is not None:
-        emit(result, json_mode=_json_mode(ctx), jsonl_mode=_jsonl_mode(ctx))
+        emit(
+            result,
+            json_mode=_json_mode(ctx),
+            jsonl_mode=_jsonl_mode(ctx),
+            envelope=_envelope_mode(ctx),
+        )
 
 
 def _make_manager() -> AuthManager:
@@ -267,40 +309,51 @@ def _course_id(client: MCVClient, reference: str) -> int:
     return client.resolve_course(reference).cv_cid
 
 
-def _material_unique_id(cv_cid: int, item_id: int) -> str:
-    return f"{MATERIAL_REF_PREFIX}{cv_cid}:{item_id}"
+def _parse_resource_ref(value: str) -> ResourceRef:
+    try:
+        return ResourceRef.parse(value)
+    except ValueError as error:
+        raise InvalidRefError(str(error), reference=value) from error
 
 
-def _parse_material_unique_id(value: str) -> tuple[int, int]:
-    payload = value.removeprefix(MATERIAL_REF_PREFIX)
-    parts = payload.split(":")
-    if len(parts) != 2 or not all(part.isdigit() for part in parts):
-        raise UsageError(
-            f'Invalid material reference "{value}". Expected '
-            f"{MATERIAL_REF_PREFIX}<cv_cid>:<item_id>."
-        )
-    return int(parts[0]), int(parts[1])
+def _resource_item_id_for_course(
+    value: str,
+    *,
+    cv_cid: int,
+    resource_type: ResourceType,
+) -> int:
+    if value.isdigit():
+        return int(value)
+    reference = _parse_resource_ref(value)
+    if reference.resource_type is not resource_type:
+        raise UnsupportedResourceError(reference.resource_type.value)
+    if reference.cv_cid != cv_cid:
+        raise ReferenceCourseMismatchError(value, cv_cid, reference.cv_cid)
+    return reference.item_id
 
 
 def _material_ids_for_course(cv_cid: int, references: list[str]) -> list[int]:
-    item_ids: list[int] = []
-    for reference in references:
-        if reference.startswith(MATERIAL_REF_PREFIX):
-            reference_course, item_id = _parse_material_unique_id(reference)
-            if reference_course != cv_cid:
-                raise UsageError(
-                    f"Material reference {reference} belongs to course {reference_course}, "
-                    f"not {cv_cid}."
-                )
-            item_ids.append(item_id)
-        elif reference.isdigit():
-            item_ids.append(int(reference))
-        else:
-            raise UsageError(
-                f'Invalid material id "{reference}". Use a numeric id or '
-                f"{MATERIAL_REF_PREFIX}<cv_cid>:<item_id>."
-            )
-    return item_ids
+    return [
+        _resource_item_id_for_course(
+            reference,
+            cv_cid=cv_cid,
+            resource_type=ResourceType.MATERIAL,
+        )
+        for reference in references
+    ]
+
+
+def _resource_refs(
+    records: list[Any],
+    *,
+    cv_cid: int | None = None,
+) -> ShellIdList:
+    references: list[str] = []
+    for record in records:
+        if cv_cid is not None and getattr(record, "cv_cid", None) is None:
+            record = record.model_copy(update={"cv_cid": cv_cid})
+        references.append(str(ref_for_resource(record)))
+    return ShellIdList(references)
 
 
 def _project_records(
@@ -357,13 +410,18 @@ def courses_materials(
         False,
         "--unique-ids",
         "--unique-id",
-        help="Print course-qualified material references one per line.",
+        help="Deprecated alias for --refs.",
+    ),
+    refs: bool = typer.Option(
+        False,
+        "--refs",
+        help="Print canonical resource references one per line.",
     ),
 ) -> None:
     def action() -> list[Any]:
-        selected_modes = sum((ids, unique_ids, select_fields is not None))
+        selected_modes = sum((ids, unique_ids, refs, select_fields is not None))
         if selected_modes > 1:
-            raise UsageError("Choose only one of --ids, --unique-ids, or --select.")
+            raise UsageError("Choose only one of --ids, --refs, or --select.")
         manager = _make_manager()
         with MCVClient(manager) as client:
             cv_cid = _course_id(client, course)
@@ -389,20 +447,19 @@ def courses_materials(
                 materials = selected.materials
             if ids:
                 return ShellIdList(material.itemid for material in materials)
-            if unique_ids:
-                return ShellIdList(
-                    _material_unique_id(material.cv_cid or cv_cid, material.itemid)
-                    for material in materials
-                )
+            if unique_ids or refs:
+                return _resource_refs(materials, cv_cid=cv_cid)
             if select_fields is not None:
                 return _project_records(
                     materials,
                     select_fields,
-                    available_fields=set(Material.model_fields) | {"unique_id"},
+                    available_fields=set(Material.model_fields) | {"ref"},
                     computed_fields={
-                        "unique_id": lambda material: _material_unique_id(
-                            material.cv_cid or cv_cid, material.itemid
-                        )
+                        "ref": lambda material: str(
+                            ref_for_resource(
+                                material.model_copy(update={"cv_cid": material.cv_cid or cv_cid})
+                            )
+                        ),
                     },
                 )
             return materials
@@ -449,10 +506,10 @@ def courses_materials_archive(
     course: str = typer.Argument(..., help="CourseVille id or course number."),
     folder: str = typer.Argument(..., help="Folder name or folder id."),
     output: Path = typer.Option(..., "--output", "-o"),
-    archive_format: Literal["zip", "tar"] = typer.Option(
-        "zip",
+    archive_format: ArchiveFormat | None = typer.Option(
+        None,
         "--format",
-        help="Archive format.",
+        help="Override output-extension inference (zip, tar, or tar.gz).",
     ),
     force: bool = typer.Option(False, "--force"),
 ) -> None:
@@ -474,15 +531,23 @@ def courses_materials_archive(
 def courses_materials_download(
     ctx: typer.Context,
     course: str = typer.Argument(..., help="CourseVille id or course number."),
-    item_id: int = typer.Argument(..., help="Material id."),
+    item_id: str = typer.Argument(..., help="Material id or resource ref."),
     output: Path = typer.Option(..., "--output", "-o"),
     force: bool = typer.Option(False, "--force"),
 ) -> None:
     def action() -> Any:
         manager = _make_manager()
         with MCVClient(manager) as client:
+            cv_cid = _course_id(client, course)
             return client.download_material(
-                _course_id(client, course), item_id, output, force=force
+                cv_cid,
+                _resource_item_id_for_course(
+                    item_id,
+                    cv_cid=cv_cid,
+                    resource_type=ResourceType.MATERIAL,
+                ),
+                output,
+                force=force,
             )
 
     _run(ctx, action)
@@ -492,11 +557,29 @@ def courses_materials_download(
 def courses_assignments(
     ctx: typer.Context,
     course: str = typer.Argument(..., help="CourseVille id or course number."),
+    ids: bool = typer.Option(
+        False,
+        "--ids",
+        help="Print assignment ids one per line within this course.",
+    ),
+    refs: bool = typer.Option(
+        False,
+        "--refs",
+        help="Print canonical assignment references one per line.",
+    ),
 ) -> None:
     def action() -> list[Any]:
+        if ids and refs:
+            raise UsageError("Choose either --ids or --refs.")
         manager = _make_manager()
         with MCVClient(manager) as client:
-            return client.list_assignments(_course_id(client, course))
+            cv_cid = _course_id(client, course)
+            assignments = client.list_assignments(cv_cid)
+            if ids:
+                return ShellIdList(item.itemid for item in assignments)
+            if refs:
+                return _resource_refs(assignments, cv_cid=cv_cid)
+            return assignments
 
     _run(ctx, action)
 
@@ -505,12 +588,20 @@ def courses_assignments(
 def courses_assignment(
     ctx: typer.Context,
     course: str = typer.Argument(..., help="CourseVille id or course number."),
-    item_id: int = typer.Argument(..., help="Assignment id."),
+    item_id: str = typer.Argument(..., help="Assignment id or resource ref."),
 ) -> None:
     def action() -> Any:
         manager = _make_manager()
         with MCVClient(manager) as client:
-            return client.get_assignment(_course_id(client, course), item_id)
+            cv_cid = _course_id(client, course)
+            return client.get_assignment(
+                cv_cid,
+                _resource_item_id_for_course(
+                    item_id,
+                    cv_cid=cv_cid,
+                    resource_type=ResourceType.ASSIGNMENT,
+                ),
+            )
 
     _run(ctx, action)
 
@@ -519,11 +610,29 @@ def courses_assignment(
 def courses_announcements(
     ctx: typer.Context,
     course: str = typer.Argument(..., help="CourseVille id or course number."),
+    ids: bool = typer.Option(
+        False,
+        "--ids",
+        help="Print announcement ids one per line within this course.",
+    ),
+    refs: bool = typer.Option(
+        False,
+        "--refs",
+        help="Print canonical announcement references one per line.",
+    ),
 ) -> None:
     def action() -> list[Any]:
+        if ids and refs:
+            raise UsageError("Choose either --ids or --refs.")
         manager = _make_manager()
         with MCVClient(manager) as client:
-            return client.list_announcements(_course_id(client, course))
+            cv_cid = _course_id(client, course)
+            announcements = client.list_announcements(cv_cid)
+            if ids:
+                return ShellIdList(item.itemid for item in announcements)
+            if refs:
+                return _resource_refs(announcements, cv_cid=cv_cid)
+            return announcements
 
     _run(ctx, action)
 
@@ -532,12 +641,20 @@ def courses_announcements(
 def courses_announcement(
     ctx: typer.Context,
     course: str = typer.Argument(..., help="CourseVille id or course number."),
-    item_id: int = typer.Argument(..., help="Announcement id."),
+    item_id: str = typer.Argument(..., help="Announcement id or resource ref."),
 ) -> None:
     def action() -> Any:
         manager = _make_manager()
         with MCVClient(manager) as client:
-            return client.get_announcement(_course_id(client, course), item_id)
+            cv_cid = _course_id(client, course)
+            return client.get_announcement(
+                cv_cid,
+                _resource_item_id_for_course(
+                    item_id,
+                    cv_cid=cv_cid,
+                    resource_type=ResourceType.ANNOUNCEMENT,
+                ),
+            )
 
     _run(ctx, action)
 
@@ -546,11 +663,37 @@ def courses_announcement(
 def courses_meetings(
     ctx: typer.Context,
     course: str = typer.Argument(..., help="CourseVille id or course number."),
+    include_past: bool = typer.Option(
+        False,
+        "--include-past",
+        help="Include meetings whose scheduled time has passed.",
+    ),
+    ids: bool = typer.Option(
+        False,
+        "--ids",
+        help="Print meeting ids one per line within this course.",
+    ),
+    refs: bool = typer.Option(
+        False,
+        "--refs",
+        help="Print canonical meeting references one per line.",
+    ),
 ) -> None:
     def action() -> list[Any]:
+        if ids and refs:
+            raise UsageError("Choose either --ids or --refs.")
         manager = _make_manager()
         with MCVClient(manager) as client:
-            return client.list_meetings(_course_id(client, course))
+            cv_cid = _course_id(client, course)
+            meetings = MeetingService(client).list_for_course(
+                cv_cid,
+                include_past=include_past,
+            )
+            if ids:
+                return ShellIdList(item.itemid for item in meetings)
+            if refs:
+                return _resource_refs(meetings, cv_cid=cv_cid)
+            return meetings
 
     _run(ctx, action)
 
@@ -559,12 +702,20 @@ def courses_meetings(
 def courses_meeting(
     ctx: typer.Context,
     course: str = typer.Argument(..., help="CourseVille id or course number."),
-    item_id: int = typer.Argument(..., help="Online meeting reference number."),
+    item_id: str = typer.Argument(..., help="Meeting id or resource ref."),
 ) -> None:
     def action() -> Any:
         manager = _make_manager()
         with MCVClient(manager) as client:
-            return client.get_meeting(_course_id(client, course), item_id)
+            cv_cid = _course_id(client, course)
+            return client.get_meeting(
+                cv_cid,
+                _resource_item_id_for_course(
+                    item_id,
+                    cv_cid=cv_cid,
+                    resource_type=ResourceType.MEETING,
+                ),
+            )
 
     _run(ctx, action)
 
@@ -633,6 +784,181 @@ def courses_web_resources(
             return client.list_web_resources(_course_id(client, course))
 
     _run(ctx, action)
+
+
+@assignments_app.command("list")
+def assignments_list(
+    ctx: typer.Context,
+    pending: bool = typer.Option(
+        False,
+        "--pending",
+        help="Only include assignments without a completed submission.",
+    ),
+    due: bool = typer.Option(
+        False,
+        "--due",
+        help="Only include assignments with a due date or time.",
+    ),
+    refs: bool = typer.Option(
+        False,
+        "--refs",
+        help="Print canonical assignment references one per line.",
+    ),
+) -> None:
+    def action() -> list[Any]:
+        manager = _make_manager()
+        with MCVClient(manager) as client:
+            assignments = AssignmentService(client).list_across_courses(
+                pending=pending,
+                due=due,
+            )
+            if refs:
+                return _resource_refs(assignments)
+            return assignments
+
+    _run(ctx, action)
+
+
+@announcements_app.command("list")
+def announcements_list(
+    ctx: typer.Context,
+    refs: bool = typer.Option(
+        False,
+        "--refs",
+        help="Print canonical announcement references one per line.",
+    ),
+) -> None:
+    def action() -> list[Any]:
+        manager = _make_manager()
+        with MCVClient(manager) as client:
+            announcements = AnnouncementService(client).list_across_courses()
+            if refs:
+                return _resource_refs(announcements)
+            return announcements
+
+    _run(ctx, action)
+
+
+@meetings_app.command("list")
+def meetings_list(
+    ctx: typer.Context,
+    include_past: bool = typer.Option(
+        False,
+        "--include-past",
+        help="Include meetings whose scheduled time has passed.",
+    ),
+    refs: bool = typer.Option(
+        False,
+        "--refs",
+        help="Print canonical meeting references one per line.",
+    ),
+) -> None:
+    def action() -> list[Any]:
+        manager = _make_manager()
+        with MCVClient(manager) as client:
+            meetings = MeetingService(client).list_across_courses(include_past=include_past)
+            if refs:
+                return _resource_refs(meetings)
+            return meetings
+
+    _run(ctx, action)
+
+
+def _get_one_resource(client: MCVClient, reference: ResourceRef) -> Any:
+    return get_resource(client, reference)
+
+
+@app.command("get")
+def get_resources(
+    ctx: typer.Context,
+    references: list[str] = typer.Argument(..., help="One or more mcv resource references."),
+) -> None:
+    def action() -> Any:
+        parsed_references = [_parse_resource_ref(reference) for reference in references]
+        manager = _make_manager()
+        with MCVClient(manager) as client:
+            resources = [_get_one_resource(client, reference) for reference in parsed_references]
+            return resources[0] if len(resources) == 1 else resources
+
+    if not _jsonl_mode(ctx):
+        _run(ctx, action)
+        return
+
+    parsed_references: list[ResourceRef | MCVError] = []
+    for raw_reference in references:
+        try:
+            parsed_references.append(_parse_resource_ref(raw_reference))
+        except MCVError as error:
+            parsed_references.append(error)
+
+    manager = _make_manager()
+    failures: list[MCVError] = []
+    valid_references = [
+        reference for reference in parsed_references if isinstance(reference, ResourceRef)
+    ]
+    try:
+        client_context = MCVClient(manager) if valid_references else None
+    except MCVError as error:
+        client_context = None
+        for _parsed_reference in valid_references:
+            failures.append(error)
+            print(
+                json.dumps(
+                    machine_error_payload(error, envelope=_envelope_mode(ctx)),
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+            )
+    if client_context is not None:
+        with client_context as client:
+            for parsed_reference in parsed_references:
+                if isinstance(parsed_reference, MCVError):
+                    failures.append(parsed_reference)
+                    print(
+                        json.dumps(
+                            machine_error_payload(
+                                parsed_reference,
+                                envelope=_envelope_mode(ctx),
+                            ),
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                        )
+                    )
+                    continue
+                try:
+                    resource = _get_one_resource(client, parsed_reference)
+                except MCVError as error:
+                    failures.append(error)
+                    print(
+                        json.dumps(
+                            machine_error_payload(error, envelope=_envelope_mode(ctx)),
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                        )
+                    )
+                else:
+                    emit(
+                        resource,
+                        json_mode=False,
+                        jsonl_mode=True,
+                        envelope=_envelope_mode(ctx),
+                    )
+    else:
+        for parsed_reference in parsed_references:
+            if isinstance(parsed_reference, MCVError):
+                failures.append(parsed_reference)
+                print(
+                    json.dumps(
+                        machine_error_payload(
+                            parsed_reference,
+                            envelope=_envelope_mode(ctx),
+                        ),
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    )
+                )
+    if failures:
+        raise typer.Exit(max(error.exit_code for error in failures))
 
 
 if __name__ == "__main__":

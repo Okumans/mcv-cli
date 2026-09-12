@@ -49,11 +49,6 @@ MATERIALS_HTML = """
 </table>
 """
 
-ASSIGNMENTS_HTML = """
-<a target="_blank" href="/course/123">Computer Science</a>
-<strong>&ldquo;Homework 1&rdquo;</strong> dues in <strong>2026-09-20</strong>
-"""
-
 COURSE_RESOURCES_HTML = """
 <a aria-label="Portfolio" href="?q=courseville/course/123/portfolio-7">Portfolio</a>
 <section id="courseville-material-list">
@@ -190,8 +185,8 @@ def response_for(request: httpx.Request) -> httpx.Response:
         )
     if query == "courseville/ajax/course":
         return httpx.Response(200, text=MATERIALS_HTML, request=request)
-    if query == "courseville/ajax/getactivepanelcontent":
-        return httpx.Response(200, json={"html": ASSIGNMENTS_HTML}, request=request)
+    if query == "courseville/course/123/assignment":
+        return httpx.Response(200, text=COURSE_ASSIGNMENT_HTML, request=request)
     return httpx.Response(404, json={"error": "not found"}, request=request)
 
 
@@ -235,8 +230,8 @@ def test_client_normalizes_courses_materials_and_assignments() -> None:
     assert courses[0].course_no == "2110101"
     assert materials[0].itemid == 9
     assert materials[0].filepath == "https://storage.example/material/9/lecture-1.pdf"
-    assert assignments[0].itemid == 1
-    assert assignments[0].title == "Homework 1"
+    assert assignments[0].itemid == 55
+    assert assignments[0].title == "Homework"
 
 
 def test_client_parses_student_resources() -> None:
@@ -280,13 +275,12 @@ def test_client_downloads_material_folder_as_zip_and_tar(tmp_path: Path) -> None
         client = MCVClient(FakeAuth(), http_client=http_client)
         zip_path = tmp_path / "materials.zip"
         tar_path = tmp_path / "materials.tar"
+        tar_gz_path = tmp_path / "materials.tar.gz"
+        fallback_path = tmp_path / "materials.archive"
         zip_result = client.download_material_folder(123, "Week 1", zip_path)
-        tar_result = client.download_material_folder(
-            123,
-            "folder-1",
-            tar_path,
-            archive_format="tar",
-        )
+        tar_result = client.download_material_folder(123, "folder-1", tar_path)
+        tar_gz_result = client.download_material_folder(123, "folder-1", tar_gz_path)
+        fallback_result = client.download_material_folder(123, "folder-1", fallback_path)
 
     assert zip_result.files == 1
     with zipfile.ZipFile(zip_path) as archive:
@@ -296,6 +290,14 @@ def test_client_downloads_material_folder_as_zip_and_tar(tmp_path: Path) -> None
         member = archive.extractfile("notes.pdf")
         assert member is not None
         assert member.read() == b"notes"
+    assert tar_gz_result.format == "tar.gz"
+    with tarfile.open(tar_gz_path, "r:gz") as archive:
+        member = archive.extractfile("notes.pdf")
+        assert member is not None
+        assert member.read() == b"notes"
+    assert fallback_result.format == "zip"
+    with zipfile.ZipFile(fallback_path) as archive:
+        assert archive.read("notes.pdf") == b"notes"
 
 
 def test_client_rejects_expired_session_after_401() -> None:

@@ -84,21 +84,26 @@ mcv courses 2110575 materials list
 mcv courses 2110575 materials folders
 mcv courses 2110575 materials list --folder "Week 1"
 mcv courses 2110575 materials show 12345 12346
-mcv courses 2110575 materials list --folder "Week 1" --unique-ids
+mcv courses 2110575 materials list --folder "Week 1" --refs
 mcv courses 2110575 materials archive "Week 1" \
-  --output ./week-1.zip --format zip
+  --output ./week-1.zip
 mcv courses 2110575 materials archive "Week 1" \
-  --output ./week-1.tar --format tar
+  --output ./week-1.tar
+mcv courses 2110575 materials archive "Week 1" \
+  --output ./week-1.tar.gz
 mcv courses 2110575 materials download 12345 --output ./lecture.pdf
 
 # Read-only assignment and announcement views
 mcv courses 2110575 assignments list
 mcv courses 2110575 assignments show 2160997
+mcv courses 2110575 assignments list --ids
+mcv courses 2110575 assignments list --refs
 mcv courses 2110575 announcements list
 mcv courses 2110575 announcements show 2177455
 
 # Other student-facing course pages
 mcv courses 2110575 meetings list
+mcv courses 2110575 meetings list --include-past
 mcv courses 2110575 meetings show 29632
 mcv courses 2110575 schedule list
 mcv courses 2110575 about
@@ -124,11 +129,16 @@ Use `--semester` to select one semester explicitly; `--yearsem` remains an
 alias for compatibility. Use `--all` to query every available semester.
 
 `courses COURSE materials folders` shows folder ids and material counts. A folder can
-be selected by name or id. `materials archive` creates a ZIP or uncompressed
-TAR using the downloadable files in that folder, refuses to overwrite an
-existing output unless `--force` is supplied, and reports materials that have
-no downloadable file. The archive operation uses temporary files and only
-replaces the destination after the archive is complete.
+be selected by name or id. `materials archive` creates an archive using the
+downloadable files in that folder, refuses to overwrite an existing output
+unless `--force` is supplied, and reports materials that have no downloadable
+file. The archive operation uses temporary files and only replaces the
+destination after the archive is complete.
+
+The archive format is inferred from the output name first: `.zip` creates ZIP,
+`.tar` creates an uncompressed TAR, and `.tar.gz` (or `.tgz`) creates a gzip-
+compressed TAR. An unrecognized or missing extension defaults to ZIP. Use
+`--format zip`, `--format tar`, or `--format tar.gz` to override inference.
 
 For shell composition, `--ids` prints one material id per line. This makes it
 possible to pass a folder selection directly to the detail command, like a
@@ -139,15 +149,20 @@ mcv courses 2110575 materials show \
   $(mcv courses 2110575 materials list --folder "Week 1" --ids)
 ```
 
-`--unique-ids` prints course-qualified references in the form
-`mcv-material:<cv_cid>:<item_id>`. These references are safe to use without
-separately carrying the course id:
+`--refs` prints canonical course-qualified references in the form
+`mcv:<resource-type>:<cv_cid>:<item_id>`. These references are safe to use
+without separately carrying the course id:
 
 ```bash
 mcv courses 2110575 materials show \
   $(mcv courses 2110575 materials list \
-    --folder "Week 1" --unique-ids)
+    --folder "Week 1" --refs)
+
+mcv courses 2110575 assignments show mcv:assignment:86428:2160997
 ```
+
+`--unique-ids` remains accepted only as a deprecated material-list alias for
+`--refs`. New scripts should use `--refs`.
 
 Use `--json` with `--select`/`--fields` when a structured projection is more
 useful than line-oriented ids:
@@ -158,21 +173,30 @@ mcv --json courses 2110575 materials list \
 ```
 
 `courses COURSE materials show` accepts one or more material ids or qualified
-material references. With `--json --ids`, the producer emits the id array in
-the versioned `data` field instead of shell-oriented lines.
+material references. With `--json --ids`, the producer emits the raw id array
+instead of shell-oriented lines.
 
 Use `--jsonl` for any list/detail command when downstream tools expect one
 JSON value per line:
 
 ```bash
-mcv --jsonl courses 2110575 assignments list | jq -s 'map(.data.itemid)'
+mcv --jsonl courses 2110575 assignments list | jq -s 'map(.itemid)'
 ```
 
-Each JSON document has the shape `{"schema_version": 1, "data": ...}`. Each
-JSONL record has the same envelope on one line. Existing v1 fields are not
-renamed or removed; new fields may be added. Error envelopes use the same
-schema and include a machine-readable `code`, plus `resource`, `operation`,
-and `retryable` when applicable.
+By default, `--json` prints the actual JSON value and `--jsonl` prints one
+actual value per line. This keeps the common Unix pipelines direct: use
+`.[]` for a JSON list and `.field` for a JSONL record. If a versioned protocol
+envelope is useful, opt into it explicitly:
+
+```bash
+mcv --json --envelope courses 2110575 assignments list
+mcv --jsonl --envelope courses 2110575 assignments list
+```
+
+The envelope has the shape `{"schema_version": 1, "data": ...}` (or one such
+object per JSONL line). Existing v1 fields are not renamed or removed; new
+fields may be added. Machine errors are flat JSON by default and use the same
+versioned `error` wrapper only with `--envelope`.
 
 Assignment and announcement detail commands are read-only. Meeting detail
 lists provider information and available recordings; it does not open or join
@@ -185,6 +209,67 @@ Add `--json` before the command for script-friendly output:
 mcv --json courses list
 mcv --json auth status
 ```
+
+## Cross-course resource commands
+
+Use these commands when the question is about a resource across the current
+semester rather than one course:
+
+```bash
+mcv assignments list
+mcv assignments list --pending
+mcv assignments list --due
+mcv assignments list --pending --refs
+
+mcv announcements list
+mcv announcements list --refs
+
+mcv meetings list
+mcv meetings list --include-past
+mcv meetings list --refs
+```
+
+Cross-course commands attach `course_no`, `cv_cid`, and the canonical `ref` to
+machine-readable addressable resources. Raw `--ids` is intentionally not
+available because an id without its course namespace is ambiguous.
+
+Meeting lists exclude meetings whose scheduled time has passed by default.
+Use `--include-past` to include them. Meeting records expose `url`, which
+prefers the direct `join_url` and falls back to the MyCourseVille
+`detail_url`.
+
+## Universal resource lookup
+
+Addressable resources use the generic reference format:
+
+```text
+mcv:<resource-type>:<cv_cid>:<resource-id>
+```
+
+Currently supported resource types are `material`, `assignment`,
+`announcement`, and `meeting`. Resolve one or more mixed references with:
+
+```bash
+mcv get mcv:assignment:86428:2160997
+mcv get \
+  mcv:assignment:86428:2160997 \
+  mcv:material:86428:2160993
+
+mcv assignments list --pending --refs | xargs -r -n 20 mcv get
+```
+
+Use `--jsonl` for batch lookup when individual failures should be represented
+alongside successful records:
+
+```bash
+mcv --jsonl get \
+  mcv:assignment:86428:2160997 \
+  mcv:material:86428:2160993
+```
+
+`mcv get --jsonl` writes success and error records to stdout in input order and
+returns nonzero if any lookup fails. Other machine-mode errors are written to
+stderr.
 
 ## Credential storage
 
@@ -208,7 +293,6 @@ HTML/AJAX routes used by existing MyCourseVille clients:
 /?q=courseville
 /?q=courseville/ajax/cvhomepanel_get_filter
 /?q=courseville/ajax/course
-/?q=courseville/ajax/getactivepanelcontent
 /?q=courseville/course/{cv_cid}/assignment
 /?q=courseville/course/{cv_cid}/meeting
 /?q=courseville/course/{cv_cid}/schedule

@@ -11,11 +11,15 @@ def test_help_lists_command_groups() -> None:
     result = runner.invoke(app, ["--help"])
 
     assert result.exit_code == 0
+    assert "get" in result.stdout
     assert "auth" in result.stdout
     assert "courses" in result.stdout
     assert "materials" not in result.stdout
-    assert "assignments" not in result.stdout
+    assert "assignments" in result.stdout
+    assert "announcements" in result.stdout
+    assert "meetings" in result.stdout
     assert "--jsonl" in result.stdout
+    assert "--envelope" in result.stdout
 
 
 def test_version() -> None:
@@ -76,6 +80,7 @@ def test_course_scoped_archive_keeps_command_options_after_verb() -> None:
     assert result.exit_code == 0
     assert "{course} {folder}" in result.stdout
     assert "--format" in result.stdout
+    assert "tar.gz" in result.stdout
     assert "--output" in result.stdout
 
 
@@ -98,7 +103,7 @@ def test_flat_resource_commands_are_not_exposed() -> None:
     result = runner.invoke(app, ["--help"])
 
     assert "materials" not in result.stdout
-    assert "assignments" not in result.stdout
+    assert "courses" in result.stdout
 
 
 def test_material_list_exposes_shell_query_options() -> None:
@@ -108,4 +113,53 @@ def test_material_list_exposes_shell_query_options() -> None:
     assert "--ids" in result.stdout
     assert "--select" in result.stdout
     assert "--folder" in result.stdout
+    assert "--refs" in result.stdout
     assert "--unique-ids" in result.stdout
+
+
+def test_cross_course_resource_commands_expose_filters_and_refs() -> None:
+    result = runner.invoke(app, ["assignments", "list", "--help"])
+
+    assert result.exit_code == 0
+    assert "--pending" in result.stdout
+    assert "--due" in result.stdout
+    assert "--refs" in result.stdout
+
+
+def test_meeting_commands_expose_include_past_filter() -> None:
+    aggregate = runner.invoke(app, ["meetings", "list", "--help"])
+    course = runner.invoke(app, ["courses", "2110575", "meetings", "list", "--help"])
+
+    assert aggregate.exit_code == 0
+    assert course.exit_code == 0
+    assert "--include-past" in aggregate.stdout
+    assert "--include-past" in course.stdout
+
+
+def test_get_help_accepts_multiple_references() -> None:
+    result = runner.invoke(app, ["get", "--help"])
+
+    assert result.exit_code == 0
+    assert "One or more mcv resource references" in result.stdout
+
+
+def test_invalid_jsonl_ref_is_reported_without_authentication() -> None:
+    result = runner.invoke(app, ["--jsonl", "get", "mcv:unknown:1:2"])
+
+    assert result.exit_code == 7
+    assert '"code":"invalid_ref"' in result.stdout
+
+
+def test_envelope_requires_machine_output() -> None:
+    result = runner.invoke(app, ["--envelope", "auth", "status"])
+
+    assert result.exit_code == 2
+    assert "requires --json or --jsonl" in result.output
+
+
+def test_jsonl_invalid_ref_can_use_the_versioned_envelope() -> None:
+    result = runner.invoke(app, ["--jsonl", "--envelope", "get", "mcv:unknown:1:2"])
+
+    assert result.exit_code == 7
+    assert '"schema_version":1' in result.stdout
+    assert '"error":{"code":"invalid_ref"' in result.stdout

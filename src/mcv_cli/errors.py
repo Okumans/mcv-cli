@@ -39,16 +39,21 @@ class MCVError(Exception):
         self.retryable = retryable
 
     def as_dict(self) -> dict[str, Any]:
-        error: dict[str, Any] = {"code": self.code, "message": self.message}
-        if self.resource is not None:
-            error["resource"] = self.resource
-        if self.operation is not None:
-            error["operation"] = self.operation
-        if self.retryable is not None:
-            error["retryable"] = self.retryable
+        error: dict[str, Any] = {
+            "code": self.code,
+            "message": self.message,
+            "resource": self.resource,
+            "operation": self.operation,
+            "retryable": self.retryable,
+        }
         if self.details is not None:
             error["details"] = self.details
-        return {"schema_version": MACHINE_SCHEMA_VERSION, "error": error}
+        return error
+
+    def as_envelope(self) -> dict[str, Any]:
+        """Return the opt-in versioned machine-readable error envelope."""
+
+        return {"schema_version": MACHINE_SCHEMA_VERSION, "error": self.as_dict()}
 
 
 class UsageError(MCVError):
@@ -170,6 +175,49 @@ class AmbiguousError(MCVError):
             details=details,
             resource=resource,
             operation=operation,
+            retryable=False,
+        )
+
+
+class InvalidRefError(MCVError):
+    def __init__(self, message: str, *, reference: str | None = None) -> None:
+        details = {"reference": reference} if reference is not None else None
+        super().__init__(
+            message,
+            code="invalid_ref",
+            exit_code=EXIT_CODES["validation"],
+            details=details,
+            operation="get",
+            retryable=False,
+        )
+
+
+class UnsupportedResourceError(MCVError):
+    def __init__(self, resource_type: str) -> None:
+        super().__init__(
+            f'Resource type "{resource_type}" is not dereferenceable.',
+            code="unsupported_resource_type",
+            exit_code=EXIT_CODES["validation"],
+            details={"resource_type": resource_type},
+            operation="get",
+            retryable=False,
+        )
+
+
+class ReferenceCourseMismatchError(MCVError):
+    def __init__(self, reference: str, expected_course: int, actual_course: int) -> None:
+        super().__init__(
+            f"Resource reference {reference} belongs to course {actual_course}, "
+            f"not {expected_course}.",
+            code="ref_course_mismatch",
+            exit_code=EXIT_CODES["validation"],
+            details={
+                "reference": reference,
+                "expected_cv_cid": expected_course,
+                "actual_cv_cid": actual_course,
+            },
+            resource="course",
+            operation="resolve_reference",
             retryable=False,
         )
 
