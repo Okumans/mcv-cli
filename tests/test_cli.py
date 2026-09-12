@@ -18,6 +18,7 @@ def test_help_lists_command_groups() -> None:
     assert "assignments" in result.stdout
     assert "announcements" in result.stdout
     assert "meetings" in result.stdout
+    assert "cache" in result.stdout
     assert "--jsonl" in result.stdout
     assert "--envelope" in result.stdout
     assert "--quiet" in result.stdout
@@ -58,6 +59,14 @@ def test_courses_list_exposes_semester_selection_flags() -> None:
     assert "--semester" in result.stdout
     assert "--yearsem" in result.stdout
     assert "--all" in result.stdout
+
+
+def test_cache_commands_expose_refresh_controls() -> None:
+    result = runner.invoke(app, ["cache", "refresh", "--help"])
+
+    assert result.exit_code == 0
+    assert "--all-semesters" in result.stdout
+    assert "course_references" in result.stdout
 
 
 def test_courses_list_rejects_conflicting_selection_flags() -> None:

@@ -10,9 +10,20 @@ from typer.core import TyperGroup
 
 from . import __version__
 from .auth import AuthManager, normalize_provider
+from .cache import CacheStore
 from .client import MCVClient
+from .completion import (
+    active_cache,
+    complete_course_group,
+    complete_courses,
+    complete_folders,
+    complete_groupings,
+    complete_refs,
+    complete_semesters,
+)
 from .config import Settings
 from .errors import (
+    CacheError,
     InvalidRefError,
     MCVError,
     NotFoundError,
@@ -20,7 +31,16 @@ from .errors import (
     UnsupportedResourceError,
     UsageError,
 )
-from .models import ArchiveFormat, AuthProvider, Material
+from .models import (
+    Announcement,
+    ArchiveFormat,
+    Assignment,
+    AuthProvider,
+    Course,
+    Material,
+    MaterialFolder,
+    OnlineMeeting,
+)
 from .output import ShellIdList, emit, emit_error, machine_error_payload
 from .progress import ProgressReporter
 from .refs import ResourceRef, ResourceType, ref_for_resource
@@ -46,6 +66,7 @@ announcements_app = typer.Typer(
     no_args_is_help=True,
 )
 meetings_app = typer.Typer(help="List meetings across current courses.", no_args_is_help=True)
+cache_app = typer.Typer(help="Manage the local completion cache.", no_args_is_help=True)
 
 _COURSE_RESOURCE_ACTIONS = {
     "materials": {
@@ -76,6 +97,13 @@ class CourseAwareGroup(TyperGroup):
         if not args or args[0].startswith("-") or args[0] in self.commands:
             return super().parse_args(ctx, args)
 
+        # Shell completion needs to inspect the custom course grammar itself;
+        # rewriting it here would make Click jump straight to a hidden flat
+        # callback and skip the resource/action candidates.
+        if getattr(ctx, "resilient_parsing", False):
+            ctx._protected_args, ctx.args = list(args), []
+            return []
+
         course, *remaining = args
         if not remaining:
             args = ["show", course]
@@ -89,6 +117,12 @@ class CourseAwareGroup(TyperGroup):
                 resource_args = resource_args[1:]
             args = [target, course, *resource_args]
         return super().parse_args(ctx, args)
+
+    def shell_complete(self, ctx: Any, incomplete: str) -> list[Any]:
+        args = list(getattr(ctx, "args", []))
+        if args and (args[0].startswith("-") or args[0] in self.commands):
+            return super().shell_complete(ctx, incomplete)
+        return complete_course_group(ctx, incomplete)
 
 
 courses_app = typer.Typer(
@@ -105,6 +139,7 @@ app.add_typer(courses_app, name="courses")
 app.add_typer(assignments_app, name="assignments")
 app.add_typer(announcements_app, name="announcements")
 app.add_typer(meetings_app, name="meetings")
+app.add_typer(cache_app, name="cache")
 
 
 @app.callback()
@@ -172,6 +207,58 @@ def _progress_enabled(ctx: typer.Context) -> bool:
     return not _quiet_mode(ctx) and not _json_mode(ctx) and not _jsonl_mode(ctx)
 
 
+def _cache_update(ctx: typer.Context, value: Any) -> None:
+    """Best-effort completion indexing for a successful command result."""
+
+    cache = active_cache()
+    if cache is None:
+        return
+    try:
+        _cache_record_value(cache, value)
+    except Exception:
+        # A read command must never fail because SQLite is unavailable or stale.
+        return
+
+
+def _cache_record_value(cache: CacheStore, value: Any) -> None:
+    if isinstance(value, Course):
+        cache.upsert_courses([value])
+        semester = _course_semester(value)
+        if semester is not None:
+            cache.record_semesters([semester])
+    elif isinstance(value, Material):
+        cache.upsert_resources([value])
+    elif isinstance(value, Assignment | Announcement | OnlineMeeting):
+        cache.upsert_resources([value])
+    elif isinstance(value, MaterialFolder):
+        course_id = next(
+            (item.cv_cid for item in value.materials if item.cv_cid is not None),
+            None,
+        )
+        if course_id is not None:
+            cache.upsert_folders([value], cv_cid=course_id)
+        _cache_record_value(cache, value.materials)
+    elif isinstance(value, list):
+        for item in value:
+            _cache_record_value(cache, item)
+
+
+def _course_semester(course: Course) -> str | None:
+    if course.year is None or course.semester is None:
+        return None
+    return f"{course.year}/{course.semester}"
+
+
+def _cache_namespace() -> CacheStore:
+    manager = _make_manager()
+    try:
+        profile = manager.profile()
+    except MCVError:
+        profile = None
+    provider = normalize_provider(profile.provider) if profile is not None else None
+    return CacheStore(profile_name=manager.store.profile_name, provider=provider)
+
+
 def _run(ctx: typer.Context, action: Callable[[], Any]) -> None:
     result: Any = None
     caught_error: MCVError | None = None
@@ -192,6 +279,7 @@ def _run(ctx: typer.Context, action: Callable[[], Any]) -> None:
         )
         raise typer.Exit(caught_error.exit_code) from caught_error
     if result is not None:
+        _cache_update(ctx, result)
         emit(
             result,
             json_mode=_json_mode(ctx),
@@ -298,6 +386,210 @@ def auth_logout(ctx: typer.Context) -> None:
     _run(ctx, action)
 
 
+@cache_app.command("status")
+def cache_status(ctx: typer.Context) -> None:
+    def action() -> dict[str, Any]:
+        try:
+            return _cache_namespace().status()
+        except Exception as error:
+            raise CacheError(
+                "The completion cache could not be read.",
+                operation="status",
+            ) from error
+
+    _run(ctx, action)
+
+
+@cache_app.command("clear")
+def cache_clear(ctx: typer.Context) -> None:
+    def action() -> dict[str, Any]:
+        cache = _cache_namespace()
+        try:
+            cleared = cache.clear()
+        except OSError as error:
+            raise CacheError(
+                "The completion cache could not be cleared.",
+                operation="clear",
+            ) from error
+        return {"cleared": cleared, "path": str(cache.path)}
+
+    _run(ctx, action)
+
+
+def _select_refresh_courses(courses: list[Course], references: list[str]) -> list[Course]:
+    selected: list[Course] = []
+    seen: set[int] = set()
+    for reference in references:
+        normalized = " ".join(reference.split()).casefold()
+        matches = [course for course in courses if str(course.cv_cid) == reference.strip()]
+        if not matches:
+            matches = [
+                course
+                for course in courses
+                if course.course_no is not None
+                and " ".join(course.course_no.split()).casefold() == normalized
+            ]
+        if not matches:
+            matches = [
+                course
+                for course in courses
+                if course.title is not None
+                and " ".join(course.title.split()).casefold() == normalized
+            ]
+        if not matches:
+            raise NotFoundError(
+                f'Course "{reference}" was not found in the selected semester scope.',
+                resource="course",
+                operation="cache_refresh",
+            )
+        if len(matches) > 1:
+            raise UsageError(
+                f'Course reference "{reference}" is ambiguous; use its cv_cid.'
+            )
+        course = matches[0]
+        if course.cv_cid not in seen:
+            seen.add(course.cv_cid)
+            selected.append(course)
+    return selected
+
+
+def _unique_course_records(courses: list[Course]) -> list[Course]:
+    unique: list[Course] = []
+    seen: set[int] = set()
+    for course in courses:
+        if course.cv_cid in seen:
+            continue
+        seen.add(course.cv_cid)
+        unique.append(course)
+    return unique
+
+
+@cache_app.command("refresh")
+def cache_refresh(
+    ctx: typer.Context,
+    course_references: list[str] = typer.Argument(
+        [],
+        help="Optional course numbers, titles, or cv_cids to refresh.",
+        autocompletion=complete_courses,
+    ),
+    all_semesters: bool = typer.Option(
+        False,
+        "--all-semesters",
+        help="Index courses from every available semester instead of the current one.",
+    ),
+) -> None:
+    def action() -> dict[str, Any]:
+        if all_semesters and course_references:
+            raise UsageError("Do not pass course references with --all-semesters.")
+        manager = _make_manager()
+        cache = active_cache()
+        if cache is None:
+            raise CacheError(
+                "Log in before refreshing the completion cache.",
+                operation="refresh",
+            )
+        with MCVClient(manager) as client:
+            discovered = client.list_courses(
+                all_semesters=all_semesters,
+                progress=_progress(ctx),
+            )
+            courses = (
+                _unique_course_records(discovered)
+                if not course_references
+                else _select_refresh_courses(discovered, course_references)
+            )
+            if not course_references:
+                semesters = [
+                    semester
+                    for semester in (_course_semester(course) for course in discovered)
+                    if semester is not None
+                ]
+                cache.replace_courses(discovered, semesters=semesters)
+            else:
+                cache.upsert_courses(courses)
+            cache.record_semesters(
+                semester
+                for semester in (_course_semester(course) for course in discovered)
+                if semester is not None
+            )
+
+            progress = _progress(ctx)
+            progress_task = (
+                progress.add_task("Refreshing course content", total=len(courses))
+                if progress is not None
+                else None
+            )
+            failures: list[dict[str, Any]] = []
+            refreshed: list[dict[str, Any]] = []
+            for course in courses:
+                try:
+                    folders = client.list_material_folders(course.cv_cid)
+                    materials = [material for folder in folders for material in folder.materials]
+                    assignments = client.list_assignments(course.cv_cid)
+                    announcements = client.list_announcements(course.cv_cid)
+                    meetings = client.list_meetings(course.cv_cid)
+                    groups = client.list_groups(course.cv_cid)
+                    cache.replace_folders(folders, cv_cid=course.cv_cid)
+                    cache.replace_resources(
+                        ResourceType.MATERIAL,
+                        course.cv_cid,
+                        materials,
+                    )
+                    cache.replace_resources(
+                        ResourceType.ASSIGNMENT,
+                        course.cv_cid,
+                        assignments,
+                    )
+                    cache.replace_resources(
+                        ResourceType.ANNOUNCEMENT,
+                        course.cv_cid,
+                        announcements,
+                    )
+                    cache.replace_resources(
+                        ResourceType.MEETING,
+                        course.cv_cid,
+                        meetings,
+                    )
+                    cache.upsert_groupings(groups, cv_cid=course.cv_cid)
+                    refreshed.append(
+                        {
+                            "course": course.course_no or str(course.cv_cid),
+                            "cv_cid": course.cv_cid,
+                            "materials": len(materials),
+                            "assignments": len(assignments),
+                            "announcements": len(announcements),
+                            "meetings": len(meetings),
+                            "groups": len(groups),
+                        }
+                    )
+                except MCVError as error:
+                    failures.append(
+                        {
+                            "course": course.course_no or str(course.cv_cid),
+                            "cv_cid": course.cv_cid,
+                            "error": error.as_dict(),
+                        }
+                    )
+                finally:
+                    if progress is not None:
+                        progress.advance(progress_task)
+            if not failures:
+                cache.mark_refresh()
+            if failures:
+                raise CacheError(
+                    "The completion cache refresh had failed course scopes.",
+                    operation="refresh",
+                    details={"refreshed": refreshed, "failed": failures},
+                )
+            return {
+                "refreshed": refreshed,
+                "failed": [],
+                "count": len(refreshed),
+            }
+
+    _run(ctx, action)
+
+
 @courses_app.command("list")
 def courses_list(
     ctx: typer.Context,
@@ -306,6 +598,7 @@ def courses_list(
         "--semester",
         "--yearsem",
         help="Select a semester such as 2026/1. Defaults to the current semester.",
+        autocompletion=complete_semesters,
     ),
     all_semesters: bool = typer.Option(
         False,
@@ -328,7 +621,10 @@ def courses_list(
 
 
 @courses_app.command("show", hidden=True)
-def courses_show(ctx: typer.Context, course: str = typer.Argument(...)) -> None:
+def courses_show(
+    ctx: typer.Context,
+    course: str = typer.Argument(..., autocompletion=complete_courses),
+) -> None:
     def action() -> Any:
         manager = _make_manager()
         with MCVClient(manager) as client:
@@ -420,12 +716,17 @@ def _project_records(
 @courses_app.command("materials", hidden=True)
 def courses_materials(
     ctx: typer.Context,
-    course: str = typer.Argument(..., help="CourseVille id or course number."),
+    course: str = typer.Argument(
+        ...,
+        help="CourseVille id or course number.",
+        autocompletion=complete_courses,
+    ),
     folder: str | None = typer.Option(
         None,
         "--folder",
         "-f",
         help="Only show one material folder.",
+        autocompletion=complete_folders,
     ),
     select_fields: str | None = typer.Option(
         None,
@@ -477,6 +778,8 @@ def courses_materials(
                         operation="get",
                     )
                 materials = selected.materials
+                _cache_update(ctx, folders)
+            _cache_update(ctx, materials)
             if ids:
                 return ShellIdList(material.itemid for material in materials)
             if unique_ids or refs:
@@ -502,8 +805,16 @@ def courses_materials(
 @courses_app.command("material", hidden=True)
 def courses_material(
     ctx: typer.Context,
-    course: str = typer.Argument(..., help="CourseVille id or course number."),
-    item_ids: list[str] = typer.Argument(..., help="One or more material ids or unique refs."),
+    course: str = typer.Argument(
+        ...,
+        help="CourseVille id or course number.",
+        autocompletion=complete_courses,
+    ),
+    item_ids: list[str] = typer.Argument(
+        ...,
+        help="One or more material ids or unique refs.",
+        autocompletion=complete_refs,
+    ),
 ) -> None:
     def action() -> Any:
         manager = _make_manager()
@@ -522,7 +833,11 @@ def courses_material(
 @courses_app.command("material-folders", hidden=True)
 def courses_material_folders(
     ctx: typer.Context,
-    course: str = typer.Argument(..., help="CourseVille id or course number."),
+    course: str = typer.Argument(
+        ...,
+        help="CourseVille id or course number.",
+        autocompletion=complete_courses,
+    ),
 ) -> None:
     def action() -> list[Any]:
         manager = _make_manager()
@@ -535,8 +850,16 @@ def courses_material_folders(
 @courses_app.command("materials-archive", hidden=True)
 def courses_materials_archive(
     ctx: typer.Context,
-    course: str = typer.Argument(..., help="CourseVille id or course number."),
-    folder: str = typer.Argument(..., help="Folder name or folder id."),
+    course: str = typer.Argument(
+        ...,
+        help="CourseVille id or course number.",
+        autocompletion=complete_courses,
+    ),
+    folder: str = typer.Argument(
+        ...,
+        help="Folder name or folder id.",
+        autocompletion=complete_folders,
+    ),
     output: Path = typer.Option(..., "--output", "-o"),
     archive_format: ArchiveFormat | None = typer.Option(
         None,
@@ -563,8 +886,16 @@ def courses_materials_archive(
 @courses_app.command("materials-download", hidden=True)
 def courses_materials_download(
     ctx: typer.Context,
-    course: str = typer.Argument(..., help="CourseVille id or course number."),
-    item_id: str = typer.Argument(..., help="Material id or resource ref."),
+    course: str = typer.Argument(
+        ...,
+        help="CourseVille id or course number.",
+        autocompletion=complete_courses,
+    ),
+    item_id: str = typer.Argument(
+        ...,
+        help="Material id or resource ref.",
+        autocompletion=complete_refs,
+    ),
     output: Path = typer.Option(..., "--output", "-o"),
     force: bool = typer.Option(False, "--force"),
 ) -> None:
@@ -589,7 +920,11 @@ def courses_materials_download(
 @courses_app.command("assignments", hidden=True)
 def courses_assignments(
     ctx: typer.Context,
-    course: str = typer.Argument(..., help="CourseVille id or course number."),
+    course: str = typer.Argument(
+        ...,
+        help="CourseVille id or course number.",
+        autocompletion=complete_courses,
+    ),
     ids: bool = typer.Option(
         False,
         "--ids",
@@ -608,6 +943,7 @@ def courses_assignments(
         with MCVClient(manager) as client:
             cv_cid = _course_id(client, course)
             assignments = client.list_assignments(cv_cid)
+            _cache_update(ctx, assignments)
             if ids:
                 return ShellIdList(item.itemid for item in assignments)
             if refs:
@@ -620,8 +956,16 @@ def courses_assignments(
 @courses_app.command("assignment", hidden=True)
 def courses_assignment(
     ctx: typer.Context,
-    course: str = typer.Argument(..., help="CourseVille id or course number."),
-    item_id: str = typer.Argument(..., help="Assignment id or resource ref."),
+    course: str = typer.Argument(
+        ...,
+        help="CourseVille id or course number.",
+        autocompletion=complete_courses,
+    ),
+    item_id: str = typer.Argument(
+        ...,
+        help="Assignment id or resource ref.",
+        autocompletion=complete_refs,
+    ),
 ) -> None:
     def action() -> Any:
         manager = _make_manager()
@@ -642,7 +986,11 @@ def courses_assignment(
 @courses_app.command("announcements", hidden=True)
 def courses_announcements(
     ctx: typer.Context,
-    course: str = typer.Argument(..., help="CourseVille id or course number."),
+    course: str = typer.Argument(
+        ...,
+        help="CourseVille id or course number.",
+        autocompletion=complete_courses,
+    ),
     ids: bool = typer.Option(
         False,
         "--ids",
@@ -661,6 +1009,7 @@ def courses_announcements(
         with MCVClient(manager) as client:
             cv_cid = _course_id(client, course)
             announcements = client.list_announcements(cv_cid)
+            _cache_update(ctx, announcements)
             if ids:
                 return ShellIdList(item.itemid for item in announcements)
             if refs:
@@ -673,8 +1022,16 @@ def courses_announcements(
 @courses_app.command("announcement", hidden=True)
 def courses_announcement(
     ctx: typer.Context,
-    course: str = typer.Argument(..., help="CourseVille id or course number."),
-    item_id: str = typer.Argument(..., help="Announcement id or resource ref."),
+    course: str = typer.Argument(
+        ...,
+        help="CourseVille id or course number.",
+        autocompletion=complete_courses,
+    ),
+    item_id: str = typer.Argument(
+        ...,
+        help="Announcement id or resource ref.",
+        autocompletion=complete_refs,
+    ),
 ) -> None:
     def action() -> Any:
         manager = _make_manager()
@@ -695,7 +1052,11 @@ def courses_announcement(
 @courses_app.command("meetings", hidden=True)
 def courses_meetings(
     ctx: typer.Context,
-    course: str = typer.Argument(..., help="CourseVille id or course number."),
+    course: str = typer.Argument(
+        ...,
+        help="CourseVille id or course number.",
+        autocompletion=complete_courses,
+    ),
     include_past: bool = typer.Option(
         False,
         "--include-past",
@@ -722,6 +1083,7 @@ def courses_meetings(
                 cv_cid,
                 include_past=include_past,
             )
+            _cache_update(ctx, meetings)
             if ids:
                 return ShellIdList(item.itemid for item in meetings)
             if refs:
@@ -734,8 +1096,16 @@ def courses_meetings(
 @courses_app.command("meeting", hidden=True)
 def courses_meeting(
     ctx: typer.Context,
-    course: str = typer.Argument(..., help="CourseVille id or course number."),
-    item_id: str = typer.Argument(..., help="Meeting id or resource ref."),
+    course: str = typer.Argument(
+        ...,
+        help="CourseVille id or course number.",
+        autocompletion=complete_courses,
+    ),
+    item_id: str = typer.Argument(
+        ...,
+        help="Meeting id or resource ref.",
+        autocompletion=complete_refs,
+    ),
 ) -> None:
     def action() -> Any:
         manager = _make_manager()
@@ -756,7 +1126,11 @@ def courses_meeting(
 @courses_app.command("schedule", hidden=True)
 def courses_schedule(
     ctx: typer.Context,
-    course: str = typer.Argument(..., help="CourseVille id or course number."),
+    course: str = typer.Argument(
+        ...,
+        help="CourseVille id or course number.",
+        autocompletion=complete_courses,
+    ),
 ) -> None:
     def action() -> list[Any]:
         manager = _make_manager()
@@ -769,7 +1143,11 @@ def courses_schedule(
 @courses_app.command("about", hidden=True)
 def courses_about(
     ctx: typer.Context,
-    course: str = typer.Argument(..., help="CourseVille id or course number."),
+    course: str = typer.Argument(
+        ...,
+        help="CourseVille id or course number.",
+        autocompletion=complete_courses,
+    ),
 ) -> None:
     def action() -> Any:
         manager = _make_manager()
@@ -782,13 +1160,30 @@ def courses_about(
 @courses_app.command("groups", hidden=True)
 def courses_groups(
     ctx: typer.Context,
-    course: str = typer.Argument(..., help="CourseVille id or course number."),
-    grouping: int | None = typer.Option(None, "--grouping", help="Grouping id."),
+    course: str = typer.Argument(
+        ...,
+        help="CourseVille id or course number.",
+        autocompletion=complete_courses,
+    ),
+    grouping: int | None = typer.Option(
+        None,
+        "--grouping",
+        help="Grouping id.",
+        autocompletion=complete_groupings,
+    ),
 ) -> None:
     def action() -> list[Any]:
         manager = _make_manager()
         with MCVClient(manager) as client:
-            return client.list_groups(_course_id(client, course), grouping_id=grouping)
+            cv_cid = _course_id(client, course)
+            groups = client.list_groups(cv_cid, grouping_id=grouping)
+            cache = active_cache()
+            if cache is not None:
+                try:
+                    cache.upsert_groupings(groups, cv_cid=cv_cid)
+                except Exception:
+                    pass
+            return groups
 
     _run(ctx, action)
 
@@ -796,7 +1191,11 @@ def courses_groups(
 @courses_app.command("portfolio", hidden=True)
 def courses_portfolio(
     ctx: typer.Context,
-    course: str = typer.Argument(..., help="CourseVille id or course number."),
+    course: str = typer.Argument(
+        ...,
+        help="CourseVille id or course number.",
+        autocompletion=complete_courses,
+    ),
 ) -> None:
     def action() -> Any:
         manager = _make_manager()
@@ -809,7 +1208,11 @@ def courses_portfolio(
 @courses_app.command("web-resources", hidden=True)
 def courses_web_resources(
     ctx: typer.Context,
-    course: str = typer.Argument(..., help="CourseVille id or course number."),
+    course: str = typer.Argument(
+        ...,
+        help="CourseVille id or course number.",
+        autocompletion=complete_courses,
+    ),
 ) -> None:
     def action() -> list[Any]:
         manager = _make_manager()
@@ -846,6 +1249,7 @@ def assignments_list(
                 due=due,
                 progress=_progress(ctx),
             )
+            _cache_update(ctx, assignments)
             if refs:
                 return _resource_refs(assignments)
             return assignments
@@ -868,6 +1272,7 @@ def announcements_list(
             announcements = AnnouncementService(client).list_across_courses(
                 progress=_progress(ctx),
             )
+            _cache_update(ctx, announcements)
             if refs:
                 return _resource_refs(announcements)
             return announcements
@@ -896,6 +1301,7 @@ def meetings_list(
                 include_past=include_past,
                 progress=_progress(ctx),
             )
+            _cache_update(ctx, meetings)
             if refs:
                 return _resource_refs(meetings)
             return meetings
@@ -910,7 +1316,11 @@ def _get_one_resource(client: MCVClient, reference: ResourceRef) -> Any:
 @app.command("get")
 def get_resources(
     ctx: typer.Context,
-    references: list[str] = typer.Argument(..., help="One or more mcv resource references."),
+    references: list[str] = typer.Argument(
+        ...,
+        help="One or more mcv resource references.",
+        autocompletion=complete_refs,
+    ),
 ) -> None:
     def action() -> Any:
         parsed_references = [_parse_resource_ref(reference) for reference in references]

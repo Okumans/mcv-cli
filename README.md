@@ -164,6 +164,55 @@ mcv courses 2110575 assignments show mcv:assignment:86428:2160997
 `--unique-ids` remains accepted only as a deprecated material-list alias for
 `--refs`. New scripts should use `--refs`.
 
+## Shell completion and local cache
+
+Install completion for the current shell:
+
+```bash
+uv run mcv --install-completion
+```
+
+Completion is deliberately cache-only. It never logs in, makes a network
+request, or blocks the shell while MyCourseVille is unavailable. Populate or
+refresh it after login:
+
+```bash
+mcv courses list                         # also indexes returned course refs
+mcv cache refresh                        # current-semester courses
+mcv cache refresh 2110575 2110521        # selected courses
+mcv cache refresh --all-semesters        # every semester exposed by the site
+mcv cache status
+mcv cache clear
+```
+
+The cache stores only completion metadata such as course numbers, folder names,
+resource titles, canonical refs, semester values, and grouping ids. It does
+not store cookies, passwords, resource bodies, signed URLs, or meeting
+credentials. It is isolated by the active profile and login provider under the
+platform cache directory. A missing or corrupt cache simply produces no
+dynamic candidates.
+
+The cache refresh accepts either no course arguments or multiple specific
+course references. `--all-semesters` cannot be combined with specific course
+arguments. Refresh reports per-course failures and leaves the previous
+snapshot for a resource scope that could not be fetched.
+
+Long-running multi-request commands show a compact progress display on stderr:
+
+```bash
+mcv courses list --all
+mcv assignments list
+mcv cache refresh
+```
+
+Use `--quiet`/`-q` to suppress progress while preserving the intended result.
+Progress is automatically disabled for `--json` and `--jsonl`, so machine
+output remains safe to pipe:
+
+```bash
+mcv --quiet --json assignments list | jq '.[] | .ref'
+```
+
 Use `--json` with `--select`/`--fields` when a structured projection is more
 useful than line-oriented ids:
 

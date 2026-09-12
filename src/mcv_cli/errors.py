@@ -118,6 +118,24 @@ class StorageError(MCVError):
         )
 
 
+class CacheError(MCVError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        details: Any | None = None,
+        operation: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code="cache_error",
+            exit_code=EXIT_CODES["storage"],
+            details=details,
+            resource="cache",
+            operation=operation,
+        )
+
+
 class UpstreamError(MCVError):
     def __init__(
         self,

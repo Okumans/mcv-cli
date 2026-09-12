@@ -97,9 +97,53 @@ Global options must appear before the command:
 ```bash
 mcv --json courses "$MCV_COURSE" materials list
 mcv --jsonl courses "$MCV_COURSE" assignments list
+mcv --quiet assignments list
 ```
 
-## 3. Output contracts for Unix tools
+Progress and shell completion are separate from the data stream. Multi-course,
+multi-semester, archive, and multi-reference operations show progress on
+stderr in human mode. `--quiet`/`-q` suppresses that display, while JSON and
+JSONL modes disable it automatically.
+
+## 3. Local completion cache
+
+Completion candidates are indexed locally after successful commands and can be
+refreshed explicitly. Completion itself never performs a network request:
+
+```bash
+uv run mcv --install-completion
+
+uv run mcv courses list
+uv run mcv cache refresh
+uv run mcv cache refresh "$MCV_COURSE" 2110521
+uv run mcv cache refresh --all-semesters
+uv run mcv --json cache status
+uv run mcv cache clear
+```
+
+The cache is a compact SQLite index isolated by profile and provider. It holds
+course values, semester values, material-folder names, grouping ids, and
+canonical addressable refs such as `mcv:assignment:86428:2160997`; it does not
+hold credentials, page bodies, signed links, or meeting passwords. If it is
+missing, locked, or corrupt, shell completion returns no dynamic candidates and
+the command being completed is unaffected.
+
+With a populated cache, these contexts offer dynamic candidates:
+
+```text
+mcv courses <TAB>
+mcv courses 2110575 <TAB>
+mcv courses 2110575 materials list --folder <TAB>
+mcv courses 2110575 assignments show <TAB>
+mcv get <TAB>
+```
+
+`mcv cache refresh` indexes the current semester by default. Pass multiple
+course numbers, exact titles, or `cv_cid` values to target specific courses;
+use `--all-semesters` for a full semester scope. A failed course scope does
+not replace its previous resource snapshot.
+
+## 4. Output contracts for Unix tools
 
 The CLI has five useful output styles:
 
@@ -210,7 +254,7 @@ mcv courses "$MCV_COURSE" materials list \
   | xargs -r -n 20 uv run mcv get
 ```
 
-## 4. Courses API
+## 5. Courses API
 
 ### List courses
 
@@ -244,7 +288,7 @@ current semester. Unknown numeric ids are errors rather than being treated as
 arbitrary course ids, and multiple matches return `code: "ambiguous"` with
 candidate courses in the machine-readable `details.matches` field.
 
-## 5. Materials API
+## 6. Materials API
 
 ### List material resources
 
@@ -335,7 +379,7 @@ their archive type. Unknown or missing extensions default to ZIP.
 Files without a downloadable URL are skipped and reported. If no file can be
 downloaded, the archive is not installed.
 
-## 6. Assignment API
+## 7. Assignment API
 
 ### List assignments
 
@@ -358,7 +402,7 @@ Detail parsing adds instruction text, due/out dates, latest submission state,
 feedback, representing-group text, and external instruction links. The client
 does not submit, upload, edit, or delete assignment work.
 
-## 7. Announcement API
+## 8. Announcement API
 
 ```bash
 uv run mcv courses "$MCV_COURSE" announcements list
@@ -369,7 +413,7 @@ uv run mcv --jsonl courses "$MCV_COURSE" announcements list
 Announcement detail includes title, posted date, body text, last-modified
 metadata, and extracted external links.
 
-## 8. Online meeting API
+## 9. Online meeting API
 
 ```bash
 uv run mcv courses "$MCV_COURSE" meetings list
@@ -393,7 +437,7 @@ The CLI never calls the meeting-join route. Showing meeting details is
 read-only and is not intended to mark attendance. Treat JSON output and shell
 logs as sensitive because recording links/passwords may be access-bearing.
 
-## 9. Schedule API
+## 10. Schedule API
 
 ```bash
 uv run mcv courses "$MCV_COURSE" schedule list
@@ -404,7 +448,7 @@ Each schedule event exposes index, date, time, title, comment, and `cv_cid`.
 An empty schedule is a valid result and is rendered as `data: []` in JSON
 mode.
 
-## 10. Course information API
+## 11. Course information API
 
 ```bash
 uv run mcv courses "$MCV_COURSE" about
@@ -415,7 +459,7 @@ The about record can contain course number, year/semester, English/Thai names,
 abbreviation, affiliation, instructors, descriptions, learning objectives,
 assigned outcomes, and custom outcomes.
 
-## 11. Student-group API
+## 12. Student-group API
 
 ```bash
 uv run mcv courses "$MCV_COURSE" groups list
@@ -427,7 +471,7 @@ Group records contain grouping id/name, group id/name, slogan, and member
 names. Group listing uses the site's read-only AJAX listing endpoint even
 though the server implements that listing request as POST.
 
-## 12. Portfolio API
+## 13. Portfolio API
 
 ```bash
 uv run mcv courses "$MCV_COURSE" portfolio
@@ -438,7 +482,7 @@ The current parser exposes the available student summary: total points,
 possible points, rank, grade letter, badges, and group membership. Some
 portfolio tabs are lazy-loaded and are not included in this MVP.
 
-## 13. Web-resource API
+## 14. Web-resource API
 
 ```bash
 uv run mcv courses "$MCV_COURSE" web-resources list
@@ -448,7 +492,7 @@ uv run mcv --json courses "$MCV_COURSE" web-resources list
 Each web resource contains an item id, title, URL, description when available,
 and `cv_cid`. An empty web-resource page is returned as an empty list.
 
-## 14. Cross-course resource APIs
+## 15. Cross-course resource APIs
 
 These commands aggregate the current-semester courses. They are application
 services over the course-oriented `MCVClient`, not new upstream CourseVille
@@ -489,7 +533,7 @@ Addressable machine records include `resource_type`, `ref`, `cv_cid`,
 ]
 ```
 
-## 15. Universal resource lookup
+## 16. Universal resource lookup
 
 The canonical reference grammar is:
 
@@ -520,7 +564,7 @@ For this batch command, success and error records are both written to stdout
 in input order; a nonzero exit status still signals that at least one lookup
 failed. Other command errors continue to use stderr.
 
-## 16. Python client API
+## 17. Python client API
 
 The CLI is a thin command layer over `MCVClient`. The authenticated client
 can be used directly:
