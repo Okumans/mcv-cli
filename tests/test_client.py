@@ -13,7 +13,7 @@ from mcv_cli.client import MCVClient
 from mcv_cli.config import Settings
 from mcv_cli.constants import BASE_URL
 from mcv_cli.errors import AmbiguousError, AuthenticationRequired, NotFoundError, UpstreamError
-from mcv_cli.models import Course
+from mcv_cli.models import Assignment, Course
 
 
 class FakeAuth:
@@ -91,6 +91,31 @@ COURSE_ASSIGNMENT_HTML = """
   <td></td><td>Submitted at 02 Sep 2026 10:00</td>
 </tr>
 </tbody></table></section>
+"""
+
+ASSIGNMENT_INSTRUCTION_PATH = (
+    "/sites/all/modules/courseville/files/ckfinder/"
+    "userfiles/100004688204473/files/HW05%20Cyclic%20Code_6a9e12dd5589d.pdf"
+)
+
+ASSIGNMENT_DETAIL_HTML = f"""
+<div id="courseville-worksheet-title">HW05 Cyclic Code</div>
+<div id="courseville-worksheet-instruction-head-calendar-wrapper">
+  Due on 14 September 2026 at 23:59
+</div>
+<div id="courseville-worksheet-instruction-body">
+  <p>Download the assignment:
+    <a href="{ASSIGNMENT_INSTRUCTION_PATH}">{ASSIGNMENT_INSTRUCTION_PATH}</a>
+  </p>
+</div>
+<div id="courseville-worksheet-work-status">No submission has been made.</div>
+<div id="courseville-worksheet-work-submission-wrapper">
+  <a href="/sites/all/modules/courseville/files/submissions/hw05.pdf">hw05.pdf</a>
+  <a href="?q=courseville/worksheet/85386/2174162">Assignment page</a>
+</div>
+<div id="courseville-worksheet-work-feedback-wrapper">
+  -- No feedback to this submission has been made by any of the course staffs yet. --
+</div>
 """
 
 COURSE_MEETING_HTML = """
@@ -255,7 +280,9 @@ def test_client_parses_student_resources() -> None:
     assert materials[0].folder_name == "Week 1"
     assert folders[0].folder_id == "folder-1"
     assert assignments[0].itemid == 55
-    assert assignments[0].status == "submitted"
+    assert assignments[0].status == "Submitted at 02 Sep 2026 10:00"
+    assert assignments[0].submitted_at == "02 Sep 2026 10:00"
+    assert assignments[0].submission_url is None
     assert announcements[0].itemid == 77
     assert meetings[0].itemid == 99
     assert meetings[0].provider == "Zoom"
@@ -264,6 +291,113 @@ def test_client_parses_student_resources() -> None:
     assert groups[0].members == ["Ada Lovelace", "Grace Hopper"]
     assert portfolio.total_points == "85.00"
     assert portfolio.rank == 2
+
+
+def test_assignment_status_preserves_the_web_status_cell() -> None:
+    html = """
+    <table id="cv-assignment-table">
+      <thead><tr>
+        <th>Marker</th><th>Title</th><th>Due Date</th><th>Your Date</th>
+        <th>Your Work</th><th>Status</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td></td>
+          <td><a href="?q=courseville/worksheet/123/55">Homework</a></td>
+          <td>Sep 1 2026 Out on 01 September 2026</td>
+          <td class="cv-due-col">Sep 8 2026 Due on 08 September 2026 at 23:59</td>
+          <td>Submitted at 02 Sep 2026 10:00</td>
+          <td class="cv-assignment-status">Graded</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td><a href="?q=courseville/worksheet/123/56">Lab</a></td>
+          <td></td>
+          <td class="cv-due-col">Sep 10 2026 Due on 10 September 2026</td>
+          <td></td>
+          <td class="cv-assignment-status">Not submitted</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td><a href="?q=courseville/worksheet/123/57">Report</a></td>
+          <td></td>
+          <td class="cv-due-col">Sep 12 2026 Due on 12 September 2026</td>
+          <td>Submitted at 11 Sep 2026 18:00</td>
+          <td class="cv-assignment-status"><span aria-label="Submitted"></span></td>
+        </tr>
+      </tbody>
+    </table>
+    """
+
+    with httpx.Client(base_url=BASE_URL) as http_client:
+        client = MCVClient(FakeAuth(), http_client=http_client)
+        assignments = client._parse_course_assignments(html, 123)
+
+    assert assignments[0].status == "Graded"
+    assert assignments[0].submitted_at == "02 Sep 2026 10:00"
+    assert assignments[1].status == "Not submitted"
+    assert assignments[1].submitted_at is None
+    assert assignments[2].status == "Submitted"
+    assert assignments[2].submitted_at == "11 Sep 2026 18:00"
+
+
+def test_assignment_status_supports_semantic_status_icons() -> None:
+    html = """
+    <table id="cv-assignment-table"><tbody>
+      <tr>
+        <td></td>
+        <td><a href="?q=courseville/worksheet/123/58">File assignment</a></td>
+        <td>01 January 1970</td>
+        <td class="cv-due-col">Sep 14 2026 Due on 14 September 2026 at 23:59</td>
+        <td></td>
+        <td class="cv-assignment-status">
+          <img src="/modules/courseville/images/not_submitted.svg" />
+        </td>
+      </tr>
+    </tbody></table>
+    """
+
+    with httpx.Client(base_url=BASE_URL) as http_client:
+        client = MCVClient(FakeAuth(), http_client=http_client)
+        assignments = client._parse_course_assignments(html, 123)
+
+    assert assignments[0].status == "Not submitted"
+    assert assignments[0].outdate is None
+
+
+def test_assignment_detail_extracts_rich_text_and_submission_files() -> None:
+    detail_url = f"{BASE_URL}/?q=courseville/worksheet/85386/2174162"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=ASSIGNMENT_DETAIL_HTML, request=request)
+
+    with httpx.Client(
+        base_url=BASE_URL,
+        transport=httpx.MockTransport(handler),
+    ) as http_client:
+        client = MCVClient(FakeAuth(), http_client=http_client)
+        assignment = client._parse_assignment_detail(
+            Assignment(
+                itemid=2174162,
+                cv_cid=85386,
+                title="HW05 Cyclic Code",
+                detail_url=detail_url,
+                outdate="01 January 1970",
+            ),
+            detail_url,
+        )
+
+    instruction_url = f"{BASE_URL}{ASSIGNMENT_INSTRUCTION_PATH}"
+    submission_url = (
+        "https://www.mycourseville.com/sites/all/modules/courseville/files/submissions/hw05.pdf"
+    )
+
+    assert assignment.status == "Not submitted"
+    assert assignment.outdate is None
+    assert assignment.instruction == f"Download the assignment: {instruction_url}"
+    assert assignment.external_links == [instruction_url]
+    assert assignment.submission_url is None
+    assert assignment.submission_files == [submission_url]
 
 
 def test_client_downloads_material_folder_as_zip_and_tar(tmp_path: Path) -> None:
@@ -374,6 +508,35 @@ def test_client_defaults_to_current_semester() -> None:
         assert client.list_courses() == []
 
     assert requested_yearsems == ["2026/1"]
+
+
+def test_resolve_course_can_target_a_selected_semester() -> None:
+    requested_yearsems: list[str | None] = []
+
+    class SelectedSemesterClient(MCVClient):
+        def list_courses(
+            self,
+            yearsem: str | None = None,
+            *,
+            all_semesters: bool = False,
+        ) -> list[Course]:
+            requested_yearsems.append(yearsem)
+            return [
+                Course(
+                    cv_cid=85386,
+                    course_no="2110575",
+                    title="Cyclic Code",
+                    year="2025",
+                    semester="2",
+                )
+            ]
+
+    with httpx.Client(base_url=BASE_URL) as http_client:
+        client = SelectedSemesterClient(FakeAuth(), http_client=http_client)
+        course = client.resolve_course("2110575", yearsem="2025/2")
+
+    assert course.cv_cid == 85386
+    assert requested_yearsems == ["2025/2"]
 
 
 def test_client_can_list_all_semesters() -> None:

@@ -22,7 +22,8 @@ uv run mcv --help
 The executable is `mcv`; the distribution package is named `mcv-cli`.
 
 See [showcases.md](showcases.md) for the complete CLI/Python API showcase and
-the current evaluation checklist.
+the current evaluation checklist. The agent-facing usage skill is at
+[skills/mcv/SKILL.md](skills/mcv/SKILL.md).
 
 ## Login
 
@@ -127,6 +128,16 @@ student role.
 `courses list` defaults to the current semester selected by MyCourseVille.
 Use `--semester` to select one semester explicitly; `--yearsem` remains an
 alias for compatibility. Use `--all` to query every available semester.
+
+Course-scoped commands also resolve the course in the current semester by
+default. Pass `--semester` (or its `--yearsem` alias) after the course action
+when querying a course from another semester, including the course overview:
+
+```bash
+mcv courses 2110575 --semester 2025/2
+mcv courses 2110575 assignments list --semester 2025/2
+mcv courses 2110575 materials list --semester 2025/2
+```
 
 `courses COURSE materials folders` shows folder ids and material counts. A folder can
 be selected by name or id. `materials archive` creates an archive using the
@@ -247,6 +258,11 @@ object per JSONL line). Existing v1 fields are not renamed or removed; new
 fields may be added. Machine errors are flat JSON by default and use the same
 versioned `error` wrapper only with `--envelope`.
 
+Without `--json` or `--jsonl`, each resource uses a human-oriented display:
+lists are tables, detail results are labeled summaries, meetings include their
+join link and recordings, and download/archive results use short completion
+messages. Human mode does not fall back to printing resource objects as JSON.
+
 Assignment and announcement detail commands are read-only. Meeting detail
 lists provider information and available recordings; it does not open or join
 the meeting, so it cannot mark attendance as a side effect. `portfolio` is a
@@ -319,6 +335,26 @@ mcv --jsonl get \
 `mcv get --jsonl` writes success and error records to stdout in input order and
 returns nonzero if any lookup fails. Other machine-mode errors are written to
 stderr.
+
+Assignment detail output keeps the worksheet detail page separate from an
+optional submission page. Rich-text instruction links are normalized to
+absolute URLs, and file-based assignments expose submitted files as the
+`submission_files` list when MyCourseVille provides them.
+
+In human-readable mode, `get` displays every referenced resource with its
+resource-specific detail format, separated by a blank line. Use the list
+commands when a compact table is desired:
+
+```bash
+mcv get \
+  mcv:assignment:86428:2160997 \
+  mcv:material:86428:2160993
+
+mcv courses 2110575 assignments list
+```
+
+Machine output is unchanged: `--json` returns one JSON value (an array for
+multiple references), and `--jsonl` returns one resource per line.
 
 ## Credential storage
 

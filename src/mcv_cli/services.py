@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -78,7 +79,18 @@ class AssignmentService:
     @staticmethod
     def _is_pending(assignment: Assignment) -> bool:
         status = str(assignment.status or "").strip().casefold()
-        return status not in {"submitted", "complete", "completed", "graded", "done"}
+        if not status:
+            return assignment.submitted_at is None
+        if any(
+            phrase in status
+            for phrase in ("not submitted", "no submission", "draft", "in progress")
+        ):
+            return True
+        if assignment.submitted_at is not None:
+            return False
+        return not bool(
+            re.search(r"\b(?:submitted|complete|completed|graded|done)\b", status)
+        )
 
 
 class AnnouncementService:

@@ -79,6 +79,17 @@ overview:
 mcv courses "$MCV_COURSE"
 ```
 
+Course references use the current semester by default. Select a different
+semester on the course-scoped command when the course number or title belongs
+to an older term:
+
+```bash
+mcv courses "$MCV_COURSE" --semester 2025/2
+mcv courses "$MCV_COURSE" assignments list --semester 2025/2
+```
+
+`--yearsem` is an alias for `--semester`.
+
 Collections use `list`, identifier-bearing resources use `show`, and singular
 course pages are direct actions. Cross-course aggregate commands are separate
 from course navigation:
@@ -159,6 +170,12 @@ Errors are written to stderr. `--json` and `--jsonl` also make errors JSON so
 they can be handled separately from stdout. Use `--envelope` with either
 machine mode when a versioned protocol wrapper is useful; it is not included by
 default.
+
+Human mode has a dedicated display for every resource model. Collection
+results use resource-specific tables, detail results use labeled field/value
+summaries, and operation results such as downloads and archives use concise
+status messages. JSON-like model dumps are reserved for `--json` and
+`--jsonl`.
 
 ### JSON document
 
@@ -253,6 +270,33 @@ mcv courses "$MCV_COURSE" materials list \
   --folder "IoT Hardware" --refs \
   | xargs -r -n 20 uv run mcv get
 ```
+
+Human `get` output is detailed per resource, even when multiple references are
+provided. Each resource uses its own display format and is separated by a
+blank line; collection commands remain table-oriented:
+
+```bash
+mcv get \
+  mcv:assignment:86428:2160997 \
+  mcv:material:86428:2160993
+
+mcv courses "$MCV_COURSE" assignments list
+```
+
+Machine modes keep their composable contracts:
+
+```bash
+mcv --json get \
+  mcv:assignment:86428:2160997 \
+  mcv:material:86428:2160993
+
+mcv --jsonl get \
+  mcv:assignment:86428:2160997 \
+  mcv:material:86428:2160993
+```
+
+`--json` returns one JSON value, using an array for multiple references;
+`--jsonl` emits one resource per line.
 
 ## 5. Courses API
 
@@ -390,6 +434,8 @@ uv run mcv --jsonl courses "$MCV_COURSE" assignments list
 
 List records include the assignment id, title, due date/time, submission
 status, group-work indicator, submitted timestamp, detail URL, and links.
+The `status` field preserves the text from MyCourseVille's Status column;
+`submitted_at` is a separate parsed timestamp and does not replace that status.
 
 ### Show assignment detail
 
@@ -399,8 +445,10 @@ uv run mcv --json courses "$MCV_COURSE" assignments show 2160997
 ```
 
 Detail parsing adds instruction text, due/out dates, latest submission state,
-feedback, representing-group text, and external instruction links. The client
-does not submit, upload, edit, or delete assignment work.
+feedback, representing-group text, normalized links from MyCourseVille rich
+text, and submitted file URLs when they are exposed by the worksheet. The
+assignment detail page is kept separate from an optional submission page, and
+the client does not submit, upload, edit, or delete assignment work.
 
 ## 8. Announcement API
 

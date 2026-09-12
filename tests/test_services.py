@@ -72,6 +72,18 @@ def test_assignment_service_aggregates_context_and_filters() -> None:
     assert assignments[0].course_no == "2110521"
 
 
+def test_assignment_service_understands_web_submission_statuses() -> None:
+    assert not AssignmentService._is_pending(
+        Assignment(
+            itemid=1,
+            status="Submitted at 02 Sep 2026 10:00",
+        )
+    )
+    assert not AssignmentService._is_pending(Assignment(itemid=2, status="Graded"))
+    assert AssignmentService._is_pending(Assignment(itemid=3, status="Not submitted"))
+    assert AssignmentService._is_pending(Assignment(itemid=4, status="Draft"))
+
+
 def test_meeting_service_hides_past_meetings_by_default() -> None:
     service = MeetingService(cast(MCVClient, FakeClient()))
     now = datetime(2026, 9, 12, 12, 0, tzinfo=ZoneInfo("Asia/Bangkok"))

@@ -41,7 +41,7 @@ from .models import (
     MaterialFolder,
     OnlineMeeting,
 )
-from .output import ShellIdList, emit, emit_error, machine_error_payload
+from .output import DisplayMode, ShellIdList, emit, emit_error, machine_error_payload
 from .progress import ProgressReporter
 from .refs import ResourceRef, ResourceType, ref_for_resource
 from .services import (
@@ -116,6 +116,8 @@ class CourseAwareGroup(TyperGroup):
             if resource_args and resource_args[0] in action_map:
                 resource_args = resource_args[1:]
             args = [target, course, *resource_args]
+        elif remaining[0].startswith("-"):
+            args = ["show", course, *remaining]
         return super().parse_args(ctx, args)
 
     def shell_complete(self, ctx: Any, incomplete: str) -> list[Any]:
@@ -133,6 +135,16 @@ courses_app = typer.Typer(
     ),
     no_args_is_help=True,
 )
+
+
+def _course_semester_option() -> Any:
+    return typer.Option(
+        None,
+        "--semester",
+        "--yearsem",
+        help="Resolve this course in a semester such as 2026/1. Defaults to current.",
+        autocompletion=complete_semesters,
+    )
 
 app.add_typer(auth_app, name="auth")
 app.add_typer(courses_app, name="courses")
@@ -259,7 +271,12 @@ def _cache_namespace() -> CacheStore:
     return CacheStore(profile_name=manager.store.profile_name, provider=provider)
 
 
-def _run(ctx: typer.Context, action: Callable[[], Any]) -> None:
+def _run(
+    ctx: typer.Context,
+    action: Callable[[], Any],
+    *,
+    display_mode: DisplayMode = "collection",
+) -> None:
     result: Any = None
     caught_error: MCVError | None = None
     with ProgressReporter(_progress_enabled(ctx)) as progress:
@@ -285,6 +302,7 @@ def _run(ctx: typer.Context, action: Callable[[], Any]) -> None:
             json_mode=_json_mode(ctx),
             jsonl_mode=_jsonl_mode(ctx),
             envelope=_envelope_mode(ctx),
+            display_mode=display_mode,
         )
 
 
@@ -624,17 +642,23 @@ def courses_list(
 def courses_show(
     ctx: typer.Context,
     course: str = typer.Argument(..., autocompletion=complete_courses),
+    semester: str | None = _course_semester_option(),
 ) -> None:
     def action() -> Any:
         manager = _make_manager()
         with MCVClient(manager) as client:
-            return client.get_course(_course_id(client, course))
+            return client.resolve_course(course, yearsem=semester)
 
     _run(ctx, action)
 
 
-def _course_id(client: MCVClient, reference: str) -> int:
-    return client.resolve_course(reference).cv_cid
+def _course_id(
+    client: MCVClient,
+    reference: str,
+    *,
+    yearsem: str | None = None,
+) -> int:
+    return client.resolve_course(reference, yearsem=yearsem).cv_cid
 
 
 def _parse_resource_ref(value: str) -> ResourceRef:
@@ -721,6 +745,7 @@ def courses_materials(
         help="CourseVille id or course number.",
         autocompletion=complete_courses,
     ),
+    semester: str | None = _course_semester_option(),
     folder: str | None = typer.Option(
         None,
         "--folder",
@@ -757,7 +782,7 @@ def courses_materials(
             raise UsageError("Choose only one of --ids, --refs, or --select.")
         manager = _make_manager()
         with MCVClient(manager) as client:
-            cv_cid = _course_id(client, course)
+            cv_cid = _course_id(client, course, yearsem=semester)
             if folder is None:
                 materials = client.list_materials(cv_cid)
             else:
@@ -810,6 +835,7 @@ def courses_material(
         help="CourseVille id or course number.",
         autocompletion=complete_courses,
     ),
+    semester: str | None = _course_semester_option(),
     item_ids: list[str] = typer.Argument(
         ...,
         help="One or more material ids or unique refs.",
@@ -819,7 +845,7 @@ def courses_material(
     def action() -> Any:
         manager = _make_manager()
         with MCVClient(manager) as client:
-            cv_cid = _course_id(client, course)
+            cv_cid = _course_id(client, course, yearsem=semester)
             resolved_ids = _material_ids_for_course(cv_cid, item_ids)
             materials = [
                 client.get_material(cv_cid, item_id)
@@ -838,11 +864,12 @@ def courses_material_folders(
         help="CourseVille id or course number.",
         autocompletion=complete_courses,
     ),
+    semester: str | None = _course_semester_option(),
 ) -> None:
     def action() -> list[Any]:
         manager = _make_manager()
         with MCVClient(manager) as client:
-            return client.list_material_folders(_course_id(client, course))
+            return client.list_material_folders(_course_id(client, course, yearsem=semester))
 
     _run(ctx, action)
 
@@ -855,6 +882,7 @@ def courses_materials_archive(
         help="CourseVille id or course number.",
         autocompletion=complete_courses,
     ),
+    semester: str | None = _course_semester_option(),
     folder: str = typer.Argument(
         ...,
         help="Folder name or folder id.",
@@ -872,7 +900,7 @@ def courses_materials_archive(
         manager = _make_manager()
         with MCVClient(manager) as client:
             return client.download_material_folder(
-                _course_id(client, course),
+                _course_id(client, course, yearsem=semester),
                 folder,
                 output,
                 archive_format=archive_format,
@@ -891,6 +919,7 @@ def courses_materials_download(
         help="CourseVille id or course number.",
         autocompletion=complete_courses,
     ),
+    semester: str | None = _course_semester_option(),
     item_id: str = typer.Argument(
         ...,
         help="Material id or resource ref.",
@@ -902,7 +931,7 @@ def courses_materials_download(
     def action() -> Any:
         manager = _make_manager()
         with MCVClient(manager) as client:
-            cv_cid = _course_id(client, course)
+            cv_cid = _course_id(client, course, yearsem=semester)
             return client.download_material(
                 cv_cid,
                 _resource_item_id_for_course(
@@ -925,6 +954,7 @@ def courses_assignments(
         help="CourseVille id or course number.",
         autocompletion=complete_courses,
     ),
+    semester: str | None = _course_semester_option(),
     ids: bool = typer.Option(
         False,
         "--ids",
@@ -941,7 +971,7 @@ def courses_assignments(
             raise UsageError("Choose either --ids or --refs.")
         manager = _make_manager()
         with MCVClient(manager) as client:
-            cv_cid = _course_id(client, course)
+            cv_cid = _course_id(client, course, yearsem=semester)
             assignments = client.list_assignments(cv_cid)
             _cache_update(ctx, assignments)
             if ids:
@@ -961,6 +991,7 @@ def courses_assignment(
         help="CourseVille id or course number.",
         autocompletion=complete_courses,
     ),
+    semester: str | None = _course_semester_option(),
     item_id: str = typer.Argument(
         ...,
         help="Assignment id or resource ref.",
@@ -970,7 +1001,7 @@ def courses_assignment(
     def action() -> Any:
         manager = _make_manager()
         with MCVClient(manager) as client:
-            cv_cid = _course_id(client, course)
+            cv_cid = _course_id(client, course, yearsem=semester)
             return client.get_assignment(
                 cv_cid,
                 _resource_item_id_for_course(
@@ -991,6 +1022,7 @@ def courses_announcements(
         help="CourseVille id or course number.",
         autocompletion=complete_courses,
     ),
+    semester: str | None = _course_semester_option(),
     ids: bool = typer.Option(
         False,
         "--ids",
@@ -1007,7 +1039,7 @@ def courses_announcements(
             raise UsageError("Choose either --ids or --refs.")
         manager = _make_manager()
         with MCVClient(manager) as client:
-            cv_cid = _course_id(client, course)
+            cv_cid = _course_id(client, course, yearsem=semester)
             announcements = client.list_announcements(cv_cid)
             _cache_update(ctx, announcements)
             if ids:
@@ -1027,6 +1059,7 @@ def courses_announcement(
         help="CourseVille id or course number.",
         autocompletion=complete_courses,
     ),
+    semester: str | None = _course_semester_option(),
     item_id: str = typer.Argument(
         ...,
         help="Announcement id or resource ref.",
@@ -1036,7 +1069,7 @@ def courses_announcement(
     def action() -> Any:
         manager = _make_manager()
         with MCVClient(manager) as client:
-            cv_cid = _course_id(client, course)
+            cv_cid = _course_id(client, course, yearsem=semester)
             return client.get_announcement(
                 cv_cid,
                 _resource_item_id_for_course(
@@ -1057,6 +1090,7 @@ def courses_meetings(
         help="CourseVille id or course number.",
         autocompletion=complete_courses,
     ),
+    semester: str | None = _course_semester_option(),
     include_past: bool = typer.Option(
         False,
         "--include-past",
@@ -1078,7 +1112,7 @@ def courses_meetings(
             raise UsageError("Choose either --ids or --refs.")
         manager = _make_manager()
         with MCVClient(manager) as client:
-            cv_cid = _course_id(client, course)
+            cv_cid = _course_id(client, course, yearsem=semester)
             meetings = MeetingService(client).list_for_course(
                 cv_cid,
                 include_past=include_past,
@@ -1101,6 +1135,7 @@ def courses_meeting(
         help="CourseVille id or course number.",
         autocompletion=complete_courses,
     ),
+    semester: str | None = _course_semester_option(),
     item_id: str = typer.Argument(
         ...,
         help="Meeting id or resource ref.",
@@ -1110,7 +1145,7 @@ def courses_meeting(
     def action() -> Any:
         manager = _make_manager()
         with MCVClient(manager) as client:
-            cv_cid = _course_id(client, course)
+            cv_cid = _course_id(client, course, yearsem=semester)
             return client.get_meeting(
                 cv_cid,
                 _resource_item_id_for_course(
@@ -1131,11 +1166,12 @@ def courses_schedule(
         help="CourseVille id or course number.",
         autocompletion=complete_courses,
     ),
+    semester: str | None = _course_semester_option(),
 ) -> None:
     def action() -> list[Any]:
         manager = _make_manager()
         with MCVClient(manager) as client:
-            return client.list_schedule(_course_id(client, course))
+            return client.list_schedule(_course_id(client, course, yearsem=semester))
 
     _run(ctx, action)
 
@@ -1148,11 +1184,12 @@ def courses_about(
         help="CourseVille id or course number.",
         autocompletion=complete_courses,
     ),
+    semester: str | None = _course_semester_option(),
 ) -> None:
     def action() -> Any:
         manager = _make_manager()
         with MCVClient(manager) as client:
-            return client.get_about(_course_id(client, course))
+            return client.get_about(_course_id(client, course, yearsem=semester))
 
     _run(ctx, action)
 
@@ -1165,6 +1202,7 @@ def courses_groups(
         help="CourseVille id or course number.",
         autocompletion=complete_courses,
     ),
+    semester: str | None = _course_semester_option(),
     grouping: int | None = typer.Option(
         None,
         "--grouping",
@@ -1175,7 +1213,7 @@ def courses_groups(
     def action() -> list[Any]:
         manager = _make_manager()
         with MCVClient(manager) as client:
-            cv_cid = _course_id(client, course)
+            cv_cid = _course_id(client, course, yearsem=semester)
             groups = client.list_groups(cv_cid, grouping_id=grouping)
             cache = active_cache()
             if cache is not None:
@@ -1196,11 +1234,12 @@ def courses_portfolio(
         help="CourseVille id or course number.",
         autocompletion=complete_courses,
     ),
+    semester: str | None = _course_semester_option(),
 ) -> None:
     def action() -> Any:
         manager = _make_manager()
         with MCVClient(manager) as client:
-            return client.get_portfolio(_course_id(client, course))
+            return client.get_portfolio(_course_id(client, course, yearsem=semester))
 
     _run(ctx, action)
 
@@ -1213,11 +1252,12 @@ def courses_web_resources(
         help="CourseVille id or course number.",
         autocompletion=complete_courses,
     ),
+    semester: str | None = _course_semester_option(),
 ) -> None:
     def action() -> list[Any]:
         manager = _make_manager()
         with MCVClient(manager) as client:
-            return client.list_web_resources(_course_id(client, course))
+            return client.list_web_resources(_course_id(client, course, yearsem=semester))
 
     _run(ctx, action)
 
@@ -1342,7 +1382,7 @@ def get_resources(
             return resources[0] if len(resources) == 1 else resources
 
     if not _jsonl_mode(ctx):
-        _run(ctx, action)
+        _run(ctx, action, display_mode="detail")
         return
 
     parsed_references: list[ResourceRef | MCVError] = []

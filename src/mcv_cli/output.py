@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from datetime import date, datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 from rich.console import Console
-from rich.json import JSON
 from rich.table import Table
 
 from .constants import MACHINE_SCHEMA_VERSION
@@ -22,6 +23,7 @@ from .models import (
     DownloadResult,
     Material,
     MaterialFolder,
+    MeetingRecording,
     OnlineMeeting,
     Portfolio,
     ScheduleEvent,
@@ -34,6 +36,37 @@ from .refs import ref_for_resource
 
 class ShellIdList(list[int | str]):
     """A line-oriented id list for safe shell command substitution."""
+
+
+DisplayMethod = Callable[[Any, Console], None]
+CollectionDisplayMethod = Callable[[list[Any], Console], None]
+DisplayMode = Literal["collection", "detail"]
+
+
+@dataclass(frozen=True)
+class ResourceDisplay:
+    """Human-readable display methods for one resource type.
+
+    This is the CLI equivalent of a small display trait: every resource type
+    gets a single-resource renderer and, where useful, a collection renderer.
+    Keeping the methods outside the Pydantic models avoids coupling the domain
+    layer to Rich while still giving each resource an explicit display format.
+    """
+
+    single: DisplayMethod
+    collection: CollectionDisplayMethod | None = None
+
+    def display(self, resource: Any, console: Console) -> None:
+        self.single(resource, console)
+
+    def display_many(self, resources: list[Any], console: Console) -> None:
+        if self.collection is not None:
+            self.collection(resources, console)
+            return
+        for index, resource in enumerate(resources):
+            if index:
+                console.print()
+            self.display(resource, console)
 
 
 def to_jsonable(value: Any) -> Any:
@@ -91,6 +124,7 @@ def emit(
     json_mode: bool,
     jsonl_mode: bool = False,
     envelope: bool = False,
+    display_mode: DisplayMode = "collection",
     console: Console | None = None,
 ) -> None:
     if json_mode:
@@ -111,35 +145,7 @@ def emit(
         return
 
     render_console: Console = console if console is not None else Console()
-    if isinstance(value, ShellIdList):
-        for item in value:
-            render_console.print(item)
-    elif isinstance(value, list):
-        _emit_list(value, render_console)
-    elif isinstance(value, User):
-        _emit_user(value, render_console)
-    elif isinstance(value, DownloadResult):
-        render_console.print(f"Downloaded {value.bytes} bytes to [green]{value.path}[/green]")
-        render_console.print(f"SHA-256: {value.sha256}")
-    elif isinstance(value, ArchiveResult):
-        render_console.print(
-            f"Archived {value.files} files ({value.format}) to [green]{value.path}[/green]"
-        )
-        render_console.print(f"Archive size: {value.bytes} bytes")
-        if value.skipped:
-            render_console.print(f"Skipped: {', '.join(value.skipped)}")
-    elif isinstance(value, Course):
-        _emit_course(value, render_console)
-    elif isinstance(value, CourseAbout):
-        _emit_course_about(value, render_console)
-    elif isinstance(value, Portfolio):
-        _emit_portfolio(value, render_console)
-    elif isinstance(value, BaseModel):
-        render_console.print(JSON(json.dumps(to_jsonable(value), ensure_ascii=False)))
-    elif isinstance(value, dict):
-        render_console.print(JSON(json.dumps(to_jsonable(value), ensure_ascii=False)))
-    else:
-        render_console.print(value)
+    display_resource(value, render_console, display_mode=display_mode)
 
 
 def emit_error(
@@ -173,210 +179,570 @@ def emit_error(
         print(f"Error: {error.message}", file=sys.stderr)
 
 
-def _emit_list(items: list[Any], console: Console) -> None:
+def display_resource(
+    value: Any,
+    console: Console,
+    *,
+    display_mode: DisplayMode = "collection",
+) -> None:
+    """Render a result for a human, using the resource's display methods."""
+
+    if isinstance(value, ShellIdList):
+        for item in value:
+            console.print(item)
+        return
+    if isinstance(value, list):
+        _display_resources(value, console, display_mode=display_mode)
+        return
+    _display_one(value, console)
+
+
+def _display_resources(
+    items: list[Any],
+    console: Console,
+    *,
+    display_mode: DisplayMode = "collection",
+) -> None:
     if not items:
         console.print("No results.")
         return
-    first = items[0]
-    if any(not isinstance(item, type(first)) for item in items[1:]):
-        console.print(JSON(json.dumps(to_jsonable(items), ensure_ascii=False)))
+
+    if display_mode == "detail":
+        has_mixed_types = any(type(item) is not type(items[0]) for item in items[1:])
+        for index, item in enumerate(items):
+            if index:
+                console.print()
+            if has_mixed_types:
+                console.print(f"[bold cyan]{type(item).__name__}[/bold cyan]")
+            _display_one(item, console)
+        return
+
+    display = _display_for(items[0])
+    if display is not None and all(_display_for(item) is display for item in items[1:]):
+        display.display_many(items, console)
+        return
+    if all(isinstance(item, Mapping) for item in items):
+        _display_mapping_list(items, console)
+        return
+
+    for index, item in enumerate(items):
+        if index:
+            console.print()
+        console.print(f"[bold cyan]{type(item).__name__}[/bold cyan]")
+        _display_one(item, console)
+
+
+def _display_one(value: Any, console: Console) -> None:
+    display = _display_for(value)
+    if display is not None:
+        display.display(value, console)
+    elif isinstance(value, BaseModel):
+        _display_model_fields(value, console)
+    elif isinstance(value, Mapping):
+        _display_mapping(value, console)
+    elif value is None:
+        console.print("No result.")
+    else:
+        console.print(value)
+
+
+def _display_for(value: Any) -> ResourceDisplay | None:
+    for resource_type, display in _RESOURCE_DISPLAYS:
+        if isinstance(value, resource_type):
+            return display
+    return None
+
+
+def _display_model_fields(model: BaseModel, console: Console) -> None:
+    data = to_jsonable(model)
+    if isinstance(data, Mapping):
+        _display_mapping(data, console)
+    else:
+        console.print(_human_value(data))
+
+
+def _display_mapping(values: Mapping[object, Any], console: Console) -> None:
+    fields = [(str(key), value) for key, value in values.items()]
+    _display_fields(fields, console)
+
+
+def _display_mapping_list(items: list[Any], console: Console) -> None:
+    mappings = [item for item in items if isinstance(item, Mapping)]
+    keys: list[str] = []
+    for item in mappings:
+        for key in item:
+            key_text = str(key)
+            if key_text not in keys:
+                keys.append(key_text)
+    if not keys:
+        console.print("No results.")
         return
     table = Table(show_header=True, header_style="bold cyan")
-    if isinstance(first, Course):
-        table.add_column("ID")
-        table.add_column("Course")
-        table.add_column("Title")
-        table.add_column("Year/Semester")
-        for item in items:
-            table.add_row(
-                str(item.cv_cid),
-                item.course_no or "",
-                item.title or "",
-                _year_semester(item.year, item.semester),
-            )
-    elif isinstance(first, Material):
-        table.add_column("ID")
-        table.add_column("Folder")
-        table.add_column("Title")
-        table.add_column("Changed")
-        table.add_column("Download")
-        for item in items:
-            table.add_row(
-                str(item.itemid),
-                item.folder_name or "",
-                item.title or "",
-                str(item.changed or ""),
-                "yes" if item.filepath else "no",
-            )
-    elif isinstance(first, MaterialFolder):
-        table.add_column("Folder")
-        table.add_column("ID")
-        table.add_column("Materials")
-        for item in items:
-            table.add_row(item.name, item.folder_id, str(len(item.materials)))
-    elif isinstance(first, Assignment):
-        has_course_context = any(item.course_no for item in items)
-        if has_course_context:
-            table.add_column("Course")
-        table.add_column("ID")
-        table.add_column("Title")
-        table.add_column("Due")
-        table.add_column("Status")
-        for item in items:
-            row = []
-            if has_course_context:
-                row.append(item.course_no or "")
-            row.extend(
-                [
-                    str(item.itemid),
-                    item.title or "",
-                    item.duedate or str(item.duetime or ""),
-                    item.status or "not submitted",
-                ]
-            )
-            table.add_row(
-                *row,
-            )
-    elif isinstance(first, Announcement):
-        has_course_context = any(item.course_no for item in items)
-        if has_course_context:
-            table.add_column("Course")
-        table.add_column("ID")
-        table.add_column("Posted")
-        table.add_column("Title")
-        for item in items:
-            row = []
-            if has_course_context:
-                row.append(item.course_no or "")
-            row.extend([str(item.itemid), item.posted or "", item.title])
-            table.add_row(*row)
-    elif isinstance(first, OnlineMeeting):
-        has_course_context = any(item.course_no for item in items)
-        if has_course_context:
-            table.add_column("Course")
-        table.add_column("ID")
-        table.add_column("Scheduled")
-        table.add_column("Provider")
-        table.add_column("Meeting")
-        table.add_column("Link", overflow="fold")
-        for item in items:
-            row = []
-            if has_course_context:
-                row.append(item.course_no or "")
-            row.extend(
-                [
-                    str(item.itemid),
-                    item.scheduled_at or "",
-                    item.provider or "",
-                    item.name or "",
-                    item.url or "",
-                ]
-            )
-            table.add_row(*row)
-    elif isinstance(first, ScheduleEvent):
-        table.add_column("#")
-        table.add_column("Date")
-        table.add_column("Time")
-        table.add_column("Title")
-        table.add_column("Comment")
-        for item in items:
-            table.add_row(
-                str(item.index or ""),
-                item.date or "",
-                item.time or "",
-                item.title or "",
-                item.comment or "",
-            )
-    elif isinstance(first, StudentGroup):
-        table.add_column("ID")
-        table.add_column("Group")
-        table.add_column("Members")
-        for item in items:
-            table.add_row(str(item.group_id), item.name, str(len(item.members)))
-    elif isinstance(first, WebResource):
-        table.add_column("ID")
-        table.add_column("Title")
-        table.add_column("URL")
-        for item in items:
-            table.add_row(str(item.itemid), item.title, item.url or "")
-    else:
-        console.print(JSON(json.dumps(to_jsonable(items), ensure_ascii=False)))
-        return
+    for key in keys:
+        table.add_column(key)
+    for item in mappings:
+        table.add_row(*[_human_value(item.get(key, "")) for key in keys])
     console.print(table)
 
 
-def _emit_user(user: User, console: Console) -> None:
+def _display_fields(fields: list[tuple[str, Any]], console: Console) -> None:
     table = Table(show_header=False, box=None)
     table.add_column(style="bold cyan")
     table.add_column()
-    for key in ("uid", "username", "name", "email"):
-        value = getattr(user, key)
-        if value is not None:
-            table.add_row(key, str(value))
-    console.print(table)
-
-
-def _emit_course(course: Course, console: Console) -> None:
-    table = Table(show_header=False, box=None)
-    table.add_column(style="bold cyan")
-    table.add_column()
-    fields = (
-        ("id", course.cv_cid),
-        ("course", course.course_no),
-        ("title", course.title),
-        ("semester", _year_semester(course.year, course.semester)),
-        ("section", course.section),
-        ("role", course.role),
-    )
     for key, value in fields:
-        if value is not None and value != "":
-            table.add_row(key, str(value))
-    console.print(table)
-
-
-def _emit_course_about(about: CourseAbout, console: Console) -> None:
-    table = Table(show_header=False, box=None)
-    table.add_column(style="bold cyan")
-    table.add_column()
-    fields = (
-        ("course", about.course_no),
-        ("semester", _year_semester(about.year, about.semester)),
-        ("title", about.title),
-        ("abbreviation", about.abbreviation),
-        ("affiliation", "; ".join(about.affiliation)),
-        ("instructors", "; ".join(about.instructors)),
-        ("description", about.description_en or about.description_th),
-    )
-    for key, value in fields:
-        if value:
-            table.add_row(key, value)
-    console.print(table)
-
-
-def _emit_portfolio(portfolio: Portfolio, console: Console) -> None:
-    table = Table(show_header=False, box=None)
-    table.add_column(style="bold cyan")
-    table.add_column()
-    if portfolio.total_points is not None:
-        total = portfolio.total_points
-        if portfolio.total_possible:
-            total = f"{total} / {portfolio.total_possible}"
-        table.add_row("points", total)
-    if portfolio.rank is not None:
-        rank = str(portfolio.rank)
-        if portfolio.rank_total is not None:
-            rank = f"{rank} of {portfolio.rank_total}"
-        table.add_row("rank", rank)
-    if portfolio.grade_letter:
-        table.add_row("grade", portfolio.grade_letter)
-    if portfolio.badges:
-        table.add_row("badges", ", ".join(portfolio.badges))
-    if portfolio.group_membership:
-        table.add_row("groups", ", ".join(portfolio.group_membership))
+        if value is None or value == "" or value == []:
+            continue
+        table.add_row(key, _human_value(value))
     if not table.rows:
-        console.print("No portfolio summary was available.")
+        console.print("No details available.")
         return
     console.print(table)
+
+
+def _human_value(value: Any) -> str:
+    if isinstance(value, Enum):
+        return str(value.value)
+    if isinstance(value, (datetime, date, Path)):
+        return str(value)
+    if isinstance(value, BaseModel):
+        return _human_value(to_jsonable(value))
+    if isinstance(value, Mapping):
+        return "; ".join(f"{key}: {_human_value(item)}" for key, item in value.items())
+    if isinstance(value, (list, tuple, set)):
+        return ", ".join(_human_value(item) for item in value)
+    return str(value)
+
+
+def _resource_ref(value: Any) -> str | None:
+    try:
+        return str(ref_for_resource(value))
+    except ValueError:
+        return None
+
+
+def _display_users(items: list[Any], console: Console) -> None:
+    table = Table(show_header=True, header_style="bold cyan")
+    for column in ("UID", "Username", "Name", "Email"):
+        table.add_column(column)
+    for item in items:
+        table.add_row(
+            _human_value(item.uid),
+            item.username or "",
+            item.name or "",
+            item.email or "",
+        )
+    console.print(table)
+
+
+def _display_user(user: User, console: Console) -> None:
+    _display_fields(
+        [
+            ("uid", user.uid),
+            ("username", user.username),
+            ("name", user.name),
+            ("email", user.email),
+            ("account", user.account),
+        ],
+        console,
+    )
+
+
+def _display_courses(items: list[Any], console: Console) -> None:
+    table = Table(show_header=True, header_style="bold cyan")
+    for column in ("ID", "Course", "Title", "Year/Semester"):
+        table.add_column(column)
+    for item in items:
+        table.add_row(
+            str(item.cv_cid),
+            item.course_no or "",
+            item.title or "",
+            _year_semester(item.year, item.semester),
+        )
+    console.print(table)
+
+
+def _display_course(course: Course, console: Console) -> None:
+    _display_fields(
+        [
+            ("id", course.cv_cid),
+            ("course", course.course_no),
+            ("title", course.title),
+            ("semester", _year_semester(course.year, course.semester)),
+            ("section", course.section),
+            ("role", course.role),
+        ],
+        console,
+    )
+
+
+def _display_materials(items: list[Any], console: Console) -> None:
+    table = Table(show_header=True, header_style="bold cyan")
+    for column in ("ID", "Folder", "Title", "Changed", "Download"):
+        table.add_column(column)
+    for item in items:
+        table.add_row(
+            str(item.itemid),
+            item.folder_name or "",
+            item.title or "",
+            str(item.changed or ""),
+            "yes" if item.filepath else "no",
+        )
+    console.print(table)
+
+
+def _display_material(material: Material, console: Console) -> None:
+    _display_fields(
+        [
+            ("ref", _resource_ref(material)),
+            ("id", material.itemid),
+            ("course", material.cv_cid),
+            ("folder", material.folder_name or material.folder_id),
+            ("title", material.title),
+            ("status", material.status),
+            ("created", material.created),
+            ("changed", material.changed),
+            ("description", material.description),
+            ("file", material.filepath),
+            ("detail", material.detail_url),
+            ("external links", material.external_links),
+        ],
+        console,
+    )
+
+
+def _display_material_folders(items: list[Any], console: Console) -> None:
+    table = Table(show_header=True, header_style="bold cyan")
+    for column in ("Folder", "ID", "Materials"):
+        table.add_column(column)
+    for item in items:
+        table.add_row(item.name, item.folder_id, str(len(item.materials)))
+    console.print(table)
+
+
+def _display_material_folder(folder: MaterialFolder, console: Console) -> None:
+    _display_fields(
+        [("id", folder.folder_id), ("folder", folder.name), ("materials", len(folder.materials))],
+        console,
+    )
+    if folder.materials:
+        console.print("\n[bold]Materials[/bold]")
+        _display_materials(folder.materials, console)
+
+
+def _display_assignments(items: list[Any], console: Console) -> None:
+    table = Table(show_header=True, header_style="bold cyan")
+    has_course_context = any(item.course_no for item in items)
+    if has_course_context:
+        table.add_column("Course")
+    for column in ("ID", "Title", "Due", "Status"):
+        table.add_column(column)
+    for item in items:
+        row: list[str] = []
+        if has_course_context:
+            row.append(item.course_no or "")
+        row.extend(
+            [
+                str(item.itemid),
+                item.title or "",
+                item.duedate or str(item.duetime or ""),
+                item.status or "unknown",
+            ]
+        )
+        table.add_row(*row)
+    console.print(table)
+
+
+def _display_assignment(assignment: Assignment, console: Console) -> None:
+    _display_fields(
+        [
+            ("ref", _resource_ref(assignment)),
+            ("id", assignment.itemid),
+            ("course", assignment.course_no or assignment.cv_cid),
+            ("title", assignment.title),
+            ("status", assignment.status or "unknown"),
+            ("created", assignment.created),
+            ("changed", assignment.changed),
+            ("due", assignment.duedate or assignment.duetime),
+            ("outdated", assignment.outdate),
+            ("group assignment", assignment.is_group),
+            ("submitted", assignment.submitted_at),
+            ("instruction", assignment.instruction),
+            ("feedback", assignment.feedback),
+            ("detail", assignment.detail_url),
+            ("submission page", assignment.submission_url),
+            ("submission files", assignment.submission_files),
+            ("external links", assignment.external_links),
+        ],
+        console,
+    )
+
+
+def _display_announcements(items: list[Any], console: Console) -> None:
+    table = Table(show_header=True, header_style="bold cyan")
+    has_course_context = any(item.course_no for item in items)
+    if has_course_context:
+        table.add_column("Course")
+    for column in ("ID", "Posted", "Title"):
+        table.add_column(column)
+    for item in items:
+        row: list[str] = []
+        if has_course_context:
+            row.append(item.course_no or "")
+        row.extend([str(item.itemid), item.posted or "", item.title])
+        table.add_row(*row)
+    console.print(table)
+
+
+def _display_announcement(announcement: Announcement, console: Console) -> None:
+    _display_fields(
+        [
+            ("ref", _resource_ref(announcement)),
+            ("id", announcement.itemid),
+            ("course", announcement.course_no or announcement.cv_cid),
+            ("title", announcement.title),
+            ("posted", announcement.posted),
+            ("last modified", announcement.last_modified),
+            ("body", announcement.body),
+            ("detail", announcement.detail_url),
+            ("external links", announcement.external_links),
+        ],
+        console,
+    )
+
+
+def _display_recordings(items: list[Any], console: Console) -> None:
+    table = Table(show_header=True, header_style="bold cyan")
+    for column in ("Started", "Lifetime", "Type", "Play", "Download"):
+        table.add_column(column, overflow="fold" if column in {"Play", "Download"} else "ellipsis")
+    for item in items:
+        table.add_row(
+            item.started_at or "",
+            item.lifetime or "",
+            item.recording_type or "",
+            item.play_url or "",
+            item.download_url or "",
+        )
+    console.print(table)
+
+
+def _display_recording(recording: MeetingRecording, console: Console) -> None:
+    _display_fields(
+        [
+            ("started", recording.started_at),
+            ("lifetime", recording.lifetime),
+            ("type", recording.recording_type),
+            ("play", recording.play_url),
+            ("download", recording.download_url),
+        ],
+        console,
+    )
+
+
+def _display_meetings(items: list[Any], console: Console) -> None:
+    table = Table(show_header=True, header_style="bold cyan")
+    has_course_context = any(item.course_no for item in items)
+    if has_course_context:
+        table.add_column("Course")
+    for column in ("ID", "Scheduled", "Provider", "Meeting", "Link"):
+        table.add_column(column, overflow="fold" if column == "Link" else "ellipsis")
+    for item in items:
+        row: list[str] = []
+        if has_course_context:
+            row.append(item.course_no or "")
+        row.extend(
+            [
+                str(item.itemid),
+                item.scheduled_at or "",
+                item.provider or "",
+                item.name or "",
+                item.url or "",
+            ]
+        )
+        table.add_row(*row)
+    console.print(table)
+
+
+def _display_meeting(meeting: OnlineMeeting, console: Console) -> None:
+    _display_fields(
+        [
+            ("ref", _resource_ref(meeting)),
+            ("id", meeting.itemid),
+            ("course", meeting.course_no or meeting.cv_cid),
+            ("name", meeting.name),
+            ("provider", meeting.provider),
+            ("scheduled", meeting.scheduled_at),
+            ("duration", meeting.duration),
+            ("host", meeting.host),
+            ("meeting id", meeting.meeting_id),
+            ("link", meeting.url),
+            ("detail", meeting.detail_url),
+        ],
+        console,
+    )
+    if meeting.recordings:
+        console.print("\n[bold]Recordings[/bold]")
+        table = Table(show_header=True, header_style="bold cyan")
+        for column in ("Started", "Lifetime", "Type", "Play", "Download"):
+            overflow = "fold" if column in {"Play", "Download"} else "ellipsis"
+            table.add_column(column, overflow=overflow)
+        for recording in meeting.recordings:
+            table.add_row(
+                recording.started_at or "",
+                recording.lifetime or "",
+                recording.recording_type or "",
+                recording.play_url or "",
+                recording.download_url or "",
+            )
+        console.print(table)
+
+
+def _display_schedule_events(items: list[Any], console: Console) -> None:
+    table = Table(show_header=True, header_style="bold cyan")
+    for column in ("#", "Date", "Time", "Title", "Comment"):
+        table.add_column(column)
+    for item in items:
+        table.add_row(
+            str(item.index or ""),
+            item.date or "",
+            item.time or "",
+            item.title or "",
+            item.comment or "",
+        )
+    console.print(table)
+
+
+def _display_schedule_event(event: ScheduleEvent, console: Console) -> None:
+    _display_fields(
+        [
+            ("course", event.cv_cid),
+            ("index", event.index),
+            ("date", event.date),
+            ("time", event.time),
+            ("title", event.title),
+            ("comment", event.comment),
+        ],
+        console,
+    )
+
+
+def _display_course_about(about: CourseAbout, console: Console) -> None:
+    _display_fields(
+        [
+            ("course id", about.cv_cid),
+            ("course", about.course_no),
+            ("semester", _year_semester(about.year, about.semester)),
+            ("title", about.title),
+            ("name (Thai)", about.name_th),
+            ("name (English)", about.name_en),
+            ("abbreviation", about.abbreviation),
+            ("affiliation", about.affiliation),
+            ("instructors", about.instructors),
+            ("description", about.description_en or about.description_th),
+            ("learning objectives", about.learning_objectives),
+            ("assigned outcomes", about.assigned_outcomes),
+            ("custom outcomes", about.custom_outcomes),
+        ],
+        console,
+    )
+
+
+def _display_student_groups(items: list[Any], console: Console) -> None:
+    table = Table(show_header=True, header_style="bold cyan")
+    for column in ("ID", "Group", "Members"):
+        table.add_column(column)
+    for item in items:
+        table.add_row(str(item.group_id), item.name, str(len(item.members)))
+    console.print(table)
+
+
+def _display_student_group(group: StudentGroup, console: Console) -> None:
+    _display_fields(
+        [
+            ("grouping id", group.grouping_id),
+            ("grouping", group.grouping_name),
+            ("id", group.group_id),
+            ("name", group.name),
+            ("slogan", group.slogan),
+            ("members", group.members),
+        ],
+        console,
+    )
+
+
+def _display_portfolio(portfolio: Portfolio, console: Console) -> None:
+    total = portfolio.total_points
+    if total is not None and portfolio.total_possible:
+        total = f"{total} / {portfolio.total_possible}"
+    rank = portfolio.rank
+    if rank is not None and portfolio.rank_total is not None:
+        rank = f"{rank} of {portfolio.rank_total}"
+    _display_fields(
+        [
+            ("course id", portfolio.cv_cid),
+            ("student", portfolio.student_name),
+            ("points", total),
+            ("rank", rank),
+            ("grade", portfolio.grade_letter),
+            ("badges", portfolio.badges),
+            ("groups", portfolio.group_membership),
+        ],
+        console,
+    )
+
+
+def _display_web_resources(items: list[Any], console: Console) -> None:
+    table = Table(show_header=True, header_style="bold cyan")
+    for column in ("ID", "Title", "URL"):
+        table.add_column(column, overflow="fold" if column == "URL" else "ellipsis")
+    for item in items:
+        table.add_row(str(item.itemid), item.title, item.url or "")
+    console.print(table)
+
+
+def _display_web_resource(resource: WebResource, console: Console) -> None:
+    _display_fields(
+        [
+            ("id", resource.itemid),
+            ("course", resource.cv_cid),
+            ("title", resource.title),
+            ("url", resource.url),
+            ("description", resource.description),
+        ],
+        console,
+    )
+
+
+def _display_download(result: DownloadResult, console: Console) -> None:
+    console.print(f"Downloaded {result.bytes} bytes to [green]{result.path}[/green]")
+    console.print(f"SHA-256: {result.sha256}")
+
+
+def _display_archive(result: ArchiveResult, console: Console) -> None:
+    console.print(
+        f"Archived {result.files} files ({result.format}) to [green]{result.path}[/green]"
+    )
+    console.print(f"Archive size: {result.bytes} bytes")
+    if result.skipped:
+        console.print(f"Skipped: {', '.join(result.skipped)}")
+
+
+_RESOURCE_DISPLAYS: tuple[tuple[type[Any], ResourceDisplay], ...] = (
+    (User, ResourceDisplay(_display_user, _display_users)),
+    (Course, ResourceDisplay(_display_course, _display_courses)),
+    (Material, ResourceDisplay(_display_material, _display_materials)),
+    (MaterialFolder, ResourceDisplay(_display_material_folder, _display_material_folders)),
+    (Assignment, ResourceDisplay(_display_assignment, _display_assignments)),
+    (Announcement, ResourceDisplay(_display_announcement, _display_announcements)),
+    (MeetingRecording, ResourceDisplay(_display_recording, _display_recordings)),
+    (OnlineMeeting, ResourceDisplay(_display_meeting, _display_meetings)),
+    (ScheduleEvent, ResourceDisplay(_display_schedule_event, _display_schedule_events)),
+    (CourseAbout, ResourceDisplay(_display_course_about)),
+    (StudentGroup, ResourceDisplay(_display_student_group, _display_student_groups)),
+    (Portfolio, ResourceDisplay(_display_portfolio)),
+    (WebResource, ResourceDisplay(_display_web_resource, _display_web_resources)),
+    (DownloadResult, ResourceDisplay(_display_download)),
+    (ArchiveResult, ResourceDisplay(_display_archive)),
+)
 
 
 def _year_semester(year: object, semester: object) -> str:

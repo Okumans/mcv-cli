@@ -3,10 +3,27 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+from pytest import mark
 from rich.console import Console
 
 from mcv_cli.errors import NotFoundError
-from mcv_cli.models import Assignment, OnlineMeeting
+from mcv_cli.models import (
+    Announcement,
+    ArchiveResult,
+    Assignment,
+    Course,
+    CourseAbout,
+    DownloadResult,
+    Material,
+    MaterialFolder,
+    MeetingRecording,
+    OnlineMeeting,
+    Portfolio,
+    ScheduleEvent,
+    StudentGroup,
+    User,
+    WebResource,
+)
 from mcv_cli.output import ShellIdList, emit, emit_error, to_jsonable
 
 
@@ -173,3 +190,130 @@ def test_meeting_human_list_includes_link() -> None:
     assert "Link" in rendered
     assert "https://zoom.example/meetin" in rendered
     assert "g/29632" in rendered
+
+
+def test_assignment_human_detail_separates_submission_page_and_files() -> None:
+    console = Console(record=True)
+
+    emit(
+        Assignment(
+            itemid=2174162,
+            cv_cid=85386,
+            title="HW05 Cyclic Code",
+            detail_url="https://www.mycourseville.com/?q=courseville/worksheet/85386/2174162",
+            submission_files=["https://www.mycourseville.com/sites/submissions/hw05.pdf"],
+        ),
+        json_mode=False,
+        console=console,
+    )
+
+    rendered = console.export_text()
+    assert "submission files" in rendered
+    assert "https://www.mycourseville.com/sites/submissions/hw05.pdf" in rendered
+    assert "submission page" not in rendered
+
+
+@mark.parametrize(
+    ("resource", "marker"),
+    [
+        (User(uid="u1", username="student", name="Student"), "student"),
+        (Course(cv_cid=86428, course_no="2110575", title="Operating Systems"), "Operating Systems"),
+        (Material(itemid=2160993, cv_cid=86428, title="IoT Hardware"), "IoT Hardware"),
+        (
+            MaterialFolder(folder_id="folder-1", name="Week 1", materials=[]),
+            "Week 1",
+        ),
+        (Assignment(itemid=2160997, cv_cid=86428, title="Homework"), "Homework"),
+        (Announcement(itemid=2177455, cv_cid=86428, title="Welcome"), "Welcome"),
+        (MeetingRecording(recording_type="video", play_url="https://example.test/play"), "video"),
+        (OnlineMeeting(itemid=29632, cv_cid=86428, name="Lecture"), "Lecture"),
+        (ScheduleEvent(cv_cid=86428, date="2026-09-20", title="Exam"), "Exam"),
+        (CourseAbout(cv_cid=86428, title="Operating Systems"), "Operating Systems"),
+        (StudentGroup(grouping_id=1, grouping_name="Project", group_id=2, name="Team 2"), "Team 2"),
+        (Portfolio(cv_cid=86428, grade_letter="A"), "A"),
+        (WebResource(itemid=1, cv_cid=86428, title="Reference"), "Reference"),
+        (DownloadResult(path="lecture.pdf", bytes=12, sha256="abc"), "lecture.pdf"),
+        (ArchiveResult(path="materials.zip", format="zip", files=2, bytes=24), "materials.zip"),
+    ],
+)
+def test_each_resource_has_human_display(resource, marker: str) -> None:
+    console = Console(record=True)
+
+    emit(resource, json_mode=False, console=console)
+
+    rendered = console.export_text()
+    assert marker in rendered
+    assert "{" not in rendered
+    assert '"itemid"' not in rendered
+
+
+def test_human_mapping_display_is_not_json() -> None:
+    console = Console(record=True)
+
+    emit({"authenticated": True, "provider": "chula"}, json_mode=False, console=console)
+
+    rendered = console.export_text()
+    assert "authenticated" in rendered
+    assert "provider" in rendered
+    assert "{" not in rendered
+
+
+def test_mixed_resource_display_does_not_fall_back_to_json() -> None:
+    console = Console(record=True)
+
+    emit(
+        [
+            Assignment(itemid=2160997, cv_cid=86428, title="Homework"),
+            Announcement(itemid=2177455, cv_cid=86428, title="Welcome"),
+        ],
+        json_mode=False,
+        console=console,
+    )
+
+    rendered = console.export_text()
+    assert "Assignment" in rendered
+    assert "Announcement" in rendered
+    assert "Homework" in rendered
+    assert "Welcome" in rendered
+    assert "{" not in rendered
+
+
+def test_detail_mode_displays_each_resource_instead_of_a_collection_table() -> None:
+    console = Console(record=True)
+
+    emit(
+        [
+            Assignment(itemid=2160997, cv_cid=86428, title="Homework 1"),
+            Assignment(itemid=2160998, cv_cid=86428, title="Homework 2"),
+        ],
+        json_mode=False,
+        display_mode="detail",
+        console=console,
+    )
+
+    rendered = console.export_text()
+    assert "Homework 1" in rendered
+    assert "Homework 2" in rendered
+    assert "ref" in rendered
+    assert "ID" not in rendered
+    assert "Title" not in rendered
+    assert "\n\n" in rendered
+
+
+def test_collection_mode_remains_the_default_for_resource_lists() -> None:
+    console = Console(record=True)
+
+    emit(
+        [
+            Assignment(itemid=2160997, cv_cid=86428, title="Homework 1"),
+            Assignment(itemid=2160998, cv_cid=86428, title="Homework 2"),
+        ],
+        json_mode=False,
+        console=console,
+    )
+
+    rendered = console.export_text()
+    assert "ID" in rendered
+    assert "Title" in rendered
+    assert "Homework 1" in rendered
+    assert "Homework 2" in rendered

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typer.testing import CliRunner
 
 from mcv_cli.cli import app
+from mcv_cli.models import Assignment
 
 runner = CliRunner()
 
@@ -84,6 +85,18 @@ def test_courses_accepts_course_before_command() -> None:
     assert "{course} {item_id}" in result.stdout
 
 
+def test_course_scoped_commands_expose_semester_selection() -> None:
+    resource = runner.invoke(app, ["courses", "2110575", "assignments", "list", "--help"])
+    overview = runner.invoke(app, ["courses", "2110575", "--semester", "2025/2", "--help"])
+
+    assert resource.exit_code == 0
+    assert overview.exit_code == 0
+    assert "--semester" in resource.stdout
+    assert "--yearsem" in resource.stdout
+    assert "--semester" in overview.stdout
+    assert "--yearsem" in overview.stdout
+
+
 def test_course_scoped_archive_keeps_command_options_after_verb() -> None:
     result = runner.invoke(app, ["courses", "2110575", "materials-archive", "--help"])
 
@@ -151,6 +164,46 @@ def test_get_help_accepts_multiple_references() -> None:
 
     assert result.exit_code == 0
     assert "One or more mcv resource references" in result.stdout
+
+
+def test_get_renders_multiple_human_resources_with_detail_displays(monkeypatch) -> None:
+    class FakeClient:
+        def __init__(self, manager) -> None:
+            self.manager = manager
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+    monkeypatch.setattr("mcv_cli.cli._make_manager", lambda: object())
+    monkeypatch.setattr("mcv_cli.cli.MCVClient", FakeClient)
+    monkeypatch.setattr("mcv_cli.cli._cache_update", lambda _ctx, _value: None)
+    monkeypatch.setattr(
+        "mcv_cli.cli._get_one_resource",
+        lambda _client, reference: Assignment(
+            itemid=reference.item_id,
+            cv_cid=reference.cv_cid,
+            title=f"Assignment {reference.item_id}",
+        ),
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "--quiet",
+            "get",
+            "mcv:assignment:86428:2160997",
+            "mcv:assignment:86428:2160998",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Assignment 2160997" in result.stdout
+    assert "Assignment 2160998" in result.stdout
+    assert "Title" not in result.stdout
+    assert "\n\n" in result.stdout
 
 
 def test_invalid_jsonl_ref_is_reported_without_authentication() -> None:

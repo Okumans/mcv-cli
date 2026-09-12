@@ -91,6 +91,7 @@ class Assignment(BaseModel):
     instruction: str | None = None
     detail_url: str | None = None
     submission_url: str | None = None
+    submission_files: list[str] = Field(default_factory=list)
     is_group: bool | None = None
     submitted_at: str | None = None
     feedback: str | None = None
@@ -220,3 +221,25 @@ class ArchiveResult(BaseModel):
     files: int
     bytes: int
     skipped: list[str] = Field(default_factory=list)
+
+
+# Values returned by the public client and rendered by the CLI.  Keeping this
+# union in one place makes it explicit that the CLI deals in domain resources,
+# even for operation results such as downloads and archives.
+Resource = (
+    User
+    | Course
+    | Material
+    | MaterialFolder
+    | Assignment
+    | Announcement
+    | MeetingRecording
+    | OnlineMeeting
+    | ScheduleEvent
+    | CourseAbout
+    | StudentGroup
+    | Portfolio
+    | WebResource
+    | DownloadResult
+    | ArchiveResult
+)

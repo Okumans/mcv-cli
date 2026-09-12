@@ -160,8 +160,12 @@ class MCVClient:
                     progress.advance(progress_task)
         return courses
 
-    def get_course(self, cv_cid: int) -> Course:
-        matches = [course for course in self.list_courses() if course.cv_cid == cv_cid]
+    def get_course(self, cv_cid: int, *, yearsem: str | None = None) -> Course:
+        matches = [
+            course
+            for course in self.list_courses(yearsem=yearsem)
+            if course.cv_cid == cv_cid
+        ]
         if len(matches) == 1:
             return matches[0]
         if len(matches) > 1:
@@ -172,7 +176,7 @@ class MCVClient:
             operation="get",
         )
 
-    def resolve_course(self, reference: str) -> Course:
+    def resolve_course(self, reference: str, *, yearsem: str | None = None) -> Course:
         reference = " ".join(reference.split())
         if not reference:
             raise NotFoundError(
@@ -180,7 +184,7 @@ class MCVClient:
                 resource="course",
                 operation="resolve",
             )
-        courses = self.list_courses()
+        courses = self.list_courses(yearsem=yearsem)
         normalized = reference.casefold()
 
         # Internal ids are exact and take precedence over human-facing fields.
@@ -213,10 +217,13 @@ class MCVClient:
             return title_matches[0]
 
         raise NotFoundError(
-            f'Course "{reference}" was not found in the current semester.',
+            f'Course "{reference}" was not found in the selected semester.',
             resource="course",
             operation="resolve",
-            details={"reference": reference, "scope": "current_semester"},
+            details={
+                "reference": reference,
+                "scope": yearsem or "current_semester",
+            },
         )
 
     @staticmethod
@@ -803,7 +810,16 @@ class MCVClient:
         href = element.get("href")
         if not isinstance(href, str) or not href:
             return None
-        return urljoin(f"{BASE_URL}/", href)
+        return MCVClient._absolute_url(href)
+
+    @staticmethod
+    def _absolute_url(value: str) -> str | None:
+        value = value.strip()
+        if not value or value.startswith("#"):
+            return None
+        if value.casefold().startswith(("javascript:", "data:")):
+            return None
+        return urljoin(f"{BASE_URL}/", value)
 
     @staticmethod
     def _extract_content_id(value: str, fallback: int) -> int:
@@ -946,6 +962,7 @@ class MCVClient:
         table = soup.select_one("#cv-assignment-table")
         if table is None:
             return []
+        status_column = self._assignment_status_column(table)
         assignments: list[Assignment] = []
         for row in table.select("tbody tr"):
             title_link = row.select_one('a[href*="/worksheet/"]')
@@ -957,14 +974,16 @@ class MCVClient:
             detail_url = urljoin(f"{BASE_URL}/", href)
             item_id = self._extract_id(detail_url, len(assignments) + 1)
             cells = row.find_all("td")
-            outdate = self._text(cells[2]) if len(cells) > 2 else None
+            outdate = self._clean_assignment_date(self._text(cells[2])) if len(cells) > 2 else None
             duedate = self._text(row.select_one("td.cv-due-col"))
-            work_text = self._text(cells[5]) if len(cells) > 5 else None
-            submitted_at = None
-            if work_text and "not submitted" not in work_text.lower():
-                submitted_at = re.sub(r"^Submitted at\s*", "", work_text).strip()
+            status_cell = self._assignment_status_cell(row, cells, status_column)
+            status = self._assignment_status_text(status_cell)
+            submitted_at = self._assignment_submission_time(cells)
             due_time_match = re.search(r"\bat\s+([0-9]{1,2}:[0-9]{2})\b", duedate or "")
-            submission_link = row.select_one('a[aria-label="Make/Edit your submission"]')
+            submission_link = self._assignment_submission_link(row)
+            submission_url = self._absolute_href(submission_link)
+            if submission_url == detail_url:
+                submission_url = None
             row_text = " ".join(row.get_text(" ", strip=True).split())
             assignments.append(
                 Assignment(
@@ -972,16 +991,164 @@ class MCVClient:
                     cv_cid=cv_cid,
                     title=" ".join(title_link.get_text(" ", strip=True).split()),
                     detail_url=detail_url,
-                    submission_url=self._absolute_href(submission_link) or detail_url,
+                    submission_url=submission_url,
                     is_group="group work" in row_text.lower(),
                     submitted_at=submitted_at,
                     outdate=outdate,
                     duedate=duedate,
                     duetime=due_time_match.group(1) if due_time_match else None,
-                    status="submitted" if submitted_at else None,
+                    status=status,
                 )
             )
         return assignments
+
+    @staticmethod
+    def _assignment_status_column(table: Any) -> int | None:
+        header_cells = table.select("thead th, thead td")
+        if not header_cells:
+            header_row = table.select_one("thead tr") or table.select_one("tr")
+            candidates = header_row.find_all(["th", "td"]) if header_row else []
+            header_cells = candidates if any(cell.name == "th" for cell in candidates) else []
+        for index, cell in enumerate(header_cells):
+            label = " ".join(cell.get_text(" ", strip=True).split()).casefold()
+            if "status" in label:
+                return index
+        return None
+
+    @staticmethod
+    def _assignment_status_cell(row: Any, cells: list[Any], column: int | None) -> Any:
+        for cell in cells:
+            if MCVClient._has_status_attribute(cell):
+                return cell
+        for element in row.find_all(True):
+            if MCVClient._has_status_attribute(element):
+                return element
+        if column is not None and column < len(cells):
+            return cells[column]
+        for cell in reversed(cells):
+            value = MCVClient._text(cell)
+            if value and MCVClient._looks_like_assignment_status(value):
+                return cell
+        return cells[-1] if cells else None
+
+    @classmethod
+    def _assignment_status_text(cls, cell: Any) -> str | None:
+        if cell is None:
+            return None
+        elements = [cell, *cell.find_all(True)]
+        for element in elements:
+            for attribute in (
+                "data-status",
+                "data-status-text",
+                "data-state",
+                "data-original-title",
+                "data-tooltip",
+                "aria-label",
+                "title",
+                "alt",
+                "value",
+            ):
+                value = element.get(attribute)
+                if isinstance(value, str) and value.strip():
+                    return " ".join(value.split())
+        for element in elements:
+            status = cls._assignment_status_marker(element)
+            if status is not None:
+                return status
+        return cls._text(cell)
+
+    @classmethod
+    def _assignment_status_marker(cls, element: Any) -> str | None:
+        values: list[str] = []
+        for attribute in ("class", "id", "src", "data-status", "data-state"):
+            value = element.get(attribute)
+            if isinstance(value, (list, tuple)):
+                values.extend(str(item) for item in value)
+            elif value is not None:
+                values.append(str(value))
+        marker = re.sub(r"[_-]+", " ", " ".join(values).casefold())
+        status_markers = (
+            (("not submitted", "no submission", "unsubmitted", "not submit"), "Not submitted"),
+            (("in progress", "inprogress"), "In progress"),
+            (("graded", "grade"), "Graded"),
+            (("submitted",), "Submitted"),
+            (("overdue", "late"), "Late"),
+            (("missing",), "Missing"),
+            (("draft",), "Draft"),
+            (("pending",), "Pending"),
+            (("completed", "complete", "done"), "Complete"),
+        )
+        for markers, status in status_markers:
+            if any(value in marker for value in markers):
+                return status
+        return None
+
+    @staticmethod
+    def _has_status_attribute(element: Any) -> bool:
+        attributes = " ".join(
+            str(element.get(name, ""))
+            for name in ("class", "id", "data-col", "data-column", "data-field")
+        ).casefold()
+        return "status" in attributes
+
+    @staticmethod
+    def _looks_like_assignment_status(value: str) -> bool:
+        normalized = value.casefold()
+        return any(
+            marker in normalized
+            for marker in (
+                "not submitted",
+                "no submission",
+                "submitted",
+                "not started",
+                "graded",
+                "in progress",
+                "draft",
+                "complete",
+                "done",
+                "late",
+                "overdue",
+                "missing",
+                "pending",
+            )
+        )
+
+    @staticmethod
+    def _assignment_submission_time(cells: list[Any]) -> str | None:
+        for cell in cells:
+            value = MCVClient._text(cell)
+            if not value:
+                continue
+            match = re.search(
+                r"\bsubmitted\s+at\s*:?[ \t]*(.+)$",
+                value,
+                re.IGNORECASE,
+            )
+            if match:
+                return match.group(1).strip()
+        return None
+
+    @staticmethod
+    def _assignment_submission_link(row: Any) -> Any:
+        for anchor in row.select("a[href]"):
+            metadata = " ".join(
+                str(anchor.get(attribute, ""))
+                for attribute in ("aria-label", "title", "class", "id", "rel")
+            ).casefold()
+            href = anchor.get("href")
+            if "submission" in metadata or "submit" in metadata:
+                return anchor
+            if isinstance(href, str) and "submission" in href.casefold():
+                return anchor
+        return None
+
+    @staticmethod
+    def _clean_assignment_date(value: str | None) -> str | None:
+        if value is None:
+            return None
+        if re.search(r"\b(?:01\s+January\s+1970|1970[-/]01[-/]01)\b", value, re.IGNORECASE):
+            return None
+        return value
 
     def _parse_assignment_detail(self, assignment: Assignment, detail_url: str) -> Assignment:
         response = self._request("GET", detail_url)
@@ -990,14 +1157,19 @@ class MCVClient:
         calendar_text = self._text(
             soup.select_one("#courseville-worksheet-instruction-head-calendar-wrapper")
         )
-        outdate = assignment.outdate
+        outdate = self._clean_assignment_date(assignment.outdate)
         duedate = assignment.duedate
         if calendar_text:
             out_match = re.search(r"Out on\s+(.*?)(?=\s+Due on|$)", calendar_text)
             due_match = re.search(r"Due on\s+(.*)$", calendar_text)
-            outdate = out_match.group(1).strip() if out_match else outdate
+            outdate = (
+                self._clean_assignment_date(out_match.group(1).strip())
+                if out_match
+                else outdate
+            )
             duedate = due_match.group(1).strip() if due_match else duedate
-        work_status = self._text(soup.select_one("#courseville-worksheet-work-status"))
+        work_status_element = soup.select_one("#courseville-worksheet-work-status")
+        work_status = self._text(work_status_element)
         feedback = self._text(soup.select_one("#courseville-worksheet-work-feedback-wrapper"))
         representing = self._text(soup.select_one("#courseville-worksheet-work-representing"))
         submitted_at = assignment.submitted_at
@@ -1008,21 +1180,26 @@ class MCVClient:
                 re.IGNORECASE,
             )
             submitted_at = submitted_match.group(1).strip() if submitted_match else submitted_at
+        detail_status = self._assignment_status_from_text(work_status)
+        if detail_status is None:
+            detail_status = self._assignment_status_text(work_status_element)
+        instruction_element = soup.select_one("#courseville-worksheet-instruction-body")
+        instruction, instruction_links = self._rich_text(instruction_element)
         return assignment.model_copy(
             update={
                 "title": title or assignment.title,
-                "instruction": self._text(
-                    soup.select_one("#courseville-worksheet-instruction-body")
-                ),
+                "instruction": instruction or assignment.instruction,
                 "outdate": outdate,
                 "duedate": duedate,
                 "submitted_at": submitted_at,
-                "status": "submitted" if submitted_at else assignment.status,
+                # Preserve an explicit list-page status. If it is missing,
+                # use only an explicit status meaning from the worksheet
+                # status block; a timestamp alone is not enough.
+                "status": assignment.status or detail_status,
                 "feedback": feedback,
                 "is_group": assignment.is_group or representing is not None,
-                "external_links": self._external_links(
-                    soup.select_one("#courseville-worksheet-instruction-body")
-                ),
+                "external_links": instruction_links or assignment.external_links,
+                "submission_files": self._assignment_submission_links(soup, detail_url),
             }
         )
 
@@ -1182,14 +1359,93 @@ class MCVClient:
         value = " ".join(element.get_text(" ", strip=True).split())
         return [value] if value else []
 
+    @classmethod
+    def _rich_text(cls, element: Any) -> tuple[str | None, list[str]]:
+        if element is None:
+            return None, []
+        links = cls._external_links(element)
+        text = cls._text(element)
+        if text:
+            for anchor in element.find_all("a", href=True):
+                raw_href = anchor.get("href")
+                label = cls._text(anchor)
+                absolute_href = cls._absolute_href(anchor)
+                if (
+                    isinstance(raw_href, str)
+                    and label
+                    and absolute_href
+                    and (label == raw_href.strip() or label.startswith(("/", "./", "../")))
+                ):
+                    text = text.replace(label, absolute_href, 1)
+        return text, links
+
     @staticmethod
-    def _external_links(element: Any) -> list[str]:
+    def _assignment_status_from_text(value: str | None) -> str | None:
+        if not value:
+            return None
+        normalized = value.casefold()
+        if any(
+            marker in normalized
+            for marker in ("not submitted", "no submission", "unsubmitted")
+        ):
+            return "Not submitted"
+        if "graded" in normalized:
+            return "Graded"
+        if "in progress" in normalized:
+            return "In progress"
+        if "latest submission" in normalized or "submitted" in normalized:
+            return "Submitted"
+        if "overdue" in normalized or "late" in normalized:
+            return "Late"
+        if "missing" in normalized:
+            return "Missing"
+        if "draft" in normalized:
+            return "Draft"
+        if "pending" in normalized:
+            return "Pending"
+        return None
+
+    @staticmethod
+    def _assignment_submission_links(soup: Any, detail_url: str) -> list[str]:
+        selectors = (
+            "#courseville-worksheet-work-submission-wrapper",
+            "#courseville-worksheet-work-submission",
+            "#courseville-worksheet-submission",
+            "[id*='worksheet'][id*='submission']",
+            "[class*='worksheet'][class*='submission']",
+            "[id*='-worksheet-work-']",
+            "[id$='-worksheet-work']",
+            "[class*='-worksheet-work-']",
+            "[class$='-worksheet-work']",
+        )
+        links: list[str] = []
+        for selector in selectors:
+            for container in soup.select(selector):
+                for anchor in container.select("a[href], area[href]"):
+                    href = MCVClient._absolute_href(anchor)
+                    if (
+                        href is None
+                        or href == detail_url
+                        or MCVClient._is_assignment_page_url(href)
+                        or href in links
+                    ):
+                        continue
+                    links.append(href)
+        return links
+
+    @staticmethod
+    def _is_assignment_page_url(value: str) -> bool:
+        decoded = unquote(value)
+        return re.search(r"courseville/worksheet/\d+/\d+", decoded) is not None
+
+    @classmethod
+    def _external_links(cls, element: Any) -> list[str]:
         if element is None:
             return []
         links: list[str] = []
         for anchor in element.find_all("a", href=True):
-            href = anchor.get("href")
-            if isinstance(href, str) and href not in links:
+            href = cls._absolute_href(anchor)
+            if href is not None and href not in links:
                 links.append(href)
         text = element.get_text(" ", strip=True)
         for value in re.findall(r"https?://[^\s<]+", text):
