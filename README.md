@@ -76,7 +76,7 @@ current semester by default.
 
 ```bash
 mcv courses list
-mcv courses list --semester 2026/1
+mcv --semester 2026/1 courses list
 mcv courses list --all
 mcv courses 2110575
 
@@ -125,19 +125,18 @@ Running `mcv courses COURSE` is shorthand for the course overview. It shows
 the resolved CourseVille id, course number, title, semester, section, and
 student role.
 
-`courses list` defaults to the current semester selected by MyCourseVille.
-Use `--semester` to select one semester explicitly; `--yearsem` remains an
-alias for compatibility. Use `--all` to query every available semester.
-
-Course-scoped commands also resolve the course in the current semester by
-default. Pass `--semester` (or its `--yearsem` alias) after the course action
-when querying a course from another semester, including the course overview:
+`courses list` and all course-scoped commands default to the current semester
+selected by MyCourseVille. `--semester` is a global course-selection option,
+so put it before `courses`. Use `--all` to query every available semester:
 
 ```bash
-mcv courses 2110575 --semester 2025/2
-mcv courses 2110575 assignments list --semester 2025/2
-mcv courses 2110575 materials list --semester 2025/2
+mcv --semester 2025/2 courses list
+mcv --semester 2025/2 courses 2110575
+mcv --semester 2025/2 courses 2110575 assignments list
+mcv --semester 2025/2 courses 2110575 materials list
 ```
+
+`--semester` and `--all` cannot be used together.
 
 `courses COURSE materials folders` shows folder ids and material counts. A folder can
 be selected by name or id. `materials archive` creates an archive using the

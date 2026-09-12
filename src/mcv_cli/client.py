@@ -116,7 +116,7 @@ class MCVClient:
 
     def list_courses(
         self,
-        yearsem: str | None = None,
+        semester: str | None = None,
         *,
         all_semesters: bool = False,
         progress: ProgressReporter | None = None,
@@ -124,16 +124,17 @@ class MCVClient:
         semesters, current_semester = self._get_semester_options()
         if all_semesters:
             selected_semesters = semesters
-        elif yearsem is None:
+        elif semester is None:
             selected_semesters = [current_semester]
         else:
+            requested_semester = semester
             selected_semesters = [
-                semester
-                for semester in semesters
-                if semester == yearsem
-                or semester.split("/", 1)[0] == yearsem
+                available_semester
+                for available_semester in semesters
+                if available_semester == requested_semester
+                or available_semester.split("/", 1)[0] == requested_semester
             ]
-        if yearsem is not None and not selected_semesters:
+        if semester is not None and not selected_semesters:
             return []
 
         courses: list[Course] = []
@@ -160,10 +161,10 @@ class MCVClient:
                     progress.advance(progress_task)
         return courses
 
-    def get_course(self, cv_cid: int, *, yearsem: str | None = None) -> Course:
+    def get_course(self, cv_cid: int, *, semester: str | None = None) -> Course:
         matches = [
             course
-            for course in self.list_courses(yearsem=yearsem)
+            for course in self.list_courses(semester=semester)
             if course.cv_cid == cv_cid
         ]
         if len(matches) == 1:
@@ -176,7 +177,7 @@ class MCVClient:
             operation="get",
         )
 
-    def resolve_course(self, reference: str, *, yearsem: str | None = None) -> Course:
+    def resolve_course(self, reference: str, *, semester: str | None = None) -> Course:
         reference = " ".join(reference.split())
         if not reference:
             raise NotFoundError(
@@ -184,7 +185,7 @@ class MCVClient:
                 resource="course",
                 operation="resolve",
             )
-        courses = self.list_courses(yearsem=yearsem)
+        courses = self.list_courses(semester=semester)
         normalized = reference.casefold()
 
         # Internal ids are exact and take precedence over human-facing fields.
@@ -222,7 +223,7 @@ class MCVClient:
             operation="resolve",
             details={
                 "reference": reference,
-                "scope": yearsem or "current_semester",
+                "scope": semester or "current_semester",
             },
         )
 
@@ -728,10 +729,6 @@ class MCVClient:
             except httpx.HTTPError as exc:
                 raise DownloadError("The material download request failed.") from exc
         raise DownloadError("The material download exceeded the redirect limit.")
-
-    def _get_semesters(self) -> list[str]:
-        semesters, _ = self._get_semester_options()
-        return semesters
 
     def _get_semester_options(self) -> tuple[list[str], str]:
         response = self._request("GET", COURSE_HOME_URL)

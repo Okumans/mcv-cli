@@ -43,12 +43,13 @@ class AssignmentService:
     def list_across_courses(
         self,
         *,
+        semester: str | None = None,
         pending: bool = False,
         due: bool = False,
         progress: ProgressReporter | None = None,
     ) -> list[Assignment]:
         results: list[Assignment] = []
-        courses = sorted(self.client.list_courses(), key=_course_sort_key)
+        courses = sorted(self.client.list_courses(semester=semester), key=_course_sort_key)
         progress_task = (
             progress.add_task("Loading assignments", total=len(courses))
             if progress is not None
@@ -102,10 +103,11 @@ class AnnouncementService:
     def list_across_courses(
         self,
         *,
+        semester: str | None = None,
         progress: ProgressReporter | None = None,
     ) -> list[Announcement]:
         results: list[Announcement] = []
-        courses = sorted(self.client.list_courses(), key=_course_sort_key)
+        courses = sorted(self.client.list_courses(semester=semester), key=_course_sort_key)
         progress_task = (
             progress.add_task("Loading announcements", total=len(courses))
             if progress is not None
@@ -145,12 +147,13 @@ class MeetingService:
     def list_across_courses(
         self,
         *,
+        semester: str | None = None,
         include_past: bool = False,
         now: datetime | None = None,
         progress: ProgressReporter | None = None,
     ) -> list[OnlineMeeting]:
         results: list[OnlineMeeting] = []
-        courses = sorted(self.client.list_courses(), key=_course_sort_key)
+        courses = sorted(self.client.list_courses(semester=semester), key=_course_sort_key)
         progress_task = (
             progress.add_task("Loading meetings", total=len(courses))
             if progress is not None

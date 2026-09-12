@@ -23,6 +23,8 @@ def test_help_lists_command_groups() -> None:
     assert "--jsonl" in result.stdout
     assert "--envelope" in result.stdout
     assert "--quiet" in result.stdout
+    assert "--semester" in result.stdout
+    assert "--yearsem" not in result.stdout
 
 
 def test_version() -> None:
@@ -53,13 +55,46 @@ def test_google_login_explains_missing_oauth_registration() -> None:
     assert "approved MyCourseVille OAuth client" in result.output
 
 
-def test_courses_list_exposes_semester_selection_flags() -> None:
-    result = runner.invoke(app, ["courses", "list", "--help"])
+def test_courses_list_accepts_global_semester_selection() -> None:
+    result = runner.invoke(app, ["--semester", "2026/1", "courses", "list", "--help"])
 
     assert result.exit_code == 0
-    assert "--semester" in result.stdout
-    assert "--yearsem" in result.stdout
     assert "--all" in result.stdout
+
+
+def test_yearsem_option_is_removed() -> None:
+    result = runner.invoke(app, ["--yearsem", "2026/1", "courses", "list", "--help"])
+
+    assert result.exit_code == 2
+    assert "No such option" in result.output
+
+
+def test_global_semester_is_passed_to_course_listing(monkeypatch) -> None:
+    calls: list[tuple[str | None, bool]] = []
+
+    class FakeClient:
+        def __init__(self, _manager) -> None:
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+        def list_courses(self, *, semester=None, all_semesters=False, progress=None):
+            del progress
+            calls.append((semester, all_semesters))
+            return []
+
+    monkeypatch.setattr("mcv_cli.cli._make_manager", lambda: object())
+    monkeypatch.setattr("mcv_cli.cli.MCVClient", FakeClient)
+    monkeypatch.setattr("mcv_cli.cli.active_cache", lambda: None)
+
+    result = runner.invoke(app, ["--quiet", "--semester", "2025/2", "courses", "list"])
+
+    assert result.exit_code == 0, result.output
+    assert calls == [("2025/2", False)]
 
 
 def test_cache_commands_expose_refresh_controls() -> None:
@@ -71,7 +106,7 @@ def test_cache_commands_expose_refresh_controls() -> None:
 
 
 def test_courses_list_rejects_conflicting_selection_flags() -> None:
-    result = runner.invoke(app, ["courses", "list", "--semester", "2026/1", "--all"])
+    result = runner.invoke(app, ["--semester", "2026/1", "courses", "list", "--all"])
 
     assert result.exit_code == 2
     assert "either --semester or --all" in result.output
@@ -86,15 +121,14 @@ def test_courses_accepts_course_before_command() -> None:
 
 
 def test_course_scoped_commands_expose_semester_selection() -> None:
-    resource = runner.invoke(app, ["courses", "2110575", "assignments", "list", "--help"])
-    overview = runner.invoke(app, ["courses", "2110575", "--semester", "2025/2", "--help"])
+    resource = runner.invoke(
+        app,
+        ["--semester", "2025/2", "courses", "2110575", "assignments", "list", "--help"],
+    )
+    overview = runner.invoke(app, ["--semester", "2025/2", "courses", "2110575", "--help"])
 
     assert resource.exit_code == 0
     assert overview.exit_code == 0
-    assert "--semester" in resource.stdout
-    assert "--yearsem" in resource.stdout
-    assert "--semester" in overview.stdout
-    assert "--yearsem" in overview.stdout
 
 
 def test_course_scoped_archive_keeps_command_options_after_verb() -> None:

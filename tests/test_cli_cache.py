@@ -40,8 +40,8 @@ class FakeCacheClient:
     def __exit__(self, *_args) -> None:
         return None
 
-    def list_courses(self, *, all_semesters: bool = False, progress=None):
-        del all_semesters, progress
+    def list_courses(self, *, semester=None, all_semesters: bool = False, progress=None):
+        del semester, all_semesters, progress
         return [self.course]
 
     def list_material_folders(self, _cv_cid: int):

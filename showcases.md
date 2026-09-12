@@ -80,15 +80,15 @@ mcv courses "$MCV_COURSE"
 ```
 
 Course references use the current semester by default. Select a different
-semester on the course-scoped command when the course number or title belongs
-to an older term:
+semester globally when the course number or title belongs to an older term:
 
 ```bash
-mcv courses "$MCV_COURSE" --semester 2025/2
-mcv courses "$MCV_COURSE" assignments list --semester 2025/2
+mcv --semester 2025/2 courses list
+mcv --semester 2025/2 courses "$MCV_COURSE"
+mcv --semester 2025/2 courses "$MCV_COURSE" assignments list
 ```
 
-`--yearsem` is an alias for `--semester`.
+`--semester` is a global option and must be placed before the command.
 
 Collections use `list`, identifier-bearing resources use `show`, and singular
 course pages are direct actions. Cross-course aggregate commands are separate
@@ -304,15 +304,14 @@ mcv --jsonl get \
 
 ```bash
 uv run mcv courses list
-uv run mcv courses list --semester 2026/1
-uv run mcv courses list --yearsem 2026/1
+uv run mcv --semester 2026/1 courses list
 uv run mcv courses list --all
 ```
 
 Behavior:
 
 - no semester option: use MyCourseVille's current semester selector;
-- `--semester` and `--yearsem`: select one semester, or a year prefix;
+- `--semester`: global option that selects one semester, or a year prefix;
 - `--all`: query every semester exposed by the authenticated page;
 - `--semester` and `--all` together: usage error.
 
@@ -542,9 +541,10 @@ and `cv_cid`. An empty web-resource page is returned as an empty list.
 
 ## 15. Cross-course resource APIs
 
-These commands aggregate the current-semester courses. They are application
-services over the course-oriented `MCVClient`, not new upstream CourseVille
-primitives:
+These commands aggregate the current-semester courses by default. Pass the
+global `--semester` option before the command to aggregate a selected term.
+They are application services over the course-oriented `MCVClient`, not new
+upstream CourseVille primitives:
 
 ```bash
 uv run mcv assignments list
@@ -634,7 +634,7 @@ with MCVClient(manager) as client:
 
 | Method | Return value | Purpose |
 | --- | --- | --- |
-| `list_courses(yearsem=None, all_semesters=False)` | `list[Course]` | List enrolled courses |
+| `list_courses(semester=None, all_semesters=False)` | `list[Course]` | List enrolled courses |
 | `get_course(cv_cid)` | `Course` | Resolve one enrolled internal course id |
 | `resolve_course(reference)` | `Course` | Resolve cv id, course number, or exact title |
 | `list_materials(cv_cid)` | `list[Material]` | Parse course-home materials |
@@ -673,9 +673,9 @@ Available service operations are:
 
 | Service | Method | Purpose |
 | --- | --- | --- |
-| `AssignmentService` | `list_across_courses(pending=False, due=False)` | Aggregate current-course assignments |
-| `AnnouncementService` | `list_across_courses()` | Aggregate current-course announcements |
-| `MeetingService` | `list_for_course(cv_cid, include_past=False)` / `list_across_courses(include_past=False)` | Filter and aggregate current-course meetings |
+| `AssignmentService` | `list_across_courses(semester=None, pending=False, due=False)` | Aggregate assignments across the selected course semester |
+| `AnnouncementService` | `list_across_courses(semester=None)` | Aggregate announcements across the selected course semester |
+| `MeetingService` | `list_for_course(cv_cid, include_past=False)` / `list_across_courses(semester=None, include_past=False)` | Filter and aggregate meetings across the selected course semester |
 | dispatcher | `get_resource(client, ResourceRef)` | Dereference material, assignment, announcement, or meeting |
 
 ## 17. Route coverage

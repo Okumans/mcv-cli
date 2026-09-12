@@ -10,7 +10,8 @@ from mcv_cli.services import AssignmentService, MeetingService
 
 
 class FakeClient:
-    def list_courses(self) -> list[Course]:
+    def list_courses(self, *, semester: str | None = None) -> list[Course]:
+        del semester
         return [
             Course(cv_cid=86428, course_no="2110575", title="IoT"),
             Course(cv_cid=86429, course_no="2110521", title="Networks"),

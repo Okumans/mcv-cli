@@ -247,7 +247,7 @@ def test_client_normalizes_courses_materials_and_assignments() -> None:
         follow_redirects=False,
     ) as http_client:
         client = MCVClient(auth, http_client=http_client)
-        courses = client.list_courses(yearsem="2026/1")
+        courses = client.list_courses(semester="2026/1")
         materials = client.list_materials(123)
         assignments = client.list_assignments(123)
 
@@ -476,7 +476,7 @@ def test_client_reports_transport_error_details() -> None:
     }
 
 
-def test_client_supports_current_yearsem_selector() -> None:
+def test_client_parses_semester_selector() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, text=CURRENT_COURSE_HOME_HTML, request=request)
 
@@ -486,17 +486,18 @@ def test_client_supports_current_yearsem_selector() -> None:
         follow_redirects=False,
     ) as http_client:
         client = MCVClient(FakeAuth(), http_client=http_client)
-        assert client._get_semesters() == ["2026/2", "2026/1"]
+        semesters, _current = client._get_semester_options()
+        assert semesters == ["2026/2", "2026/1"]
 
 
 def test_client_defaults_to_current_semester() -> None:
-    requested_yearsems: list[str] = []
+    requested_semesters: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.params.get("q") == "courseville":
             return httpx.Response(200, text=CURRENT_COURSE_HOME_HTML, request=request)
         payload = dict(parse_qsl(request.content.decode()))
-        requested_yearsems.append(payload["yearsem"])
+        requested_semesters.append(payload["yearsem"])
         return httpx.Response(200, json={"status": True, "data": []}, request=request)
 
     with httpx.Client(
@@ -507,20 +508,20 @@ def test_client_defaults_to_current_semester() -> None:
         client = MCVClient(FakeAuth(), http_client=http_client)
         assert client.list_courses() == []
 
-    assert requested_yearsems == ["2026/1"]
+    assert requested_semesters == ["2026/1"]
 
 
 def test_resolve_course_can_target_a_selected_semester() -> None:
-    requested_yearsems: list[str | None] = []
+    requested_semesters: list[str | None] = []
 
     class SelectedSemesterClient(MCVClient):
         def list_courses(
             self,
-            yearsem: str | None = None,
+            semester: str | None = None,
             *,
             all_semesters: bool = False,
         ) -> list[Course]:
-            requested_yearsems.append(yearsem)
+            requested_semesters.append(semester)
             return [
                 Course(
                     cv_cid=85386,
@@ -533,20 +534,20 @@ def test_resolve_course_can_target_a_selected_semester() -> None:
 
     with httpx.Client(base_url=BASE_URL) as http_client:
         client = SelectedSemesterClient(FakeAuth(), http_client=http_client)
-        course = client.resolve_course("2110575", yearsem="2025/2")
+        course = client.resolve_course("2110575", semester="2025/2")
 
     assert course.cv_cid == 85386
-    assert requested_yearsems == ["2025/2"]
+    assert requested_semesters == ["2025/2"]
 
 
 def test_client_can_list_all_semesters() -> None:
-    requested_yearsems: list[str] = []
+    requested_semesters: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.params.get("q") == "courseville":
             return httpx.Response(200, text=CURRENT_COURSE_HOME_HTML, request=request)
         payload = dict(parse_qsl(request.content.decode()))
-        requested_yearsems.append(payload["yearsem"])
+        requested_semesters.append(payload["yearsem"])
         return httpx.Response(200, json={"status": True, "data": []}, request=request)
 
     with httpx.Client(
@@ -557,7 +558,7 @@ def test_client_can_list_all_semesters() -> None:
         client = MCVClient(FakeAuth(), http_client=http_client)
         assert client.list_courses(all_semesters=True) == []
 
-    assert requested_yearsems == ["2026/2", "2026/1"]
+    assert requested_semesters == ["2026/2", "2026/1"]
 
 
 def test_client_sends_session_cookie() -> None:
@@ -641,7 +642,7 @@ def test_resolve_course_rejects_ambiguous_title() -> None:
     class AmbiguousCourseClient(MCVClient):
         def list_courses(
             self,
-            yearsem: str | None = None,
+            semester: str | None = None,
             *,
             all_semesters: bool = False,
         ) -> list[Course]:
