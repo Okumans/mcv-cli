@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from .client import MCVClient
 from .models import Announcement, Assignment, Course, OnlineMeeting
+from .progress import ProgressReporter
 from .refs import ResourceRef, ResourceType
 
 _BANGKOK_TZ = ZoneInfo("Asia/Bangkok")
@@ -43,17 +44,27 @@ class AssignmentService:
         *,
         pending: bool = False,
         due: bool = False,
+        progress: ProgressReporter | None = None,
     ) -> list[Assignment]:
         results: list[Assignment] = []
         courses = sorted(self.client.list_courses(), key=_course_sort_key)
+        progress_task = (
+            progress.add_task("Loading assignments", total=len(courses))
+            if progress is not None
+            else None
+        )
         for course in courses:
-            for assignment in self.client.list_assignments(course.cv_cid):
-                assignment = _with_course_context(assignment, course)
-                if pending and not self._is_pending(assignment):
-                    continue
-                if due and assignment.duedate is None and assignment.duetime is None:
-                    continue
-                results.append(assignment)
+            try:
+                for assignment in self.client.list_assignments(course.cv_cid):
+                    assignment = _with_course_context(assignment, course)
+                    if pending and not self._is_pending(assignment):
+                        continue
+                    if due and assignment.duedate is None and assignment.duetime is None:
+                        continue
+                    results.append(assignment)
+            finally:
+                if progress is not None:
+                    progress.advance(progress_task)
         return sorted(
             results,
             key=lambda item: (
@@ -76,14 +87,27 @@ class AnnouncementService:
     def __init__(self, client: MCVClient) -> None:
         self.client = client
 
-    def list_across_courses(self) -> list[Announcement]:
+    def list_across_courses(
+        self,
+        *,
+        progress: ProgressReporter | None = None,
+    ) -> list[Announcement]:
         results: list[Announcement] = []
         courses = sorted(self.client.list_courses(), key=_course_sort_key)
+        progress_task = (
+            progress.add_task("Loading announcements", total=len(courses))
+            if progress is not None
+            else None
+        )
         for course in courses:
-            results.extend(
-                _with_course_context(item, course)
-                for item in self.client.list_announcements(course.cv_cid)
-            )
+            try:
+                results.extend(
+                    _with_course_context(item, course)
+                    for item in self.client.list_announcements(course.cv_cid)
+                )
+            finally:
+                if progress is not None:
+                    progress.advance(progress_task)
         return sorted(
             results,
             key=lambda item: (item.course_no or "", item.posted or "", item.itemid),
@@ -111,14 +135,24 @@ class MeetingService:
         *,
         include_past: bool = False,
         now: datetime | None = None,
+        progress: ProgressReporter | None = None,
     ) -> list[OnlineMeeting]:
         results: list[OnlineMeeting] = []
         courses = sorted(self.client.list_courses(), key=_course_sort_key)
+        progress_task = (
+            progress.add_task("Loading meetings", total=len(courses))
+            if progress is not None
+            else None
+        )
         for course in courses:
-            results.extend(
-                _with_course_context(item, course)
-                for item in self.client.list_meetings(course.cv_cid)
-            )
+            try:
+                results.extend(
+                    _with_course_context(item, course)
+                    for item in self.client.list_meetings(course.cv_cid)
+                )
+            finally:
+                if progress is not None:
+                    progress.advance(progress_task)
         return self._filter(
             results,
             include_past=include_past,

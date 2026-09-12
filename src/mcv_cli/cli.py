@@ -22,6 +22,7 @@ from .errors import (
 )
 from .models import ArchiveFormat, AuthProvider, Material
 from .output import ShellIdList, emit, emit_error, machine_error_payload
+from .progress import ProgressReporter
 from .refs import ResourceRef, ResourceType, ref_for_resource
 from .services import (
     AnnouncementService,
@@ -120,6 +121,12 @@ def main(
         "--envelope",
         help="Wrap machine output in the versioned schema envelope.",
     ),
+    quiet: bool = typer.Option(
+        False,
+        "--quiet",
+        "-q",
+        help="Suppress progress and status output; keep the command result.",
+    ),
     version: bool = typer.Option(False, "--version", is_eager=True, help="Show the version."),
 ) -> None:
     ctx.ensure_object(dict)
@@ -132,6 +139,7 @@ def main(
     ctx.obj["json"] = json_output
     ctx.obj["jsonl"] = jsonl_output
     ctx.obj["envelope"] = envelope
+    ctx.obj["quiet"] = quiet
     if version:
         typer.echo(__version__)
         raise typer.Exit()
@@ -152,17 +160,37 @@ def _envelope_mode(ctx: typer.Context) -> bool:
     return bool(ctx.ensure_object(dict).get("envelope", False))
 
 
+def _quiet_mode(ctx: typer.Context) -> bool:
+    return bool(ctx.ensure_object(dict).get("quiet", False))
+
+
+def _progress(ctx: typer.Context) -> ProgressReporter | None:
+    return ctx.ensure_object(dict).get("progress")
+
+
+def _progress_enabled(ctx: typer.Context) -> bool:
+    return not _quiet_mode(ctx) and not _json_mode(ctx) and not _jsonl_mode(ctx)
+
+
 def _run(ctx: typer.Context, action: Callable[[], Any]) -> None:
-    try:
-        result = action()
-    except MCVError as error:
+    result: Any = None
+    caught_error: MCVError | None = None
+    with ProgressReporter(_progress_enabled(ctx)) as progress:
+        ctx.ensure_object(dict)["progress"] = progress
+        try:
+            result = action()
+        except MCVError as error:
+            caught_error = error
+        finally:
+            ctx.ensure_object(dict).pop("progress", None)
+    if caught_error is not None:
         emit_error(
-            error,
+            caught_error,
             json_mode=_json_mode(ctx),
             jsonl_mode=_jsonl_mode(ctx),
             envelope=_envelope_mode(ctx),
         )
-        raise typer.Exit(error.exit_code) from error
+        raise typer.Exit(caught_error.exit_code) from caught_error
     if result is not None:
         emit(
             result,
@@ -290,7 +318,11 @@ def courses_list(
             raise UsageError("Choose either --semester or --all, not both.")
         manager = _make_manager()
         with MCVClient(manager) as client:
-            return client.list_courses(yearsem=semester, all_semesters=all_semesters)
+            return client.list_courses(
+                yearsem=semester,
+                all_semesters=all_semesters,
+                progress=_progress(ctx),
+            )
 
     _run(ctx, action)
 
@@ -522,6 +554,7 @@ def courses_materials_archive(
                 output,
                 archive_format=archive_format,
                 force=force,
+                progress=_progress(ctx),
             )
 
     _run(ctx, action)
@@ -811,6 +844,7 @@ def assignments_list(
             assignments = AssignmentService(client).list_across_courses(
                 pending=pending,
                 due=due,
+                progress=_progress(ctx),
             )
             if refs:
                 return _resource_refs(assignments)
@@ -831,7 +865,9 @@ def announcements_list(
     def action() -> list[Any]:
         manager = _make_manager()
         with MCVClient(manager) as client:
-            announcements = AnnouncementService(client).list_across_courses()
+            announcements = AnnouncementService(client).list_across_courses(
+                progress=_progress(ctx),
+            )
             if refs:
                 return _resource_refs(announcements)
             return announcements
@@ -856,7 +892,10 @@ def meetings_list(
     def action() -> list[Any]:
         manager = _make_manager()
         with MCVClient(manager) as client:
-            meetings = MeetingService(client).list_across_courses(include_past=include_past)
+            meetings = MeetingService(client).list_across_courses(
+                include_past=include_past,
+                progress=_progress(ctx),
+            )
             if refs:
                 return _resource_refs(meetings)
             return meetings
@@ -877,7 +916,19 @@ def get_resources(
         parsed_references = [_parse_resource_ref(reference) for reference in references]
         manager = _make_manager()
         with MCVClient(manager) as client:
-            resources = [_get_one_resource(client, reference) for reference in parsed_references]
+            progress = _progress(ctx)
+            progress_task = (
+                progress.add_task("Fetching resources", total=len(parsed_references))
+                if progress is not None
+                else None
+            )
+            resources: list[Any] = []
+            for reference in parsed_references:
+                try:
+                    resources.append(_get_one_resource(client, reference))
+                finally:
+                    if progress is not None:
+                        progress.advance(progress_task)
             return resources[0] if len(resources) == 1 else resources
 
     if not _jsonl_mode(ctx):
@@ -896,38 +947,14 @@ def get_resources(
     valid_references = [
         reference for reference in parsed_references if isinstance(reference, ResourceRef)
     ]
-    try:
-        client_context = MCVClient(manager) if valid_references else None
-    except MCVError as error:
-        client_context = None
-        for _parsed_reference in valid_references:
-            failures.append(error)
-            print(
-                json.dumps(
-                    machine_error_payload(error, envelope=_envelope_mode(ctx)),
-                    ensure_ascii=False,
-                    separators=(",", ":"),
-                )
-            )
-    if client_context is not None:
-        with client_context as client:
+    with ProgressReporter(_progress_enabled(ctx)) as progress:
+        progress_task = progress.add_task("Fetching resources", total=len(parsed_references))
+        try:
+            client_context = MCVClient(manager) if valid_references else None
+        except MCVError as error:
+            client_context = None
             for parsed_reference in parsed_references:
-                if isinstance(parsed_reference, MCVError):
-                    failures.append(parsed_reference)
-                    print(
-                        json.dumps(
-                            machine_error_payload(
-                                parsed_reference,
-                                envelope=_envelope_mode(ctx),
-                            ),
-                            ensure_ascii=False,
-                            separators=(",", ":"),
-                        )
-                    )
-                    continue
-                try:
-                    resource = _get_one_resource(client, parsed_reference)
-                except MCVError as error:
+                if isinstance(parsed_reference, ResourceRef):
                     failures.append(error)
                     print(
                         json.dumps(
@@ -936,27 +963,60 @@ def get_resources(
                             separators=(",", ":"),
                         )
                     )
-                else:
-                    emit(
-                        resource,
-                        json_mode=False,
-                        jsonl_mode=True,
-                        envelope=_envelope_mode(ctx),
-                    )
-    else:
-        for parsed_reference in parsed_references:
-            if isinstance(parsed_reference, MCVError):
-                failures.append(parsed_reference)
-                print(
-                    json.dumps(
-                        machine_error_payload(
-                            parsed_reference,
-                            envelope=_envelope_mode(ctx),
-                        ),
-                        ensure_ascii=False,
-                        separators=(",", ":"),
-                    )
-                )
+        if client_context is not None:
+            with client_context as client:
+                for parsed_reference in parsed_references:
+                    try:
+                        if isinstance(parsed_reference, MCVError):
+                            failures.append(parsed_reference)
+                            print(
+                                json.dumps(
+                                    machine_error_payload(
+                                        parsed_reference,
+                                        envelope=_envelope_mode(ctx),
+                                    ),
+                                    ensure_ascii=False,
+                                    separators=(",", ":"),
+                                )
+                            )
+                            continue
+                        try:
+                            resource = _get_one_resource(client, parsed_reference)
+                        except MCVError as error:
+                            failures.append(error)
+                            print(
+                                json.dumps(
+                                    machine_error_payload(error, envelope=_envelope_mode(ctx)),
+                                    ensure_ascii=False,
+                                    separators=(",", ":"),
+                                )
+                            )
+                        else:
+                            emit(
+                                resource,
+                                json_mode=False,
+                                jsonl_mode=True,
+                                envelope=_envelope_mode(ctx),
+                            )
+                    finally:
+                        progress.advance(progress_task)
+        else:
+            for parsed_reference in parsed_references:
+                try:
+                    if isinstance(parsed_reference, MCVError):
+                        failures.append(parsed_reference)
+                        print(
+                            json.dumps(
+                                machine_error_payload(
+                                    parsed_reference,
+                                    envelope=_envelope_mode(ctx),
+                                ),
+                                ensure_ascii=False,
+                                separators=(",", ":"),
+                            )
+                        )
+                finally:
+                    progress.advance(progress_task)
     if failures:
         raise typer.Exit(max(error.exit_code for error in failures))
 

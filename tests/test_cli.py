@@ -20,6 +20,7 @@ def test_help_lists_command_groups() -> None:
     assert "meetings" in result.stdout
     assert "--jsonl" in result.stdout
     assert "--envelope" in result.stdout
+    assert "--quiet" in result.stdout
 
 
 def test_version() -> None:
