@@ -10,3 +10,7 @@ dist/
 # Local OAuth and encrypted storage artifacts
 .env
 credentials.enc
+
+# Authenticated live calibration output is sanitized but account-specific.
+tests/live/*.local.json
+mcv-e2e-fixtures.json
