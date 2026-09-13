@@ -839,6 +839,8 @@ def _feature_map(
             if string_values:
                 values[feature] = raw.strip() or None
             else:
+                if not raw.strip():
+                    continue
                 values[feature] = _parse_bool(raw, env_name)
     return {
         key: value
