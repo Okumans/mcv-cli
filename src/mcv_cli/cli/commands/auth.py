@@ -17,32 +17,16 @@ def register(app: typer.Typer) -> None:
 
 def login(
     ctx: typer.Context,
-    provider: AuthProvider | None = typer.Option(None, "--type", case_sensitive=False),
-    chula: bool = typer.Option(False, "--chula", help="Use the Chula account login page."),
-    platform: bool = typer.Option(
-        False, "--platform", help="Use a MyCourseVille platform account login page."
+    provider: AuthProvider = typer.Option(
+        ..., "--type", case_sensitive=False, help="Account provider to use for login."
     ),
-    google: bool = typer.Option(False, "--google", help="Use the Google login page."),
     username: str | None = typer.Option(None, "--username", "-u"),
     email: bool = typer.Option(
         False, "--email", help="Treat the platform login value as an email address."
     ),
 ) -> None:
     def action() -> dict[str, Any]:
-        aliases = sum((chula, platform, google))
-        if aliases > 1:
-            raise UsageError("Choose only one of --chula, --platform, or --google.")
-        if aliases and provider is not None:
-            raise UsageError("Do not combine --type with a login shortcut.")
-        selected = (
-            AuthProvider.CHULA
-            if chula
-            else AuthProvider.PLATFORM
-            if platform
-            else AuthProvider.GOOGLE
-            if google
-            else provider or AuthProvider.PLATFORM
-        )
+        selected = provider
         if selected is AuthProvider.GOOGLE:
             raise UsageError(
                 "Google login is unavailable without an approved MyCourseVille OAuth client. "

@@ -26,23 +26,20 @@ Login is interactive and stores the authenticated session cookies, not the
 raw password:
 
 ```bash
-uv run mcv auth login --chula
-# equivalent:
 uv run mcv auth login --type chula
 ```
 
 Other supported credential login forms are:
 
 ```bash
-uv run mcv auth login --type platform
-uv run mcv auth login --platform --email
+uv run mcv auth login --type platform --email
 ```
 
-The Google shortcut is intentionally rejected in this MVP because it requires
-a browser OAuth flow and an approved client registration:
+Google is intentionally rejected in this MVP because it requires a browser
+OAuth flow and an approved client registration:
 
 ```bash
-uv run mcv auth login --google
+uv run mcv auth login --type google
 ```
 
 Session commands:

@@ -31,10 +31,9 @@ Before querying content, check the session:
  mcv auth status
 ```
 
-For an interactive Chula login, use either form:
+For an interactive Chula login:
 
 ```bash
- mcv auth login --chula
  mcv auth login --type chula
 ```
 
@@ -42,7 +41,7 @@ Platform-account login is also supported:
 
 ```bash
  mcv auth login --type platform
- mcv auth login --platform --email
+ mcv auth login --type platform --email
 ```
 
 The password is prompted for and is not accepted as a command-line argument.

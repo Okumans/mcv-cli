@@ -36,18 +36,18 @@ def test_version() -> None:
     assert result.stdout.strip() == "0.2.0"
 
 
-def test_login_aliases_cannot_be_combined() -> None:
-    result = runner.invoke(app, ["auth", "login", "--chula", "--platform"])
+def test_login_requires_the_type_option() -> None:
+    result = runner.invoke(app, ["auth", "login"])
 
     assert result.exit_code == 2
-    assert "Choose only one" in result.output
+    assert "Missing option '--type'" in result.output
 
 
-def test_type_and_alias_cannot_be_combined() -> None:
-    result = runner.invoke(app, ["auth", "login", "--type", "google", "--chula"])
+def test_login_shortcuts_are_removed() -> None:
+    result = runner.invoke(app, ["auth", "login", "--chula"])
 
     assert result.exit_code == 2
-    assert "Do not combine" in result.output
+    assert "No such option" in result.output
 
 
 def test_legacy_auth_provider_value_is_rejected() -> None:
@@ -58,7 +58,7 @@ def test_legacy_auth_provider_value_is_rejected() -> None:
 
 
 def test_google_login_explains_missing_oauth_registration() -> None:
-    result = runner.invoke(app, ["auth", "login", "--google"])
+    result = runner.invoke(app, ["auth", "login", "--type", "google"])
 
     assert result.exit_code == 2
     assert "approved MyCourseVille OAuth client" in result.output

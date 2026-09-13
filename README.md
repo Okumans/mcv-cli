@@ -1,31 +1,44 @@
 # mcv
 
-`mcv` is a small command-line client for reading MyCourseVille course content
-on Unix systems.
+`mcv` is a small, unofficial command-line client for reading MyCourseVille
+course content from Unix systems.
 
-This is a demo-phase interface. Breaking CLI and machine-output changes are
-allowed while the course-scoped API settles.
+It is designed around one simple workflow:
 
-The MVP uses the session-cookie login flow documented by
-[CEDT-Chula/mcv-api-python-unofficial](https://github.com/CEDT-Chula/mcv-api-python-unofficial).
-It does not require a MyCourseVille OAuth `client_id` or `client_secret`.
+```text
+discover course content → get a stable reference → retrieve the resource
+```
 
-## Development setup
+The client is read-only against MyCourseVille. It can download files and create
+local archives, but it does not submit, upload, edit, delete, join meetings,
+control attendance, or mutate CourseVille data. The upstream web behavior is
+reverse-engineered and may change without notice.
 
-This project uses `uv`:
+## Upstream coupling
+
+This project relies heavily on MyCourseVille's current authenticated HTML and
+AJAX structure. A purely visual CSS change may not affect it, but changes to
+HTML elements, classes, data attributes, page routes, form fields, CSRF/session
+behavior, AJAX parameters, or response shapes can cause the CLI and Python API
+to stop working until the parsers or clients are updated.
+
+That coupling is intentional for this unofficial read-only client. When the
+site changes, check authentication first, then the affected route/parser and
+the authenticated smoke checks documented in [showcases.md](showcases.md).
+
+## Quick start
+
+The project requires Python 3.11 or newer and uses [`uv`](https://docs.astral.sh/uv/)
+for its environment and locked dependencies.
 
 ```bash
 uv sync
 uv run mcv --help
 ```
 
-The executable is `mcv`; the distribution package is named `mcv-cli`.
+The command is `mcv`; the Python distribution is `mcv-cli`.
 
-See [showcases.md](showcases.md) for the complete CLI/Python API showcase and
-the current evaluation checklist. The agent-facing usage skill is at
-[skills/mcv/SKILL.md](skills/mcv/SKILL.md).
-
-## Login
+## Authentication
 
 Log in with a Chula account:
 
@@ -33,206 +46,193 @@ Log in with a Chula account:
 uv run mcv auth login --type chula
 ```
 
-Or use the shortcut:
-
-```bash
-uv run mcv auth login --chula
-```
-
-The command prompts for the username and password. The password is sent only
-to the MyCourseVille login form and is never stored. The login flow first
-initializes a MyCourseVille web session, obtains the current CSRF token, posts
-the credentials to the current form action, follows same-site redirects, and
-verifies the resulting session through the authenticated web homepage.
-
 For a MyCourseVille platform account:
 
 ```bash
-uv run mcv auth login --type platform
-uv run mcv auth login --platform --email
+uv run mcv auth login --type platform --email
 ```
 
-`--username` or `MCV_USERNAME` can provide the non-secret username without a
-prompt. The password is intentionally not accepted as a command-line option
-because it would be exposed in shell history and process listings.
+The login command prompts for the password. Passwords are not accepted as
+command-line arguments and are never stored. `--username` or `MCV_USERNAME`
+can provide the non-secret username without a prompt.
 
-Google login is not supported by this credential-based MVP. Google requires a
-browser OAuth flow; supporting it without an approved MyCourseVille OAuth
-client would require a separate browser/cookie-import design.
-
-Check or clear the stored session:
+Check or remove the stored session:
 
 ```bash
 uv run mcv auth status
 uv run mcv auth logout
 ```
 
-## Course-centric content commands
+Session cookies are stored in the OS keyring when available. If no keyring
+backend is available, `mcv` uses an AES-GCM encrypted local file; set
+`MCV_STORAGE_PASSPHRASE` for non-interactive use of that fallback. Treat the
+stored session as a bearer-like credential.
 
-The course-first commands accept either the internal CourseVille id (`cv_cid`)
-or the course number shown by `courses list`. They resolve courses in the
-current semester by default.
+This credential-based MVP does not implement Google login or require a
+MyCourseVille OAuth client. Browser OAuth and the public mobile API are outside
+the current authentication boundary.
+
+## Course-first CLI
+
+The primary command grammar is:
+
+```text
+mcv courses COURSE RESOURCE ACTION [ARGS] [OPTIONS]
+```
+
+`COURSE` may be a CourseVille id, course number, or exact current-semester
+course title. Use the global `--semester` option before the command when a
+different semester is needed.
 
 ```bash
+# Discover courses and inspect one course
 mcv courses list
-mcv --semester 2026/1 courses list
-mcv courses list --all
 mcv courses 2110575
-
-# Course video playlists
-mcv courses 2110575 playlists
+mcv --semester 2025/2 courses list
 
 # Materials and folders
 mcv courses 2110575 materials list
 mcv courses 2110575 materials folders
 mcv courses 2110575 materials list --folder "Week 1"
-mcv courses 2110575 materials show 12345 12346
-mcv courses 2110575 materials list --folder "Week 1" --refs
-mcv courses 2110575 materials archive "Week 1" \
-  --output ./week-1.zip
-mcv courses 2110575 materials archive "Week 1" \
-  --output ./week-1.tar
-mcv courses 2110575 materials archive "Week 1" \
-  --output ./week-1.tar.gz
-mcv courses 2110575 materials download 12345 --output ./lecture.pdf
+mcv courses 2110575 materials show 2160993
 
-# Read-only assignment and announcement views
+# Assignments and announcements
 mcv courses 2110575 assignments list
 mcv courses 2110575 assignments show 2160997
 mcv courses 2110575 assignments show --full 2160997
-mcv courses 2110575 assignments list --ids
-mcv courses 2110575 assignments list --refs
 mcv courses 2110575 announcements list
 mcv courses 2110575 announcements show 2177455
 
-# Other student-facing course pages
+# Meetings, schedule, and course pages
 mcv courses 2110575 meetings list
 mcv courses 2110575 meetings list --include-past
-mcv courses 2110575 meetings show 29632
 mcv courses 2110575 schedule list
+mcv courses 2110575 playlists
 mcv courses 2110575 about
 mcv courses 2110575 groups list
 mcv courses 2110575 portfolio
 mcv courses 2110575 web-resources list
 ```
 
-The supported grammar is `mcv courses COURSE RESOURCE ACTION [ARGS] [OPTIONS]`,
-similar to a Docker Compose command scope. The course may be a CourseVille id
-or course number. Command-specific options follow the action, for example
-`courses 2110575 materials list --folder "Week 1"` and
-`courses 2110575 materials archive "Week 1" --format tar`. Course-level
-collection pages are direct actions: use `courses 2110575 playlists`,
-`courses 2110575 about`, and `courses 2110575 portfolio`. Playlist results
-preserve nested folders and expose read-only video metadata such as titles,
-providers, ids, thumbnails, durations, watch percentages, and source URLs.
-They do not download or play videos.
+Course-level pages such as `playlists`, `about`, and `portfolio` are direct
+actions. Other collections generally use `list`, while identifier-bearing
+resources use `show`.
 
-`playlists` is a course-level collection even though it is a direct action: one
-course page may contain several named playlists. The API returns a
-`PlaylistCollection` with an `available` flag and a `playlists` list, and
-`mcv get mcv:playlist:CV_CID` returns that same wrapper. Human output flattens
-the wrapper into a readable playlist/video display; JSON retains the wrapper.
+Assignments, announcements, meeting metadata, and course pages are read-only.
+Assignment details expose the information visible to the student, including
+question-set and submission metadata when available; they do not answer or
+submit work. Meetings expose available links and recordings without opening or
+joining them.
 
-Assignment details use a compact human-readable question-set view by default.
-Use the assignment-specific `--full` option when you need worksheet ids,
-question types, instructions, grading metadata, and all assignment links. This
-only changes human-readable output; `--json` and `--jsonl` always return the
-complete structured assignment data.
+## References and shell pipelines
 
-Running `mcv courses COURSE` is shorthand for the course overview. It shows
-the resolved CourseVille id, course number, title, semester, section, and
-student role.
-
-`courses list` and all course-scoped commands default to the current semester
-selected by MyCourseVille. `--semester` is a global course-selection option,
-so put it before `courses`. Use `--all` to query every available semester:
+Use `--ids` only when the receiving command already has a course context. Use
+`--refs` when the result will be passed between commands or across courses:
 
 ```bash
-mcv --semester 2025/2 courses list
-mcv --semester 2025/2 courses 2110575
-mcv --semester 2025/2 courses 2110575 assignments list
-mcv --semester 2025/2 courses 2110575 materials list
+mcv courses 2110575 materials list --folder "Week 1" --ids
+mcv courses 2110575 materials list --folder "Week 1" --refs
 ```
 
-`--semester` and `--all` cannot be used together.
+Canonical references have a course-qualified form:
 
-`courses COURSE materials folders` shows folder ids and material counts. A folder can
-be selected by name or id. `materials archive` creates an archive using the
-downloadable files in that folder, refuses to overwrite an existing output
-unless `--force` is supplied, and reports materials that have no downloadable
-file. The archive operation uses temporary files and only replaces the
-destination after the archive is complete.
-
-The archive format is inferred from the output name first: `.zip` creates ZIP,
-`.tar` creates an uncompressed TAR, and `.tar.gz` (or `.tgz`) creates a gzip-
-compressed TAR. An unrecognized or missing extension defaults to ZIP. Use
-`--format zip`, `--format tar`, or `--format tar.gz` to override inference.
-
-For shell composition, `--ids` prints one material id per line. This makes it
-possible to pass a folder selection directly to the detail command, like a
-Docker id pipeline:
-
-```bash
-mcv courses 2110575 materials show \
-  $(mcv courses 2110575 materials list --folder "Week 1" --ids)
+```text
+mcv:<resource-type>:<cv_cid>:<item_id>
 ```
 
-`--refs` prints canonical course-qualified references in the form
-`mcv:<resource-type>:<cv_cid>:<item_id>`. These references are safe to use
-without separately carrying the course id:
+Course playlists use the special course-level form
+`mcv:playlist:<cv_cid>`. Resolve one or more references with `mcv get`:
 
 ```bash
-mcv courses 2110575 materials show \
-  $(mcv courses 2110575 materials list \
-    --folder "Week 1" --refs)
-
-mcv courses 2110575 assignments show mcv:assignment:86428:2160997
+mcv get mcv:assignment:86428:2160997
+mcv get mcv:material:86428:2160993
+mcv get \
+  mcv:assignment:86428:2160997 \
+  mcv:material:86428:2160993
 ```
 
-## Local store, shell completion, and local search
-
-Install completion for the current shell:
+The same lookup accepts supported official MyCourseVille URLs:
 
 ```bash
-uv run mcv --install-completion
+# Assignment worksheet
+mcv get "https://www.mycourseville.com/?q=courseville/worksheet/78748/1889560"
+
+# Material content node
+mcv get "https://www.mycourseville.com/?q=courseville/course/123/view_content_node_9_material"
+
+# Course playlist page
+mcv get "https://www.mycourseville.com/?q=courseville/course/78748/playlist"
 ```
 
-Completion is deliberately cache-only. It never logs in, makes a network
-request, or blocks the shell while MyCourseVille is unavailable. Populate or
-refresh it after login:
+`mcv get` also accepts supported HTTPS URLs copied from MyCourseVille. URLs are
+restricted to the official host and normalized to the same typed reference; an
+arbitrary URL is never fetched.
+
+For shell composition, keep one reference per line and use `xargs`:
 
 ```bash
-mcv courses list                         # also indexes returned course refs
-mcv cache refresh                        # current-semester courses
-mcv cache refresh 2110575 2110521        # selected courses
-mcv cache refresh --all-semesters        # every semester exposed by the site
+set -o pipefail
+mcv assignments list --pending --refs | xargs -r -n 20 mcv get
+```
+
+## Machine-readable output
+
+Human output uses resource-specific tables and detail views. Put global output
+options before the command when producing data for another program:
+
+```bash
+mcv --json courses 2110575 assignments list
+mcv --jsonl assignments list --pending
+mcv --jsonl get \
+  mcv:assignment:86428:2160997 \
+  mcv:material:86428:2160993
+```
+
+The output modes are:
+
+- `--json` emits one JSON document, using an object or array as appropriate.
+- `--jsonl` emits one JSON value per line for streaming and batch processing.
+- `--envelope` adds the explicit `schema_version` and `ok` protocol fields.
+- `--quiet`/`-q` suppresses progress and status output.
+
+JSONL `get` is an intentional batch protocol: successes and failures are
+written in input order and the process exits nonzero if any lookup fails. Use
+`--envelope` when consumers need an unambiguous success/error discriminator.
+
+## Local cache and search
+
+The local store is one SQLite file with separate logical namespaces:
+
+```text
+SQLite local store
+├── completion index
+└── resource snapshots + FTS search index
+```
+
+Completion is cache-only and never blocks on authentication or the network.
+Normal successful API requests update the local projections on a best-effort
+basis. The search cache stores only allow-listed projections of searchable
+materials, assignments, announcements, meetings, and playlist pages. It does
+not store cookies, passwords, signed URLs, submission files, feedback, or
+meeting credentials.
+
+Manage the local store explicitly:
+
+```bash
 mcv cache status
-mcv cache clear completion             # clear completion metadata only
-mcv cache clear search                 # clear resource snapshots/search only
-mcv cache clear all                    # clear the complete local store
+mcv cache refresh
+mcv cache refresh 2110575 2110521
+mcv cache refresh --all-semesters
+mcv cache clear completion
+mcv cache clear search
+mcv cache clear all
 ```
 
-The cache is one SQLite file with separate logical namespaces. The completion
-index stores course numbers, folder names, resource titles, canonical refs,
-semester values, and grouping ids. The resource/search cache stores only
-allow-listed snapshots and derived FTS documents for searchable resources. It
-does not store cookies, passwords, signed URLs, submission material, feedback,
-or meeting credentials. Normal API requests update these local projections on
-a best-effort basis; they are not a replacement for the upstream response.
+The cache clear targets are independent: clearing `completion` preserves
+search, clearing `search` preserves completion, and `all` clears both. A bare
+`mcv cache clear` is intentionally invalid.
 
-Clear a namespace explicitly: `mcv cache clear completion` preserves local
-search, `mcv cache clear search` preserves shell completion, and `mcv cache
-clear all` removes both. Bare `mcv cache clear` is intentionally a usage
-error. The store is isolated by the active profile and login provider under
-the platform cache directory. A missing or corrupt completion index simply
-produces no dynamic candidates.
-
-The cache refresh accepts either no course arguments or multiple specific
-course references. `--all-semesters` cannot be combined with specific course
-arguments. Refresh reports per-course failures and leaves previously indexed
-completion metadata intact for a resource scope that could not be fetched.
-
-Search is local by default and never performs a hidden network request:
+Search is local by default and never performs hidden network requests:
 
 ```bash
 mcv search "docker"
@@ -243,233 +243,56 @@ mcv --json search "docker"
 mcv --jsonl search "docker"
 ```
 
-Search returns summaries with canonical refs for materials, assignments,
-announcements, meetings, and playlist pages. Use `--refresh` to fetch the
-relevant course data first and then run the same local search. Human output
-highlights the matched query terms in result titles and snippets; JSON output
-keeps the text unstyled for machine consumers.
-
-Long-running multi-request commands show a compact progress display on stderr:
+Use `--refresh` when the relevant course data should be fetched before the
+same local search runs:
 
 ```bash
-mcv courses list --all
-mcv assignments list
-mcv cache refresh
+mcv search "docker" --refresh
+mcv courses 2110575 search "docker" --refresh
 ```
 
-Use `--quiet`/`-q` to suppress progress while preserving the intended result.
-Progress is automatically disabled for `--json` and `--jsonl`, so machine
-output remains safe to pipe:
+Search results are compact summaries with canonical references. Human output
+highlights matched text in titles and snippets, including the actual title
+word rescued by typo-tolerant matching. Pass a result reference to `mcv get`
+when the full resource is needed.
+
+## Downloads and archives
+
+Material files can be downloaded to a local path:
 
 ```bash
-mcv --quiet --json assignments list | jq '.[] | .ref'
+mcv courses 2110575 materials download 2160993 \
+  --output ./lecture.pdf
 ```
 
-Use `--json` with `--select`/`--fields` when a structured projection is more
-useful than line-oriented ids:
+Archive a material folder locally:
 
 ```bash
-mcv --json courses 2110575 materials list \
-  --folder "Week 1" --select cv_cid,itemid
+mcv courses 2110575 materials archive "Week 1" \
+  --output ./week-1.zip
 ```
 
-`courses COURSE materials show` accepts one or more material ids or qualified
-material references. With `--json --ids`, the producer emits the raw id array
-instead of shell-oriented lines.
+The archive format is inferred from the output extension. `.zip`, `.tar`,
+`.tar.gz`, and `.tgz` are supported; an unrecognized or missing extension
+defaults to ZIP. Use `--format` to select the format explicitly. Existing
+files are not overwritten unless `--force` is supplied.
 
-Use `--jsonl` for any list/detail command when downstream tools expect one
-JSON value per line:
+## Python API
 
-```bash
-mcv --jsonl courses 2110575 assignments list | jq -s 'map(.itemid)'
-```
-
-By default, `--json` prints the actual JSON value and `--jsonl` prints one
-actual value per line. This keeps the common Unix pipelines direct: use
-`.[]` for a JSON list and `.field` for a JSONL record. If a versioned protocol
-envelope is useful, opt into it explicitly:
-
-```bash
-mcv --json --envelope courses 2110575 assignments list
-mcv --jsonl --envelope courses 2110575 assignments list
-```
-
-The envelope has the shape `{"schema_version": 1, "ok": true, "data": ...}`
-(or one such object per JSONL line). Existing bare v1 fields are not renamed
-or removed; new fields may be added. Machine errors are flat JSON by default
-and use `{"schema_version": 1, "ok": false, "error": ...}` only with
-`--envelope`.
-
-Without `--json` or `--jsonl`, each resource uses a human-oriented display:
-lists are tables, detail results are labeled summaries, meetings include their
-join link and recordings, and download/archive results use short completion
-messages. Human mode does not fall back to printing resource objects as JSON.
-
-Assignment and announcement detail commands are read-only. Meeting detail
-lists provider information and available recordings; it does not open or join
-the meeting, so it cannot mark attendance as a side effect. `portfolio` is a
-read-only summary of the currently exposed points/rank information.
-
-Add `--json` before the command for script-friendly output:
-
-```bash
-mcv --json courses list
-mcv --json auth status
-```
-
-## Cross-course resource commands
-
-Use these commands when the question is about a resource across the current
-semester rather than one course:
-
-```bash
-mcv assignments list
-mcv assignments list --pending
-mcv assignments list --due
-mcv assignments list --pending --refs
-
-mcv announcements list
-mcv announcements list --refs
-
-mcv meetings list
-mcv meetings list --include-past
-mcv meetings list --refs
-```
-
-Cross-course commands attach `course_no`, `cv_cid`, and the canonical `ref` to
-machine-readable addressable resources. Raw `--ids` is intentionally not
-available because an id without its course namespace is ambiguous.
-
-Meeting lists exclude meetings whose scheduled time has passed by default.
-Use `--include-past` to include them. Meeting records expose `url`, which
-prefers the direct `join_url` and falls back to the MyCourseVille
-`detail_url`.
-
-Course-scoped schedule and meeting lists return typed collections in JSON:
-`ScheduleCollection.events` and `MeetingCollection.meetings`. Their
-`available` field distinguishes a missing optional page section from an
-available section with zero rows. An unavailable collection is a successful
-empty result for that course, while an unrelated or malformed upstream page
-still returns a parse error. Human output reports the unavailable state
-without exposing the wrapper mechanics.
-
-## Universal resource lookup
-
-Addressable resources use the generic reference format:
-
-```text
-mcv:<resource-type>:<cv_cid>:<resource-id>
-```
-
-Currently supported resource types are `material`, `assignment`,
-`announcement`, and `meeting`. Course-level playlists use the special form
-`mcv:playlist:<cv_cid>` (there is no playlist item id). Resolve one or more
-mixed references with:
-
-```bash
-mcv get mcv:assignment:86428:2160997
-mcv get "https://www.mycourseville.com/?q=courseville/worksheet/78748/1889560"
-mcv get mcv:playlist:78748
-mcv get \
-  "https://www.mycourseville.com/?q=courseville/course/78748/playlist"
-mcv get \
-  mcv:assignment:86428:2160997 \
-  mcv:material:86428:2160993
-
-set -o pipefail
-mcv assignments list --pending --refs | xargs -r -n 20 mcv get
-```
-
-`mcv get` also accepts supported HTTPS URLs copied directly from MyCourseVille.
-The URL is validated against the official host and normalized to the same
-canonical resource reference before fetching; it never fetches an arbitrary
-URL. Supported URL forms include course playlist pages, assignment worksheets,
-material content nodes, announcement content nodes, and meeting detail pages.
-
-A domain object is addressable only when it represents a stable, independently
-retrievable CourseVille target and its reference lets `mcv get` deterministically
-reconstruct the corresponding operation. A playlist collection is addressable
-because its course page is such a target; schedule rows, course singleton views,
-and web-resource list entries are not addressable merely because they have a
-model or an upstream id.
-
-Use `--jsonl` for batch lookup when individual failures should be represented
-alongside successful records:
-
-```bash
-mcv --jsonl get \
-  mcv:assignment:86428:2160997 \
-  mcv:material:86428:2160993
-```
-
-`mcv get --jsonl` writes success and error records to stdout in input order and
-returns nonzero if any lookup fails. This is an intentional batch protocol:
-bare records are either a resource or an error object, while
-`--envelope` makes the discriminator explicit with `ok: true` or `ok: false`.
-Other machine-mode errors are written to stderr.
-
-Assignment detail output keeps the worksheet detail page separate from an
-optional submission page. Rich-text instruction links are normalized to
-absolute URLs, and file-based assignments expose submitted files as the
-`submission_files` list when MyCourseVille provides them.
-Question-set work modes are exposed separately as `question_set_submission`
-with the visible action/title, worksheet status, optional link, submission
-timestamp, and the extracted questions. Each question includes its prompt,
-type, answer, choices, points, and any answer key/feedback visible to the
-student. This is read-only metadata for now; it is not a question-set answer
-or submission API.
-
-In human-readable mode, `get` displays every referenced resource with its
-resource-specific detail format, separated by a blank line. Use the list
-commands when a compact table is desired:
-
-```bash
-mcv get \
-  mcv:assignment:86428:2160997 \
-  mcv:material:86428:2160993
-
-mcv courses 2110575 assignments list
-```
-
-Machine output keeps the convenience/batch distinction: `--json` returns one
-JSON value (an array for multiple references), and `--jsonl` returns one
-resource per line.
-
-## Python API and package boundaries
-
-The reusable client is `mcv_cli.api.MCVAPI`. Resource models, parsers,
-endpoints, and transport live under `mcv_cli.api`; it does not import Typer,
-Rich, CLI options, completion, cache, or terminal progress. Human rendering
-and JSON serialization live under `mcv_cli.presentation`, command wiring under
-`mcv_cli.cli`, and authentication, storage, cache, completion, and progress
-under `mcv_cli.runtime`.
+The reusable client is `mcv_cli.api.MCVAPI`. It is independent of Typer, Rich,
+CLI options, terminal progress, and shell completion.
 
 ```python
 from mcv_cli.api import MCVAPI
 from mcv_cli.runtime.auth import AuthManager
+from mcv_cli.runtime.cache import CacheStore
 from mcv_cli.runtime.config import Settings
 
 manager = AuthManager(settings=Settings())
-with MCVAPI(manager) as api:
-    course = api.courses.resolve("2110575")
-    playlists = api.playlists.list(course.cv_cid)
-    schedule = api.schedule.list(course.cv_cid)
-    meetings = api.meetings.list(course.cv_cid)
-    materials = api.materials.list(course.cv_cid)
-    assignment = api.get("mcv:assignment:86428:2160997")
-    other_assignments = api.get_many(
-        ["mcv:assignment:86428:2160997", "mcv:assignment:86428:2160998"]
-    )
-```
-
-Search is an explicit local service. Inject a store when the Python caller
-wants automatic cache projections and search:
-
-```python
-from mcv_cli.runtime.cache import CacheStore
-
 store = CacheStore(profile_name="default", provider="chula")
+
 with MCVAPI(manager, cache_store=store) as api:
+    course = api.courses.resolve("2110575")
     results = api.search.search(
         "docker",
         cv_cid=course.cv_cid,
@@ -479,97 +302,74 @@ with MCVAPI(manager, cache_store=store) as api:
     resource = api.get(results[0].ref) if results else None
 ```
 
-`api.search.search()` never performs network I/O. Without an injected local
-store it raises `SearchUnavailableError`; refresh policy belongs to the CLI
-or another application layer. Each `SearchResult` is a summary whose `ref`
-can be passed directly to `api.get()`.
+The public API also provides resource clients such as `api.materials`,
+`api.assignments`, `api.meetings`, and `api.playlists`, cross-course services
+under `api.aggregates`, and `api.get_many()` for ordered multi-reference
+retrieval.
 
-`playlists`, `schedule`, and `meetings` are typed course collections. A
-collection with `available=False` means that MyCourseVille omitted that
-optional feature for the course; `available=True` with an empty child list
-means the feature exists but currently has no entries.
+`api.search.search()` never performs network I/O. It requires an injected local
+store and returns `SearchResult` summaries whose `ref` can be passed directly
+to `api.get()`. Addressable domain models expose typed, non-serialized
+`resource_type` and `ref` properties.
 
-Cross-course queries are exposed by `api.aggregates`:
-
-```python
-with MCVAPI(manager) as api:
-    pending = api.aggregates.assignments.list(pending=True)
-    announcements = api.aggregates.announcements.list()
-    meetings = api.aggregates.meetings.list()
-```
-
-Addressable models (`Material`, `Assignment`, `Announcement`, `OnlineMeeting`,
-and `PlaylistCollection`) expose non-serialized `resource_type` and `ref`
-properties. Their `ref` is a typed `ResourceRef`, so the same identity used by
-CLI JSON is available to Python callers without parsing output.
-
-`api.get()` accepts either a `ResourceRef` or a canonical reference string,
-including a supported MyCourseVille HTTPS URL. `api.get_many()` accepts an
-iterable of those values, preserves input order, and stops at the first error.
-
-The public API uses `MCVError` as the canonical name for its exception
-hierarchy; `APIError` remains a compatibility alias. Callers never need to
-parse exception text. Common categories include
+The canonical public exception name is `MCVError`. Common subclasses include
 `AuthenticationRequired`, `AuthenticationError`, `InvalidReferenceError`,
 `UnsupportedResourceError`, `NotFoundError`, `AmbiguousError`,
-`TransportError`, `ParseError`, `DownloadError`, and `SearchUnavailableError`.
-Every error exposes
-`code`, `message`, `resource`, `operation`, `retryable`, and optional `details`.
+`TransportError`, `ParseError`, `DownloadError`, and
+`SearchUnavailableError`. Exceptions expose structured fields such as
+`code`, `resource`, `operation`, `retryable`, and `details`; callers do not
+need to parse exception text.
 
-Raw CourseVille temporal fields remain unchanged for faithful upstream access.
-Typed convenience properties such as `Assignment.due_at`,
-`Announcement.posted_date`, `OnlineMeeting.scheduled_at_datetime`, and
-`ScheduleEvent.event_datetime` return standard `date`, `time`, or timezone-aware
-`datetime` values. Naive values are interpreted in `Asia/Bangkok`; aware values
-are converted to that timezone; unrecognized or sentinel values return
-`None`. The naming is intentional: raw upstream names remain available, typed
-conveniences use the natural domain name when it is free, and occupied or
-generic raw names receive an explicit suffix or domain prefix such as
-`scheduled_at_datetime` or `event_datetime`.
+Raw CourseVille temporal values remain available for faithful access. Typed
+convenience properties return standard `date`, `time`, or timezone-aware
+`datetime` values. Naive timestamps are interpreted as `Asia/Bangkok`; aware
+timestamps are converted there; malformed or sentinel values return `None`.
 
-## Credential storage
+## Architecture
 
-The MVP stores one `default` profile. It uses the Unix OS keyring when
-available. If no keyring backend is available, it stores an AES-GCM encrypted
-file at the platform-specific `mcv` config directory, normally
-`~/.config/mcv/credentials.enc`.
-
-The raw MyCourseVille password is never stored. The persisted values are the
-authenticated MyCourseVille session cookies, including the Laravel session,
-CSRF, and session-key cookies. These cookies are bearer-like credentials, so
-protect the keyring or the storage passphrase. Set `MCV_STORAGE_PASSPHRASE` for
-non-interactive use of the encrypted-file fallback.
-
-## API boundary
-
-The current implementation uses the reverse-engineered cookie-authenticated
-HTML/AJAX routes used by existing MyCourseVille clients:
+The project keeps the reusable API, terminal presentation, and runtime policy
+separate:
 
 ```text
-/?q=courseville
-/?q=courseville/ajax/cvhomepanel_get_filter
-/?q=courseville/ajax/course
-/?q=courseville/course/{cv_cid}/assignment
-/?q=courseville/course/{cv_cid}/playlist
-/?q=courseville/course/{cv_cid}/meeting
-/?q=courseville/course/{cv_cid}/schedule
-/?q=courseville/course/{cv_cid}/about
-/?q=courseville/course/{cv_cid}/group
-/?q=courseville/ajax/cvpagegroup_getgroupcardlisting
-/?q=courseville/course/{cv_cid}/portfolio-{student_id}
+CLI commands
+    │
+    ▼
+MCVAPI and resource clients
+    │
+    ▼
+parsers and Pydantic domain models
+    │
+    ├── presentation: human tables and machine serialization
+    └── runtime: auth, storage, cache, completion, and progress
 ```
 
-The `/api/v1/public/*` endpoints used by some mobile clients require an OAuth
-bearer access token; a web session cookie alone is not sufficient for them.
-These routes are not official public API documentation. Endpoint, form,
-cookie, HTML, and response-shape changes are converted into clear CLI errors
-rather than silently falling back to browser automation. The MVP intentionally
-contains no write, attendance, submission, upload, join, or notification
-operations.
+The API layer talks to the authenticated MyCourseVille HTML/AJAX surface and
+converts upstream changes into typed errors. The project does not use browser
+automation as a fallback and does not expose write operations.
 
-Assessment-platform pages (`/map`) are deferred because they are a separate
-interactive grading system. Course playlist pages are supported as read-only
-metadata trees, including nested folders and the video identifiers/URLs exposed
-by the page. Playback, stream resolution, download, and progress mutation are
-outside the API. Web resources are supported when they are present in the
-course page.
+## Reference projects and session context
+
+The following references were used during the project sessions. The first is
+especially important because it informed the authentication design:
+
+- [CEDT-Chula/mcv-api-python-unofficial](https://github.com/CEDT-Chula/mcv-api-python-unofficial) — primary prior art for the MyCourseVille session-cookie authentication flow and reverse-engineered Python interaction model.
+- [MyCourseVille](https://www.mycourseville.com/) — the upstream service whose authenticated pages and resource behavior this client reads.
+
+These references are interoperability and research sources, not runtime
+dependencies or claims of affiliation. This project is an independent,
+read-only client.
+
+## Development
+
+Install the locked development environment and run the same checks used by CI:
+
+```bash
+uv sync
+uv run pytest -q
+uv run ruff check .
+uv run pyright
+```
+
+For the complete command showcase, Python API contract, route coverage, data
+models, and evaluation notes, see [showcases.md](showcases.md). Agent-facing
+CLI guidance is in [skills/mcv/SKILL.md](skills/mcv/SKILL.md).
