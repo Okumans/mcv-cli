@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 import typer
@@ -24,6 +25,11 @@ def login(
     email: bool = typer.Option(
         False, "--email", help="Treat the platform login value as an email address."
     ),
+    password_stdin: bool = typer.Option(
+        False,
+        "--password-stdin",
+        help="Read the password from stdin without echoing it (for automation).",
+    ),
 ) -> None:
     def action() -> dict[str, Any]:
         selected = provider
@@ -42,7 +48,12 @@ def login(
                 "Chula username" if selected is AuthProvider.CHULA else "MyCourseVille username"
             )
         )
-        password_value = typer.prompt("MyCourseVille password", hide_input=True)
+        if password_stdin:
+            password_value = sys.stdin.readline().rstrip("\r\n")
+            if not password_value:
+                raise UsageError("--password-stdin received an empty password.")
+        else:
+            password_value = typer.prompt("MyCourseVille password", hide_input=True)
         profile = manager.login(
             selected,
             username=username_value,

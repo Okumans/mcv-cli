@@ -34,7 +34,7 @@ def test_version() -> None:
     result = runner.invoke(app, ["--version"])
 
     assert result.exit_code == 0
-    assert result.stdout.strip() == "0.2.0"
+    assert result.stdout.strip() == "0.3.0"
 
 
 def test_login_requires_the_type_option() -> None:
@@ -42,6 +42,39 @@ def test_login_requires_the_type_option() -> None:
 
     assert result.exit_code == 2
     assert "Missing option '--type'" in result.output
+
+
+def test_login_can_read_password_from_stdin(monkeypatch) -> None:
+    from mcv_cli.runtime.models import AuthProvider, StoredProfile
+
+    calls: list[tuple[AuthProvider, str, str]] = []
+
+    class FakeManager:
+        def login(self, provider, *, username, password, login_field="name"):
+            assert login_field == "name"
+            calls.append((provider, username, password))
+            return StoredProfile(provider=provider, cookies={"laravel_session": "test"})
+
+    monkeypatch.setattr("mcv_cli.cli.commands.auth.make_manager", lambda: FakeManager())
+
+    result = runner.invoke(
+        app,
+        [
+            "--json",
+            "auth",
+            "login",
+            "--type",
+            "chula",
+            "--username",
+            "student",
+            "--password-stdin",
+        ],
+        input="secret-password\n",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls == [(AuthProvider.CHULA, "student", "secret-password")]
+    assert "secret-password" not in result.output
 
 
 def test_login_shortcuts_are_removed() -> None:

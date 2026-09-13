@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcv-cli"
-version = "0.2.0"
+version = "0.3.0"
 description = "A small command-line client for MyCourseVille"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -27,8 +27,9 @@ mcv = "mcv_cli.cli.app:app"
 [dependency-groups]
 dev = [
     "pyright>=1.1,<2",
-    "pytest>=8,<9",
+    "pytest>=8,<10",
     "pytest-cov>=5,<8",
+    "pip-audit>=2.7,<3",
     "respx>=0.22,<1",
     "ruff>=0.8,<1",
 ]
@@ -54,3 +55,6 @@ typeCheckingMode = "basic"
 [tool.pytest.ini_options]
 addopts = "--strict-markers"
 testpaths = ["tests"]
+markers = [
+    "live: authenticated read-only MyCourseVille end-to-end checks (opt-in)",
+]
