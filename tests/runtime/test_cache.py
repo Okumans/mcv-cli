@@ -67,6 +67,7 @@ def test_cache_indexes_completion_values_without_resource_content(tmp_path: Path
     assert [item["value"] for item in cache.candidates("refs", cv_cid=86428)] == [
         "mcv:assignment:86428:2160997",
         "mcv:material:86428:2160993",
+        "mcv:playlist:86428",
     ]
     assert cache.candidates("folders", cv_cid=86428) == [
         {"value": "IoT Hardware", "help": "folder-1"}

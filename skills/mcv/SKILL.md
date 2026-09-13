@@ -82,6 +82,8 @@ Useful commands:
  mcv courses list --all
  mcv courses 2110575
 
+ mcv courses 2110575 playlist
+
  mcv courses 2110575 materials list
  mcv courses 2110575 materials folders
  mcv courses 2110575 materials list --folder "IoT Hardware"
@@ -147,11 +149,15 @@ mcv:<resource-type>:<cv_cid>:<resource-id>
 ```
 
 Current individually dereferenceable types are `material`, `assignment`,
-`announcement`, and `meeting`. Resolve one or more mixed refs with:
+`announcement`, and `meeting`. Course-level playlists use the special
+reference `mcv:playlist:<cv_cid>` without an item id. Resolve one or more mixed
+refs with:
 
 ```bash
  mcv get mcv:assignment:86428:2160997
  mcv get "https://www.mycourseville.com/?q=courseville/worksheet/78748/1889560"
+ mcv get mcv:playlist:78748
+ mcv get "https://www.mycourseville.com/?q=courseville/course/78748/playlist"
  mcv get \
   mcv:assignment:86428:2160997 \
   mcv:material:86428:2160993
@@ -160,8 +166,13 @@ Current individually dereferenceable types are `material`, `assignment`,
 `mcv get` accepts supported HTTPS URLs copied from MyCourseVille as well as
 canonical refs. The URL is restricted to the official host and normalized
 into the same typed ref before the client fetches the resource; it does not
-fetch arbitrary URLs. Supported URL forms are assignment worksheets, material
-content nodes, announcement content nodes, and meeting detail pages.
+fetch arbitrary URLs. Supported URL forms include course playlist pages,
+assignment worksheets, material content nodes, announcement content nodes, and
+meeting detail pages.
+
+Playlist output is read-only metadata. It preserves nested folders and can
+include video titles, providers, ids, thumbnails, durations, watch percentages,
+and source/embed URLs; it does not play, download, or mutate video progress.
 
 For shell composition, use one ref per line and `xargs`:
 
@@ -267,7 +278,7 @@ resource bodies, signed URLs, or meeting credentials.
 
 When changing the CLI itself, preserve the separation between domain models,
 the client/parser layer, and CLI rendering. Add a new human renderer to the
-`ResourceDisplay` registry in `src/mcv_cli/output.py` whenever a new resource
+`ResourceDisplay` registry in `src/mcv_cli/presentation/registry.py` whenever a new resource
 model is introduced. Keep machine serialization in `to_jsonable()` and do not
 make human output depend on JSON formatting.
 

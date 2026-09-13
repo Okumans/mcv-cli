@@ -3,6 +3,8 @@ from __future__ import annotations
 from typer.testing import CliRunner
 
 from mcv_cli.api.resources.assignments.models import Assignment
+from mcv_cli.api.resources.courses.models import Course
+from mcv_cli.api.resources.playlists.models import Playlist, PlaylistVideo
 from mcv_cli.cli.app import app
 
 runner = CliRunner()
@@ -123,6 +125,46 @@ def test_courses_accepts_course_before_resource_action() -> None:
     assert "announcement ids" in result.stdout
     assert "{course}" in result.stdout
     assert "{item_ids}" in result.stdout
+
+
+def test_courses_accepts_playlist_after_course(monkeypatch) -> None:
+    calls: list[int] = []
+
+    class FakeCourses:
+        def resolve(self, reference, *, semester=None):
+            assert reference == "2110575"
+            assert semester is None
+            return Course(cv_cid=78748, course_no="2110575", title="Computer Networks")
+
+    class FakePlaylists:
+        def get(self, cv_cid):
+            calls.append(cv_cid)
+            return Playlist(cv_cid=cv_cid, title="Course playlist")
+
+    class FakeAPI:
+        courses = FakeCourses()
+        playlists = FakePlaylists()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+    monkeypatch.setattr("mcv_cli.cli.commands.courses.make_api", lambda: FakeAPI())
+
+    result = runner.invoke(app, ["--quiet", "courses", "2110575", "playlist"])
+
+    assert result.exit_code == 0, result.output
+    assert calls == [78748]
+    assert "Course playlist" in result.stdout
+
+
+def test_course_playlist_help_uses_the_course_aware_route() -> None:
+    result = runner.invoke(app, ["courses", "2110575", "playlist", "--help"])
+
+    assert result.exit_code == 0
+    assert "{course}" in result.stdout
 
 
 def test_course_scoped_commands_expose_semester_selection() -> None:
@@ -270,6 +312,33 @@ def test_get_renders_multiple_human_resources_with_detail_displays(monkeypatch) 
     assert "Assignment 2160998" in result.stdout
     assert "Title" not in result.stdout
     assert "\n\n" in result.stdout
+
+
+def test_get_accepts_a_playlist_reference(monkeypatch) -> None:
+    received: list[tuple[str, int, int | None]] = []
+
+    class FakeAPI:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+        def get(self, reference):
+            received.append((reference.resource_type.value, reference.cv_cid, reference.item_id))
+            return Playlist(
+                cv_cid=reference.cv_cid,
+                title="Computer Networks playlist",
+                nodes=[PlaylistVideo(title="Introduction", provider="youtube", video_id="abc")],
+            )
+
+    monkeypatch.setattr("mcv_cli.cli.commands.get.make_api", lambda: FakeAPI())
+
+    result = runner.invoke(app, ["--quiet", "get", "mcv:playlist:78748"])
+
+    assert result.exit_code == 0, result.output
+    assert received == [("playlist", 78748, None)]
+    assert "Introduction" in result.stdout
 
 
 def test_get_accepts_an_actual_mycourseville_assignment_url(monkeypatch) -> None:

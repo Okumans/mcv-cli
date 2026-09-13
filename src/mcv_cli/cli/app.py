@@ -23,6 +23,7 @@ _COURSE_RESOURCE_ACTIONS = {
     "about": {"show": "about_show", "": "about_show"},
     "groups": {"list": "groups_list"},
     "portfolio": {"show": "portfolio_show", "": "portfolio_show"},
+    "playlist": {"": "playlist_show"},
     "web-resources": {"list": "web_resources_list"},
 }
 
@@ -47,7 +48,10 @@ class CourseAwareGroup(TyperGroup):
             action = resource_args[0] if resource_args else None
             target = _COURSE_RESOURCE_ACTIONS.get(resource, {}).get(action or "")
             direct_help = False
-            if target is None and resource in {"about", "portfolio"} and action in {"--help", "-h"}:
+            if target is None and resource in {"about", "portfolio", "playlist"} and action in {
+                "--help",
+                "-h",
+            }:
                 target = _COURSE_RESOURCE_ACTIONS[resource][""]
                 args = [target, course, action]
                 direct_help = True

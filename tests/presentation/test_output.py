@@ -25,6 +25,7 @@ from mcv_cli.api.resources.materials.models import (
     MaterialFolder,
 )
 from mcv_cli.api.resources.meetings.models import MeetingRecording, OnlineMeeting
+from mcv_cli.api.resources.playlists.models import Playlist, PlaylistFolder, PlaylistVideo
 from mcv_cli.api.resources.portfolio.models import Portfolio
 from mcv_cli.api.resources.schedule.models import ScheduleEvent
 from mcv_cli.api.resources.web_resources.models import WebResource
@@ -386,6 +387,14 @@ def test_assignment_machine_data_includes_question_set_submission() -> None:
         (Announcement(itemid=2177455, cv_cid=86428, title="Welcome"), "Welcome"),
         (MeetingRecording(recording_type="video", play_url="https://example.test/play"), "video"),
         (OnlineMeeting(itemid=29632, cv_cid=86428, name="Lecture"), "Lecture"),
+        (
+            Playlist(
+                cv_cid=86428,
+                title="Recorded lectures",
+                nodes=[PlaylistVideo(title="Introduction")],
+            ),
+            "Recorded lectures",
+        ),
         (ScheduleEvent(cv_cid=86428, date="2026-09-20", title="Exam"), "Exam"),
         (CourseAbout(cv_cid=86428, title="Operating Systems"), "Operating Systems"),
         (StudentGroup(grouping_id=1, grouping_name="Project", group_id=2, name="Team 2"), "Team 2"),
@@ -476,3 +485,67 @@ def test_collection_mode_remains_the_default_for_resource_lists() -> None:
     assert "Title" in rendered
     assert "Homework 1" in rendered
     assert "Homework 2" in rendered
+
+
+def test_playlist_detail_renders_nested_folders_and_video_metadata() -> None:
+    console = Console(record=True, width=200)
+
+    emit(
+        Playlist(
+            cv_cid=86428,
+            title="Recorded lectures",
+            description="Weekly videos",
+            nodes=[
+                PlaylistFolder(
+                    folder_id="week-1",
+                    name="Week 1",
+                    children=[
+                        PlaylistFolder(
+                            folder_id="part-a",
+                            name="Part A",
+                            children=[
+                                PlaylistVideo(
+                                    title="Introduction",
+                                    provider="youtube",
+                                    video_id="abc123",
+                                    duration="10:00",
+                                    watched_percent=50,
+                                    source_url="https://youtu.be/abc123",
+                                )
+                            ],
+                        )
+                    ],
+                )
+            ],
+        ),
+        json_mode=False,
+        console=console,
+    )
+
+    rendered = console.export_text()
+    assert "Recorded lectures" in rendered
+    assert "Week 1/" in rendered
+    assert "Part A/" in rendered
+    assert "Introduction" in rendered
+    assert "50% watched" in rendered
+    assert "https://youtu.be/abc123" in rendered
+
+
+def test_playlist_machine_data_includes_course_reference_and_nested_nodes() -> None:
+    data = to_jsonable(
+        Playlist(
+            cv_cid=86428,
+            title="Recorded lectures",
+            nodes=[
+                PlaylistFolder(
+                    folder_id="week-1",
+                    name="Week 1",
+                    children=[PlaylistVideo(title="Introduction", video_id="abc123")],
+                )
+            ],
+        )
+    )
+
+    assert data["resource_type"] == "playlist"
+    assert data["ref"] == "mcv:playlist:86428"
+    assert data["nodes"][0]["children"][0]["video_id"] == "abc123"

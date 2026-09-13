@@ -178,6 +178,11 @@ def resource_item_id_for_course(
         raise UnsupportedResourceError(reference.resource_type.value)
     if reference.cv_cid != cv_cid:
         raise ReferenceCourseMismatchError(value, cv_cid, reference.cv_cid)
+    if reference.item_id is None:
+        raise InvalidRefError(
+            f"{resource_type.value} references require an item id.",
+            reference=value,
+        )
     return reference.item_id
 
 

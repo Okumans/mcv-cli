@@ -44,6 +44,7 @@ def register(app: typer.Typer) -> None:
     app.command("about_show", hidden=True)(about_show)
     app.command("groups_list", hidden=True)(groups_list)
     app.command("portfolio_show", hidden=True)(portfolio_show)
+    app.command("playlist_show", hidden=True)(playlist_show)
     app.command("web_resources_list", hidden=True)(web_resources_list)
 
 
@@ -418,6 +419,16 @@ def portfolio_show(
             return api.portfolio.get(course_id(api, course, semester=selected_semester(ctx)))
 
     run(ctx, action)
+
+
+def playlist_show(
+    ctx: typer.Context, course: str = typer.Argument(..., autocompletion=complete_courses)
+) -> None:
+    def action() -> Any:
+        with make_api() as api:
+            return api.playlists.get(course_id(api, course, semester=selected_semester(ctx)))
+
+    run(ctx, action, display_mode="detail")
 
 
 def web_resources_list(

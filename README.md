@@ -79,6 +79,9 @@ mcv --semester 2026/1 courses list
 mcv courses list --all
 mcv courses 2110575
 
+# Course video playlist
+mcv courses 2110575 playlist
+
 # Materials and folders
 mcv courses 2110575 materials list
 mcv courses 2110575 materials folders
@@ -118,8 +121,11 @@ similar to a Docker Compose command scope. The course may be a CourseVille id
 or course number. Command-specific options follow the action, for example
 `courses 2110575 materials list --folder "Week 1"` and
 `courses 2110575 materials archive "Week 1" --format tar`. Singular course
-pages are direct actions: use `courses 2110575 about` and
-`courses 2110575 portfolio`.
+pages are direct actions: use `courses 2110575 playlist`,
+`courses 2110575 about`, and `courses 2110575 portfolio`. Playlist results
+preserve nested folders and expose read-only video metadata such as titles,
+providers, ids, thumbnails, durations, watch percentages, and source URLs.
+They do not download or play videos.
 
 Assignment details use a compact human-readable question-set view by default.
 Use the assignment-specific `--full` option when you need worksheet ids,
@@ -314,11 +320,16 @@ mcv:<resource-type>:<cv_cid>:<resource-id>
 ```
 
 Currently supported resource types are `material`, `assignment`,
-`announcement`, and `meeting`. Resolve one or more mixed references with:
+`announcement`, and `meeting`. Course-level playlists use the special form
+`mcv:playlist:<cv_cid>` (there is no playlist item id). Resolve one or more
+mixed references with:
 
 ```bash
 mcv get mcv:assignment:86428:2160997
 mcv get "https://www.mycourseville.com/?q=courseville/worksheet/78748/1889560"
+mcv get mcv:playlist:78748
+mcv get \
+  "https://www.mycourseville.com/?q=courseville/course/78748/playlist"
 mcv get \
   mcv:assignment:86428:2160997 \
   mcv:material:86428:2160993
@@ -329,8 +340,8 @@ mcv assignments list --pending --refs | xargs -r -n 20 mcv get
 `mcv get` also accepts supported HTTPS URLs copied directly from MyCourseVille.
 The URL is validated against the official host and normalized to the same
 canonical resource reference before fetching; it never fetches an arbitrary
-URL. Supported URL forms include assignment worksheets, material content
-nodes, announcement content nodes, and meeting detail pages.
+URL. Supported URL forms include course playlist pages, assignment worksheets,
+material content nodes, announcement content nodes, and meeting detail pages.
 
 Use `--jsonl` for batch lookup when individual failures should be represented
 alongside successful records:
@@ -388,6 +399,7 @@ from mcv_cli.runtime.config import Settings
 manager = AuthManager(settings=Settings())
 with MCVAPI(manager) as api:
     course = api.courses.resolve("2110575")
+    playlist = api.playlists.get(course.cv_cid)
     materials = api.materials.list(course.cv_cid)
     assignment = api.get("mcv:assignment:86428:2160997")
 ```
@@ -418,6 +430,7 @@ HTML/AJAX routes used by existing MyCourseVille clients:
 /?q=courseville/ajax/cvhomepanel_get_filter
 /?q=courseville/ajax/course
 /?q=courseville/course/{cv_cid}/assignment
+/?q=courseville/course/{cv_cid}/playlist
 /?q=courseville/course/{cv_cid}/meeting
 /?q=courseville/course/{cv_cid}/schedule
 /?q=courseville/course/{cv_cid}/about
@@ -435,8 +448,8 @@ contains no write, attendance, submission, upload, join, or notification
 operations.
 
 Assessment-platform pages (`/map`) are deferred because they are a separate
-interactive grading system. Kaltura/media-gallery pages are also deferred:
-the current page launches an external LTI flow and does not expose a stable
-playlist API in the authenticated course HTML. Web resources are supported
-when they are present in the course page; no playlist scraping is attempted
-until a stable, read-only source can be identified.
+interactive grading system. Course playlist pages are supported as read-only
+metadata trees, including nested folders and the video identifiers/URLs exposed
+by the page. Playback, stream resolution, download, and progress mutation are
+outside the API. Web resources are supported when they are present in the
+course page.

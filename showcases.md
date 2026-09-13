@@ -67,6 +67,7 @@ mcv courses "$MCV_COURSE" materials list
 mcv courses "$MCV_COURSE" materials show 2160993
 mcv courses "$MCV_COURSE" assignments list
 mcv courses "$MCV_COURSE" assignments show 2160997
+mcv courses "$MCV_COURSE" playlist
 mcv courses "$MCV_COURSE" about
 mcv courses "$MCV_COURSE" portfolio
 ```
@@ -145,6 +146,7 @@ With a populated cache, these contexts offer dynamic candidates:
 mcv courses <TAB>
 mcv courses 2110575 <TAB>
 mcv courses 2110575 materials list --folder <TAB>
+mcv courses 2110575 playlist
 mcv courses 2110575 assignments show <TAB>
 mcv get <TAB>
 ```
@@ -330,6 +332,22 @@ course number, then an exact whitespace-normalized title, all within the
 current semester. Unknown numeric ids are errors rather than being treated as
 arbitrary course ids, and multiple matches return `code: "ambiguous"` with
 candidate courses in the machine-readable `details.matches` field.
+
+### Course playlist
+
+```bash
+uv run mcv courses "$MCV_COURSE" playlist
+uv run mcv --json courses "$MCV_COURSE" playlist
+uv run mcv get mcv:playlist:78748
+uv run mcv get \
+  "https://www.mycourseville.com/?q=courseville/course/78748/playlist"
+```
+
+Playlist records are read-only metadata trees. Nested folders are preserved in
+the JSON model and human output; video entries can include their title,
+provider, upstream id, thumbnail, duration, watch percentage, and source or
+embed URL. The client does not resolve playback streams, download videos, or
+change progress.
 
 ## 6. Materials API
 
@@ -603,7 +621,9 @@ mcv:<resource-type>:<cv_cid>:<resource-id>
 ```
 
 Currently dereferenceable types are `material`, `assignment`, `announcement`,
-and `meeting`. The generic dispatcher accepts one or more mixed references:
+and `meeting`. Course-level playlists use the special form
+`mcv:playlist:<cv_cid>` without an item id. The generic dispatcher accepts one
+or more mixed references:
 
 ```bash
 uv run mcv get mcv:assignment:86428:2160997
@@ -612,11 +632,15 @@ uv run mcv get \
   mcv:material:86428:2160993
 uv run mcv get \
   "https://www.mycourseville.com/?q=courseville/worksheet/78748/1889560"
+uv run mcv get mcv:playlist:78748
+uv run mcv get \
+  "https://www.mycourseville.com/?q=courseville/course/78748/playlist"
 ```
 
-`mcv get` also accepts supported HTTPS URLs copied from MyCourseVille. An
-assignment worksheet URL is validated and normalized to the equivalent
-assignment reference before the existing client lookup runs.
+`mcv get` also accepts supported HTTPS URLs copied from MyCourseVille. URLs are
+validated and normalized to the equivalent typed reference before the client
+lookup runs. Supported forms include playlist pages and assignment worksheet,
+material content-node, announcement content-node, and meeting detail URLs.
 
 In JSONL mode each input is independent, so a failed reference produces an
 error record while other references can still succeed:
@@ -647,6 +671,7 @@ manager = AuthManager(settings=Settings())
 
 with MCVAPI(manager) as api:
     course = api.courses.resolve("2110575")
+    playlist = api.playlists.get(course.cv_cid)
     materials = api.materials.list(course.cv_cid)
     assignment = api.get(ResourceRef.parse("mcv:assignment:86428:2160997"))
 ```
@@ -656,6 +681,7 @@ Resource clients expose domain operations under their resource namespace:
 | Client | Operations |
 | --- | --- |
 | `api.courses` | `list`, `get`, `resolve` |
+| `api.playlists` | `get` |
 | `api.materials` | `list`, `list_folders`, `get`, `download`, `archive` |
 | `api.assignments` | `list`, `get` |
 | `api.announcements` | `list`, `get` |
@@ -688,6 +714,7 @@ They are not an official public API contract.
 | Course home / semester selector | GET | `/?q=courseville` | read-only |
 | Course list filter | POST | `/?q=courseville/ajax/cvhomepanel_get_filter` | read-only |
 | Course home content | POST | `/?q=courseville/ajax/course` with `cv_cid` | read-only |
+| Course playlist | GET | `/?q=courseville/course/{cv_cid}/playlist` | read-only |
 | Materials | GET | course-home material links and `view_content_node_{id}_material` | read-only |
 | Assignments | GET | `/?q=courseville/course/{cv_cid}/assignment` | read-only |
 | Assignment detail | GET | `/?q=courseville/worksheet/{cv_cid}/{item_id}` | read-only |
@@ -712,6 +739,9 @@ The public Pydantic models are:
 | Model | Main fields |
 | --- | --- |
 | `Course` | `cv_cid`, `course_no`, `title`, `year`, `semester`, `section`, `role` |
+| `Playlist` | `cv_cid`, title/description/source URL, ordered nested nodes |
+| `PlaylistFolder` | optional folder id, name, position, child folders/videos |
+| `PlaylistVideo` | provider/id, title, source/embed/thumbnail URLs, duration, watch percentage |
 | `Material` | `itemid`, `cv_cid`, `title`, folder fields, URLs, metadata |
 | `MaterialFolder` | `folder_id`, `name`, `materials` |
 | `Assignment` | `itemid`, `cv_cid`, optional `course_no`, title, due dates, status, feedback, links, `question_set_submission` |
@@ -728,13 +758,13 @@ The public Pydantic models are:
 | `WebResource` | `itemid`, `cv_cid`, title, URL, description |
 | `DownloadResult` | output path, byte count, SHA-256 |
 | `ArchiveResult` | output path, format, file count, byte count, skipped items |
-| `ResourceRef` | resource type, `cv_cid`, upstream item id; string form `mcv:type:cv_cid:item_id` |
+| `ResourceRef` | resource type, `cv_cid`, optional upstream item id; playlist form `mcv:playlist:cv_cid` |
 
 Material, assignment, announcement, and meeting `itemid` values are treated
 as course-scoped. Use `mcv:<resource-type>:<cv_cid>:<item_id>` when a reference
-must be unambiguous across courses. The machine-output adapter adds
-`resource_type` and `ref` to addressable records without changing their
-Python model fields.
+must be unambiguous across courses; use `mcv:playlist:<cv_cid>` for a course
+playlist. The machine-output adapter adds `resource_type` and `ref` to
+addressable records without changing their Python model fields.
 
 ## 19. Current evaluation
 
@@ -751,7 +781,7 @@ UV_CACHE_DIR=/tmp/mcv-uv-cache uv run pyright
 The current local evaluation recorded while writing this document is:
 
 ```text
-121 passed
+139 passed
 Ruff: all checks passed
 Pyright: 0 errors, 0 warnings
 ```
@@ -801,8 +831,7 @@ uv run mcv --json get mcv:assignment:86428:2160997 | jq '{resource_type, ref, ti
 | Area | Reason |
 | --- | --- |
 | Assessment platform (`/map`) | Separate interactive grading system; no read-only stable model yet |
-| Kaltura/media gallery | Current page launches an external LTI flow |
-| Playlist extraction | No stable playlist data was exposed in the authenticated course HTML |
+| Playback/download | Playlist support exposes page metadata only; it does not resolve or retrieve video streams |
 | Meeting join | May record attendance; deliberately not called |
 | Assignment submission/upload | State-changing and outside the student read-only scope |
 | Course/material/group edits | State-changing and not implemented |

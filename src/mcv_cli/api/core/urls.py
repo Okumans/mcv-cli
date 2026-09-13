@@ -12,6 +12,7 @@ _MCV_HOSTS = frozenset(
 )
 _MCV_URL_PATTERNS = (
     (r"^courseville/worksheet/(?P<cv_cid>\d+)/(?P<item_id>\d+)/?$", "assignment"),
+    (r"^courseville/course/(?P<cv_cid>\d+)/playlist/?$", "playlist"),
     (
         r"^courseville/course/(?P<cv_cid>\d+)/"
         r"view_content_node_(?P<item_id>\d+)_material/?$",
@@ -61,10 +62,14 @@ def parse_mcv_url(raw: str):
                 return ResourceRef(
                     resource_type=ResourceType(resource_name),
                     cv_cid=int(match.group("cv_cid")),
-                    item_id=int(match.group("item_id")),
+                    item_id=(
+                        int(match.group("item_id"))
+                        if match.groupdict().get("item_id") is not None
+                        else None
+                    ),
                 )
 
     raise ValueError(
         f'Unsupported MyCourseVille URL "{raw}". Supported resource URLs '
-        "include assignment worksheets, materials, announcements, and meetings."
+        "include assignment worksheets, course playlists, materials, announcements, and meetings."
     )

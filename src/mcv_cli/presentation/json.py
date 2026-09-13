@@ -15,6 +15,7 @@ from ..api.resources.announcements.models import Announcement
 from ..api.resources.assignments.models import Assignment
 from ..api.resources.materials.models import Material, MaterialFolder
 from ..api.resources.meetings.models import OnlineMeeting
+from ..api.resources.playlists.models import Playlist
 
 MACHINE_SCHEMA_VERSION = 1
 
@@ -30,7 +31,7 @@ def to_jsonable(value: Any) -> Any:
             data["materials"] = [to_jsonable(item) for item in value.materials]
         else:
             data = {key: to_jsonable(item) for key, item in data.items()}
-        if isinstance(value, (Material, Assignment, Announcement, OnlineMeeting)):
+        if isinstance(value, (Material, Assignment, Announcement, OnlineMeeting, Playlist)):
             try:
                 ref = ref_for_resource(value)
             except (TypeError, ValueError):

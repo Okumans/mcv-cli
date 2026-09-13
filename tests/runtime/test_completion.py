@@ -30,6 +30,7 @@ def test_completion_uses_readable_courses_and_canonical_refs(tmp_path, monkeypat
     assert [item.value for item in completion_items("refs", "mcv:")] == [
         "mcv:assignment:86428:2160997",
         "mcv:material:86428:2160993",
+        "mcv:playlist:86428",
     ]
     assert [
         item.value

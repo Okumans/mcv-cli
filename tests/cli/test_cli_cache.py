@@ -100,6 +100,7 @@ def test_cache_refresh_indexes_targeted_course(monkeypatch, tmp_path) -> None:
         "mcv:assignment:86428:2160997",
         "mcv:announcement:86428:2177455",
         "mcv:meeting:86428:29632",
+        "mcv:playlist:86428",
     }
     assert cache.candidates("groupings", cv_cid=86428) == [
         {"value": "54791", "help": "Project groups"}
@@ -134,7 +135,8 @@ def test_cache_refresh_keeps_old_resource_snapshot_when_scope_fails(
 
     assert result.exit_code != 0
     assert cache.candidates("refs", cv_cid=86428) == [
-        {"value": "mcv:assignment:86428:99", "help": "Previous"}
+        {"value": "mcv:assignment:86428:99", "help": "Previous"},
+        {"value": "mcv:playlist:86428", "help": "IoT Hardware"},
     ]
 
 

@@ -26,6 +26,7 @@ from .resources.materials import (
     render_materials,
 )
 from .resources.meetings import render_meeting, render_meetings, render_recording, render_recordings
+from .resources.playlists import render_playlist, render_playlists
 from .resources.portfolio import render_portfolio
 from .resources.schedule import render_schedule_event, render_schedule_events
 from .resources.web_resources import render_web_resource, render_web_resources
@@ -55,6 +56,7 @@ def renderer_for(value: Any) -> Renderer | None:
         MaterialFolder,
     )
     from ..api.resources.meetings.models import MeetingRecording, OnlineMeeting
+    from ..api.resources.playlists.models import Playlist
     from ..api.resources.portfolio.models import Portfolio
     from ..api.resources.schedule.models import ScheduleEvent
     from ..api.resources.web_resources.models import WebResource
@@ -78,6 +80,7 @@ def renderer_for(value: Any) -> Renderer | None:
         (CourseAbout, Renderer(render_about)),
         (StudentGroup, Renderer(render_group, render_groups)),
         (Portfolio, Renderer(render_portfolio)),
+        (Playlist, Renderer(render_playlist, render_playlists)),
         (WebResource, Renderer(render_web_resource, render_web_resources)),
         (DownloadResult, Renderer(render_download)),
         (ArchiveResult, Renderer(render_archive)),

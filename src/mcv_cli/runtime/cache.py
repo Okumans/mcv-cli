@@ -10,7 +10,7 @@ from typing import Any
 
 from platformdirs import user_cache_dir
 
-from ..api.core.refs import ResourceType, ref_for_resource
+from ..api.core.refs import ResourceRef, ResourceType, ref_for_resource
 from ..api.resources.announcements.models import Announcement
 from ..api.resources.assignments.models import Assignment
 from ..api.resources.courses.models import Course
@@ -503,14 +503,45 @@ class CacheStore:
                     "FROM resources ORDER BY resource_type, title, item_id"
                 )
                 rows = connection.execute(query, (cv_cid,) if cv_cid is not None else ()).fetchall()
-                return [
-                    {
-                        "value": str(
-                            ResourceRefRow(resource_type=row[0], cv_cid=row[1], item_id=row[2])
+                candidates: list[tuple[str, str, str]] = [
+                    (
+                        str(row[0]),
+                        str(row[3] or f"{row[0]} {row[2]}"),
+                        str(
+                            ResourceRefRow(
+                                resource_type=row[0], cv_cid=row[1], item_id=row[2]
+                            )
                         ),
-                        "help": row[3] or f"{row[0]} {row[2]}",
-                    }
+                    )
                     for row in rows
+                ]
+                playlist_query = (
+                    "SELECT DISTINCT cv_cid, title FROM courses WHERE cv_cid = ? "
+                    "ORDER BY title, cv_cid"
+                    if cv_cid is not None
+                    else "SELECT DISTINCT cv_cid, title FROM courses ORDER BY title, cv_cid"
+                )
+                playlist_rows = connection.execute(
+                    playlist_query,
+                    (cv_cid,) if cv_cid is not None else (),
+                ).fetchall()
+                candidates.extend(
+                    (
+                        ResourceType.PLAYLIST.value,
+                        str(row[1] or "course playlist"),
+                        str(
+                            ResourceRefRow(
+                                resource_type=ResourceType.PLAYLIST,
+                                cv_cid=row[0],
+                                item_id=None,
+                            )
+                        ),
+                    )
+                    for row in playlist_rows
+                )
+                return [
+                    {"value": value, "help": help_text}
+                    for _, help_text, value in sorted(candidates)
                 ]
             return []
         finally:
@@ -562,10 +593,22 @@ class CacheStore:
 class ResourceRefRow:
     """Small formatter used by read-only completion queries."""
 
-    def __init__(self, *, resource_type: str, cv_cid: int, item_id: int) -> None:
+    def __init__(
+        self,
+        *,
+        resource_type: ResourceType | str,
+        cv_cid: int,
+        item_id: int | None,
+    ) -> None:
         self.resource_type = ResourceType(resource_type)
         self.cv_cid = cv_cid
         self.item_id = item_id
 
     def __str__(self) -> str:
-        return f"mcv:{self.resource_type.value}:{self.cv_cid}:{self.item_id}"
+        return str(
+            ResourceRef(
+                resource_type=self.resource_type,
+                cv_cid=self.cv_cid,
+                item_id=self.item_id,
+            )
+        )

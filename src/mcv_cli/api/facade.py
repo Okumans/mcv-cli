@@ -6,7 +6,7 @@ from collections.abc import Callable
 import httpx
 
 from .aggregates import AggregateClients
-from .core.refs import ResourceRef
+from .core.refs import ResourceRef, ResourceType
 from .core.resource import Resource
 from .resources._base import SessionProvider, make_transport
 from .resources.about.client import AboutClient
@@ -16,6 +16,7 @@ from .resources.courses.client import CourseClient
 from .resources.groups.client import GroupsClient
 from .resources.materials.client import MaterialsClient
 from .resources.meetings.client import MeetingsClient
+from .resources.playlists.client import PlaylistClient
 from .resources.portfolio.client import PortfolioClient
 from .resources.schedule.client import ScheduleClient
 from .resources.web_resources.client import WebResourcesClient
@@ -47,6 +48,7 @@ class MCVAPI:
         self.about = AboutClient(self._transport, self._http_client)
         self.groups = GroupsClient(self._transport, self._http_client)
         self.portfolio = PortfolioClient(self._transport, self._http_client)
+        self.playlists = PlaylistClient(self._transport, self._http_client)
         self.web_resources = WebResourcesClient(self._transport, self._http_client)
         self.aggregates = AggregateClients(self)
 
@@ -62,6 +64,10 @@ class MCVAPI:
 
     def get(self, reference: str | ResourceRef) -> Resource:
         ref = ResourceRef.parse(reference) if isinstance(reference, str) else reference
+        if ref.resource_type is ResourceType.PLAYLIST:
+            return self.playlists.get(ref.cv_cid)
+        if ref.item_id is None:
+            raise ValueError(f"{ref.resource_type.value} references require an item id")
         match ref.resource_type.value:
             case "material":
                 return self.materials.get(ref.cv_cid, ref.item_id)
