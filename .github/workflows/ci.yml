@@ -78,8 +78,6 @@ jobs:
       MCV_E2E_USERNAME: ${{ secrets.MCV_E2E_USERNAME }}
       MCV_E2E_PASSWORD: ${{ secrets.MCV_E2E_PASSWORD }}
       MCV_STORAGE_PASSPHRASE: ${{ secrets.MCV_STORAGE_PASSPHRASE }}
-      MCV_CONFIG_DIR: ${{ runner.temp }}/mcv-config
-      MCV_CACHE_DIR: ${{ runner.temp }}/mcv-cache
       MCV_PREFER_KEYRING: "false"
       MCV_E2E_SEMESTER: ${{ secrets.MCV_E2E_SEMESTER }}
       MCV_E2E_PRIMARY_COURSE: ${{ secrets.MCV_E2E_PRIMARY_COURSE }}
@@ -120,6 +118,9 @@ jobs:
 
       - name: Authenticate protected live account
         shell: bash
+        env:
+          MCV_CONFIG_DIR: ${{ runner.temp }}/mcv-config
+          MCV_CACHE_DIR: ${{ runner.temp }}/mcv-cache
         run: |
           test -n "$MCV_E2E_USERNAME"
           test -n "$MCV_E2E_PASSWORD"
@@ -132,6 +133,8 @@ jobs:
 
       - name: Run authenticated read-only CLI/API matrix
         env:
+          MCV_CONFIG_DIR: ${{ runner.temp }}/mcv-config
+          MCV_CACHE_DIR: ${{ runner.temp }}/mcv-cache
           MCV_LIVE_E2E: "1"
           MCV_E2E_DISCOVER_FIXTURES: "0"
         run: uv run pytest -m live -q
