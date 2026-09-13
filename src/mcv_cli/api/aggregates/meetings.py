@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from ..resources.meetings.models import OnlineMeeting
+from ..resources.meetings.models import MeetingCollection, OnlineMeeting
 from .assignments import _course_sort_key, _with_course_context
 
 _BANGKOK_TZ = ZoneInfo("Asia/Bangkok")
@@ -31,7 +31,29 @@ class MeetingsAggregate:
         include_past: bool = False,
         now: datetime | None = None,
     ) -> list[OnlineMeeting]:
-        return self._filter(self.api.meetings.list(cv_cid), include_past=include_past, now=now)
+        return self.collection_for_course(
+            cv_cid,
+            include_past=include_past,
+            now=now,
+        ).meetings
+
+    def collection_for_course(
+        self,
+        cv_cid: int,
+        *,
+        include_past: bool = False,
+        now: datetime | None = None,
+    ) -> MeetingCollection:
+        collection = self.api.meetings.list(cv_cid)
+        return collection.model_copy(
+            update={
+                "meetings": self._filter(
+                    collection.meetings,
+                    include_past=include_past,
+                    now=now,
+                )
+            }
+        )
 
     def list(
         self,
@@ -44,7 +66,8 @@ class MeetingsAggregate:
         courses = sorted(self.api.courses.list(semester=semester), key=_course_sort_key)
         for course in courses:
             results.extend(
-                _with_course_context(item, course) for item in self.api.meetings.list(course.cv_cid)
+                _with_course_context(item, course)
+                for item in self.api.meetings.list(course.cv_cid).meetings
             )
         return self._filter(results, include_past=include_past, now=now)
 

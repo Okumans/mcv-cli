@@ -62,6 +62,30 @@ class CredentialStore:
                 pass
         self._save_file(serialized)
 
+    def delete(self) -> None:
+        """Remove the stored profile from every configured backend."""
+
+        keyring_error: Exception | None = None
+        if self.prefer_keyring:
+            try:
+                keyring.delete_password(STORE_SERVICE, self.profile_name)
+            except Exception as exc:
+                # A profile may have fallen back to the encrypted file when
+                # the keyring is unavailable.  Remove that file below before
+                # deciding whether a keyring failure is actionable.
+                keyring_error = exc
+
+        file_existed = self.file_path.exists()
+        try:
+            self.file_path.unlink(missing_ok=True)
+        except OSError as exc:
+            raise StorageError("The encrypted credential file could not be removed.") from exc
+
+        if keyring_error is not None and not file_existed:
+            raise StorageError(
+                "The stored keyring profile could not be removed."
+            ) from keyring_error
+
     def _load_keyring(self) -> tuple[bool, StoredProfile | None]:
         try:
             serialized = keyring.get_password(STORE_SERVICE, self.profile_name)

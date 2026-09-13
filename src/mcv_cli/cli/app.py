@@ -31,6 +31,20 @@ _COURSE_RESOURCE_ACTIONS = {
 class CourseAwareGroup(TyperGroup):
     """Parse the explicit ``courses COURSE RESOURCE ACTION`` grammar."""
 
+    @staticmethod
+    def _show_route_help(ctx: Any, target: str, resource: str, action: str | None) -> None:
+        """Render a hidden implementation command using its public route."""
+
+        command = ctx.command.commands[target]
+        route = " ".join(part for part in ("COURSE", resource, action) if part)
+        help_ctx = type(ctx)(command, info_name=route, parent=ctx)
+        try:
+            message = command.get_help(help_ctx)
+        finally:
+            help_ctx.close()
+        typer.echo(message)
+        raise typer.Exit()
+
     def parse_args(self, ctx: Any, args: list[str]) -> list[str]:
         if not args or args[0].startswith("-") or args[0] in self.commands:
             return super().parse_args(ctx, args)
@@ -47,19 +61,19 @@ class CourseAwareGroup(TyperGroup):
             resource, *resource_args = remaining
             action = resource_args[0] if resource_args else None
             target = _COURSE_RESOURCE_ACTIONS.get(resource, {}).get(action or "")
-            direct_help = False
             if target is None and resource in {"about", "portfolio", "playlist"} and action in {
                 "--help",
                 "-h",
             }:
                 target = _COURSE_RESOURCE_ACTIONS[resource][""]
-                args = [target, course, action]
-                direct_help = True
+                action = None
+            if target is not None and any(value in {"--help", "-h"} for value in resource_args):
+                self._show_route_help(ctx, target, resource, action)
             if target is None:
                 # Unknown/missing actions intentionally remain invalid; the
                 # demo grammar no longer routes legacy flat aliases.
                 args = [resource, course, *resource_args]
-            elif not direct_help:
+            else:
                 args = [target, course, *resource_args[1:]]
         return super().parse_args(ctx, args)
 
@@ -79,8 +93,10 @@ auth_app = typer.Typer(help="Log in and manage MyCourseVille authentication.", n
 courses_app = typer.Typer(
     cls=CourseAwareGroup,
     help=(
-        "Inspect enrolled courses. Preferred form: "
-        "mcv courses COURSE RESOURCE ACTION [ARGS] [OPTIONS]."
+        "Inspect enrolled courses.\n\n"
+        "Course overview: mcv courses COURSE\n"
+        "Course resources: mcv courses COURSE RESOURCE ACTION [ARGS] [OPTIONS]\n"
+        "Direct course pages: playlist, about, portfolio."
     ),
     no_args_is_help=True,
 )

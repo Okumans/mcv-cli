@@ -16,11 +16,13 @@ from ..api.resources.assignments.models import Assignment
 from ..api.resources.courses.models import Course
 from ..api.resources.groups.models import StudentGroup
 from ..api.resources.materials.models import Material, MaterialFolder
-from ..api.resources.meetings.models import OnlineMeeting
+from ..api.resources.meetings.models import MeetingCollection, OnlineMeeting
+from ..api.resources.playlists.models import PlaylistCollection
+from ..api.resources.schedule.models import ScheduleCollection
 from .config import DEFAULT_PROFILE
 from .models import AuthProvider
 
-_CACHE_SCHEMA_VERSION = 1
+_CACHE_SCHEMA_VERSION = 2
 _SAFE_COMPONENT = re.compile(r"[^A-Za-z0-9_.-]+")
 
 
@@ -146,6 +148,13 @@ class CacheStore:
                 updated_at TEXT NOT NULL,
                 PRIMARY KEY (cv_cid, grouping_id)
             );
+            CREATE TABLE IF NOT EXISTS collection_status (
+                collection_type TEXT NOT NULL,
+                cv_cid INTEGER NOT NULL,
+                available INTEGER NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (collection_type, cv_cid)
+            );
             CREATE INDEX IF NOT EXISTS resources_by_course
                 ON resources (cv_cid, resource_type);
             """
@@ -181,6 +190,9 @@ class CacheStore:
                     "assignments": 0,
                     "announcements": 0,
                     "meetings": 0,
+                    "playlist_collections": 0,
+                    "schedule_collections": 0,
+                    "meeting_collections": 0,
                     "groupings": 0,
                     "semesters": 0,
                 },
@@ -194,6 +206,9 @@ class CacheStore:
                 "assignments": self._count_resource(connection, ResourceType.ASSIGNMENT),
                 "announcements": self._count_resource(connection, ResourceType.ANNOUNCEMENT),
                 "meetings": self._count_resource(connection, ResourceType.MEETING),
+                "playlist_collections": self._count_collection(connection, "playlist"),
+                "schedule_collections": self._count_collection(connection, "schedule"),
+                "meeting_collections": self._count_collection(connection, "meeting"),
                 "groupings": self._count(connection, "groupings"),
                 "semesters": self._count(connection, "semesters"),
             }
@@ -222,6 +237,18 @@ class CacheStore:
             "SELECT COUNT(*) FROM resources WHERE resource_type = ?",
             (resource_type.value,),
         ).fetchone()
+        return int(row[0]) if row is not None else 0
+
+    @staticmethod
+    def _count_collection(connection: sqlite3.Connection, collection_type: str) -> int:
+        try:
+            row = connection.execute(
+                "SELECT COUNT(*) FROM collection_status "
+                "WHERE collection_type = ? AND available = 1",
+                (collection_type,),
+            ).fetchone()
+        except sqlite3.OperationalError:
+            return 0
         return int(row[0]) if row is not None else 0
 
     def clear(self) -> bool:
@@ -386,6 +413,48 @@ class CacheStore:
         finally:
             connection.close()
 
+    def record_collection_status(
+        self,
+        collection: PlaylistCollection | ScheduleCollection | MeetingCollection,
+    ) -> None:
+        now = _timestamp()
+        connection = self._open()
+        try:
+            connection.execute(
+                """
+                INSERT INTO collection_status(
+                    collection_type, cv_cid, available, updated_at
+                ) VALUES(?, ?, ?, ?)
+                ON CONFLICT(collection_type, cv_cid) DO UPDATE SET
+                    available=excluded.available,
+                    updated_at=excluded.updated_at
+                """,
+                (collection.collection_type, collection.cv_cid, int(collection.available), now),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+    def collection_available(self, collection_type: str, cv_cid: int) -> bool | None:
+        """Return cached collection availability, or ``None`` if unknown."""
+
+        try:
+            connection = self._connect(read_only=True)
+        except sqlite3.OperationalError:
+            return None
+        try:
+            try:
+                row = connection.execute(
+                    "SELECT available FROM collection_status "
+                    "WHERE collection_type = ? AND cv_cid = ?",
+                    (collection_type, cv_cid),
+                ).fetchone()
+            except sqlite3.OperationalError:
+                return None
+            return None if row is None else bool(row[0])
+        finally:
+            connection.close()
+
     @staticmethod
     def _upsert_resources(
         connection: sqlite3.Connection,
@@ -516,29 +585,49 @@ class CacheStore:
                     for row in rows
                 ]
                 playlist_query = (
-                    "SELECT DISTINCT cv_cid, title FROM courses WHERE cv_cid = ? "
-                    "ORDER BY title, cv_cid"
+                    "SELECT DISTINCT courses.cv_cid, courses.title "
+                    "FROM courses JOIN collection_status "
+                    "ON collection_status.cv_cid = courses.cv_cid "
+                    "AND collection_status.collection_type = 'playlist' "
+                    "AND collection_status.available = 1 "
+                    "WHERE courses.cv_cid = ? ORDER BY courses.title, courses.cv_cid"
                     if cv_cid is not None
-                    else "SELECT DISTINCT cv_cid, title FROM courses ORDER BY title, cv_cid"
+                    else "SELECT DISTINCT courses.cv_cid, courses.title "
+                    "FROM courses JOIN collection_status "
+                    "ON collection_status.cv_cid = courses.cv_cid "
+                    "AND collection_status.collection_type = 'playlist' "
+                    "AND collection_status.available = 1 "
+                    "ORDER BY courses.title, courses.cv_cid"
                 )
-                playlist_rows = connection.execute(
-                    playlist_query,
-                    (cv_cid,) if cv_cid is not None else (),
-                ).fetchall()
-                candidates.extend(
-                    (
-                        ResourceType.PLAYLIST.value,
-                        str(row[1] or "course playlist"),
-                        str(
-                            ResourceRefRow(
-                                resource_type=ResourceType.PLAYLIST,
-                                cv_cid=row[0],
-                                item_id=None,
-                            )
-                        ),
+                try:
+                    playlist_rows = connection.execute(
+                        playlist_query,
+                        (cv_cid,) if cv_cid is not None else (),
+                    ).fetchall()
+                except sqlite3.OperationalError:
+                    # A pre-v2 cache has no collection_status table.  It is
+                    # safer to omit unverified playlist references until the
+                    # cache is refreshed than to suggest every course.
+                    playlist_rows = []
+                seen_playlist_courses: set[int] = set()
+                for row in playlist_rows:
+                    course_id = int(row[0])
+                    if course_id in seen_playlist_courses:
+                        continue
+                    seen_playlist_courses.add(course_id)
+                    candidates.append(
+                        (
+                            ResourceType.PLAYLIST.value,
+                            str(row[1] or "course playlist"),
+                            str(
+                                ResourceRefRow(
+                                    resource_type=ResourceType.PLAYLIST,
+                                    cv_cid=course_id,
+                                    item_id=None,
+                                )
+                            ),
+                        )
                     )
-                    for row in playlist_rows
-                )
                 return [
                     {"value": value, "help": help_text}
                     for _, help_text, value in sorted(candidates)

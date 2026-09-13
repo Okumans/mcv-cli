@@ -1,4 +1,4 @@
 from .client import MeetingsClient
-from .models import MeetingRecording, OnlineMeeting
+from .models import MeetingCollection, MeetingRecording, OnlineMeeting
 
-__all__ = ["MeetingRecording", "MeetingsClient", "OnlineMeeting"]
+__all__ = ["MeetingCollection", "MeetingRecording", "MeetingsClient", "OnlineMeeting"]

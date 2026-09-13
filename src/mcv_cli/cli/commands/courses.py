@@ -340,13 +340,15 @@ def meetings_list(
         with make_api() as api:
             from ...api.aggregates.meetings import MeetingsAggregate
 
-            values = MeetingsAggregate(api).list_for_course(
+            collection = MeetingsAggregate(api).collection_for_course(
                 course_id(api, course, semester=selected_semester(ctx)),
                 include_past=include_past,
             )
             if ids:
-                return ShellIdList(item.itemid for item in values)
-            return resource_refs(values) if refs else values
+                return ShellIdList(item.itemid for item in collection.meetings)
+            if refs:
+                return resource_refs(collection.meetings)
+            return collection
 
     run(ctx, action)
 

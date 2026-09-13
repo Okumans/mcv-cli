@@ -71,7 +71,7 @@ def ref_for_resource(resource: Any) -> ResourceRef:
     from ..resources.assignments.models import Assignment
     from ..resources.materials.models import Material
     from ..resources.meetings.models import OnlineMeeting
-    from ..resources.playlists.models import Playlist
+    from ..resources.playlists.models import PlaylistCollection
 
     if isinstance(resource, Material):
         resource_type = ResourceType.MATERIAL
@@ -81,7 +81,7 @@ def ref_for_resource(resource: Any) -> ResourceRef:
         resource_type = ResourceType.ANNOUNCEMENT
     elif isinstance(resource, OnlineMeeting):
         resource_type = ResourceType.MEETING
-    elif isinstance(resource, Playlist):
+    elif isinstance(resource, PlaylistCollection):
         resource_type = ResourceType.PLAYLIST
     else:
         raise TypeError(f"Unsupported resource model: {type(resource).__name__}")

@@ -6,24 +6,27 @@ from pathlib import Path
 import pytest
 
 from mcv_cli.api.core.errors import ParseError
-from mcv_cli.api.resources.playlists.models import PlaylistFolder, PlaylistVideo
+from mcv_cli.api.resources.playlists.models import PlaylistCollection, PlaylistFolder, PlaylistVideo
 from mcv_cli.api.resources.playlists.parser import parse_playlist, playlist_ids
 
 FIXTURE_ROOT = Path(__file__).parents[3] / "fixtures" / "playlists"
 
 
 def test_parse_playlist_preserves_nested_folder_and_video_order() -> None:
-    playlist = parse_playlist(
+    collection = parse_playlist(
         (FIXTURE_ROOT / "nested.html").read_text(),
         78748,
         source_url="https://www.mycourseville.com/?q=courseville/course/78748/playlist",
     )
 
-    assert playlist.cv_cid == 78748
-    assert playlist.title == "VDO playlists in Computer Networks I"
-    assert playlist.description == "Recorded course videos"
-    assert playlist.source_url is not None
-    assert playlist.source_url.endswith("courseville/course/78748/playlist")
+    assert isinstance(collection, PlaylistCollection)
+    assert collection.cv_cid == 78748
+    assert collection.title == "VDO playlists in Computer Networks I"
+    assert collection.description == "Recorded course videos"
+    assert collection.source_url is not None
+    assert collection.source_url.endswith("courseville/course/78748/playlist")
+    assert len(collection.playlists) == 1
+    playlist = collection.playlists[0]
     assert [type(node) for node in playlist.nodes] == [PlaylistFolder, PlaylistVideo]
 
     week = playlist.nodes[0]
@@ -79,9 +82,10 @@ def test_parse_playlist_supports_embedded_json() -> None:
     }
     html = f'<script type="application/json">{json.dumps(payload)}</script>'
 
-    playlist = parse_playlist(html, 78748)
+    collection = parse_playlist(html, 78748)
 
-    assert playlist.title == "Embedded playlist"
+    assert collection.title == "Embedded playlist"
+    playlist = collection.playlists[0]
     assert isinstance(playlist.nodes[0], PlaylistFolder)
     embedded_video = playlist.nodes[0].children[0]
     assert isinstance(embedded_video, PlaylistVideo)
@@ -101,8 +105,9 @@ def test_parse_playlist_does_not_stop_at_an_empty_embedded_placeholder() -> None
     </div>
     """
 
-    playlist = parse_playlist(html, 78748)
+    collection = parse_playlist(html, 78748)
 
+    playlist = collection.playlists[0]
     assert len(playlist.nodes) == 1
     assert isinstance(playlist.nodes[0], PlaylistVideo)
     assert playlist.nodes[0].video_id == "actual-video"
@@ -122,8 +127,9 @@ def test_parse_playlist_accepts_courseville_video_cards_with_thumbnail_ids() -> 
     </div>
     """
 
-    playlist = parse_playlist(html, 78748)
+    collection = parse_playlist(html, 78748)
 
+    playlist = collection.playlists[0]
     assert len(playlist.nodes) == 1
     assert isinstance(playlist.nodes[0], PlaylistVideo)
     assert playlist.nodes[0].provider == "youtube"
@@ -147,8 +153,9 @@ def test_parse_playlist_accepts_alpha_playlist_links_with_thumbnail_ids() -> Non
     </div>
     """
 
-    playlist = parse_playlist(html, 78748)
+    collection = parse_playlist(html, 78748)
 
+    playlist = collection.playlists[0]
     assert len(playlist.nodes) == 1
     assert isinstance(playlist.nodes[0], PlaylistVideo)
     assert playlist.nodes[0].title == "Alpha lecture"
@@ -162,10 +169,12 @@ def test_parse_playlist_accepts_alpha_playlist_links_with_thumbnail_ids() -> Non
 def test_parse_playlist_supports_cvdlit_loaded_playlist_fragments() -> None:
     html = (FIXTURE_ROOT / "cvdlit_detail.html").read_text()
 
-    playlist = parse_playlist(html, 78748)
+    collection = parse_playlist(html, 78748)
 
-    assert playlist.title == "Computer Networks I Lecture"
+    assert collection.title == "Computer Networks I Lecture"
     assert playlist_ids(html) == ["7662"]
+    playlist = collection.playlists[0]
+    assert playlist.playlist_id == "7662"
     assert len(playlist.nodes) == 2
     first = playlist.nodes[0]
     assert isinstance(first, PlaylistVideo)
@@ -182,10 +191,53 @@ def test_parse_playlist_supports_cvdlit_loaded_playlist_fragments() -> None:
 
 
 def test_parse_playlist_allows_a_valid_empty_playlist() -> None:
-    playlist = parse_playlist('<div id="courseville-playlist"></div>', 78748)
+    collection = parse_playlist('<div id="courseville-playlist"></div>', 78748)
 
-    assert playlist.nodes == []
-    assert playlist.cv_cid == 78748
+    assert collection.available is True
+    assert collection.playlists == []
+    assert collection.cv_cid == 78748
+
+
+def test_parse_playlist_preserves_multiple_playlist_entries() -> None:
+    html = """
+    <div id="cvdlit-cv-playlist-list">
+      <li class="cvdlit-cv-playlist" data-plid="1">
+        <h3 data-info="playlist-title">Lecture videos</h3>
+        <a class="playlist-video" href="https://youtu.be/lecture-1">Lecture 1</a>
+      </li>
+      <li class="cvdlit-cv-playlist" data-plid="2">
+        <h3 data-info="playlist-title">Exercise videos</h3>
+        <a class="playlist-video" href="https://youtu.be/exercise-1">Exercise 1</a>
+      </li>
+    </div>
+    """
+
+    collection = parse_playlist(html, 78748)
+
+    assert [playlist.playlist_id for playlist in collection.playlists] == ["1", "2"]
+    assert [playlist.title for playlist in collection.playlists] == [
+        "Lecture videos",
+        "Exercise videos",
+    ]
+    first_video = collection.playlists[0].nodes[0]
+    second_video = collection.playlists[1].nodes[0]
+    assert isinstance(first_video, PlaylistVideo)
+    assert isinstance(second_video, PlaylistVideo)
+    assert [first_video.title, second_video.title] == ["Lecture 1", "Exercise 1"]
+
+
+def test_parse_playlist_marks_a_valid_course_without_a_playlist_unavailable() -> None:
+    html = """
+    <main id="courseville-content-course-main-column">
+      <a href="/?q=courseville/course/78748">Computer Networks I</a>
+    </main>
+    """
+
+    collection = parse_playlist(html, 78748)
+
+    assert collection.available is False
+    assert collection.playlists == []
+    assert collection.cv_cid == 78748
 
 
 def test_parse_playlist_rejects_an_unrecognized_authenticated_page() -> None:

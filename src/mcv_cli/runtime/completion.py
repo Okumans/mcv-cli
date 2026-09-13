@@ -131,10 +131,35 @@ def complete_course_group(ctx: Any, incomplete: str) -> list[CompletionItem]:
             "playlist": "Course video playlist",
             "web-resources": "External course links",
         }
+        cache = active_cache()
+        cached_course_id: int | None = None
+        if cache is not None:
+            try:
+                cached_course_id = cache.resolve_course(course)
+            except Exception:
+                cached_course_id = None
+        if cached_course_id is None and course.isdigit():
+            cached_course_id = int(course)
+        optional_collections = {
+            "playlist": "playlist",
+            "schedule": "schedule",
+            "meetings": "meeting",
+        }
+        unavailable_optional: set[str] = set()
+        if cache is not None and cached_course_id is not None:
+            for resource, collection_type in optional_collections.items():
+                try:
+                    if cache.collection_available(collection_type, cached_course_id) is False:
+                        unavailable_optional.add(resource)
+                except Exception:
+                    # Completion must remain useful when the cache is missing,
+                    # old, locked, or corrupt.
+                    continue
         prefix = incomplete.casefold()
         return [
             CompletionItem(value, help=help_text)
             for value, help_text in resources.items()
+            if value not in unavailable_optional
             if value.casefold().startswith(prefix)
         ]
 

@@ -7,6 +7,7 @@ from mcv_cli.api.core.refs import ResourceType
 from mcv_cli.api.resources.assignments.models import Assignment
 from mcv_cli.api.resources.courses.models import Course
 from mcv_cli.api.resources.materials.models import Material, MaterialFolder
+from mcv_cli.api.resources.playlists.models import PlaylistCollection
 from mcv_cli.runtime.cache import CacheStore
 from mcv_cli.runtime.completion import completion_items
 
@@ -55,6 +56,7 @@ def test_cache_indexes_completion_values_without_resource_content(tmp_path: Path
         ],
     )
     cache.upsert_resources([Assignment(itemid=2160997, cv_cid=86428, title="Homework 1")])
+    cache.record_collection_status(PlaylistCollection(cv_cid=86428, title="IoT Hardware"))
     cache.upsert_folders(
         [MaterialFolder(folder_id="folder-1", name="IoT Hardware")],
         cv_cid=86428,
@@ -72,6 +74,25 @@ def test_cache_indexes_completion_values_without_resource_content(tmp_path: Path
     assert cache.candidates("folders", cv_cid=86428) == [
         {"value": "IoT Hardware", "help": "folder-1"}
     ]
+
+
+def test_cache_does_not_suggest_an_unavailable_playlist(tmp_path: Path) -> None:
+    cache = CacheStore(profile_name="default", provider="chula", root=tmp_path)
+    cache.upsert_courses([Course(cv_cid=86428, course_no="2110575", title="IoT")])
+    cache.record_collection_status(
+        PlaylistCollection(cv_cid=86428, title="IoT", available=False)
+    )
+
+    assert cache.candidates("refs", cv_cid=86428) == []
+
+
+def test_collection_availability_is_unknown_until_observed(tmp_path: Path) -> None:
+    cache = CacheStore(profile_name="default", provider="chula", root=tmp_path)
+
+    assert cache.collection_available("playlist", 86428) is None
+
+    cache.record_collection_status(PlaylistCollection(cv_cid=86428, available=False))
+    assert cache.collection_available("playlist", 86428) is False
 
 
 def test_resource_snapshot_replaces_only_the_requested_course_and_type(tmp_path: Path) -> None:

@@ -4,15 +4,33 @@ import re
 
 from bs4 import BeautifulSoup
 
-from ...core.parsing import absolute_href, parse_int, text
-from .models import MeetingRecording, OnlineMeeting
+from ...core.constants import BASE_URL
+from ...core.errors import ParseError
+from ...core.parsing import absolute_href, looks_like_course_page, parse_int, text
+from .models import MeetingCollection, MeetingRecording, OnlineMeeting
 
 
-def parse_meetings(html_doc: str, cv_cid: int) -> list[OnlineMeeting]:
+def parse_meetings(
+    html_doc: str,
+    cv_cid: int,
+    *,
+    source_url: str | None = None,
+) -> MeetingCollection:
+    source = source_url or f"{BASE_URL}/?q=courseville/course/{cv_cid}/meeting"
     soup = BeautifulSoup(html_doc, "html.parser")
     table = soup.select_one("#cvmeeting-cvpage-meetinglist")
     if table is None:
-        return []
+        if not looks_like_course_page(html_doc, cv_cid):
+            raise ParseError(
+                "MyCourseVille returned a meeting page without recognizable course content.",
+                resource="meeting",
+                operation="list",
+            )
+        return MeetingCollection(
+            cv_cid=cv_cid,
+            source_url=source,
+            available=False,
+        )
     meetings: list[OnlineMeeting] = []
     for row in table.select("tbody tr"):
         item_id = parse_int(row.get("content_id"))
@@ -39,7 +57,12 @@ def parse_meetings(html_doc: str, cv_cid: int) -> list[OnlineMeeting]:
                 join_url=absolute_href(row.select_one('a[aria-label="Join the meeting"]')),
             )
         )
-    return meetings
+    return MeetingCollection(
+        cv_cid=cv_cid,
+        source_url=source,
+        available=True,
+        meetings=meetings,
+    )
 
 
 def parse_meeting_detail(meeting: OnlineMeeting, html_doc: str) -> OnlineMeeting:

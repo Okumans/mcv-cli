@@ -5,7 +5,7 @@ import pytest
 from mcv_cli.api.core.refs import ResourceRef, ResourceType, ref_for_resource
 from mcv_cli.api.resources.assignments.models import Assignment
 from mcv_cli.api.resources.materials.models import Material
-from mcv_cli.api.resources.playlists.models import Playlist
+from mcv_cli.api.resources.playlists.models import PlaylistCollection
 
 
 def test_resource_ref_round_trips() -> None:
@@ -115,7 +115,7 @@ def test_resource_ref_rejects_malformed_or_unsupported_values(value: str) -> Non
 def test_resource_ref_can_be_created_from_addressable_models() -> None:
     assignment = Assignment(itemid=2160997, cv_cid=86428, title="Homework")
     material = Material(itemid=2160993, cv_cid=86428, title="Lecture")
-    playlist = Playlist(cv_cid=86428, title="Videos")
+    playlist = PlaylistCollection(cv_cid=86428, title="Videos")
 
     assert str(ref_for_resource(assignment)) == "mcv:assignment:86428:2160997"
     assert str(ref_for_resource(material)) == "mcv:material:86428:2160993"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from typing import Any
 from urllib.parse import urlparse
@@ -10,6 +11,17 @@ import httpx
 from .errors import AuthenticationRequired, UpstreamError
 
 _REDIRECT_STATUSES = {301, 302, 303, 307, 308}
+_RETRYABLE_STATUSES = {408, 429, 500, 502, 503, 504}
+_SENSITIVE_VALUE = re.compile(
+    r"(?i)((?:[\"']?(?:password|passwd|secret|_?token|csrf|csrf_token|session|"
+    r"signature|sig|key|authorization|cookie|access_token|refresh_token|client_secret)"
+    r"[\"']?\s*[=:]\s*[\"']?))"
+    r"[^,}&\s\"']+"
+)
+_SENSITIVE_QUERY = re.compile(
+    r"(?i)([?&](?:password|passwd|secret|_?token|csrf|csrf_token|session|signature|sig|"
+    r"key|authorization|cookie|access_token|refresh_token|client_secret)=)[^&\s]+"
+)
 
 
 class MCVTransport:
@@ -31,15 +43,20 @@ class MCVTransport:
             try:
                 response = self._client.request(method, url, params=params, data=data)
             except httpx.HTTPError as exc:
+                if attempt < 2:
+                    self._sleeper(self._retry_delay(attempt, None))
+                    continue
                 target = self._request_target(url)
-                reason = str(exc).strip() or type(exc).__name__
+                reason = _redact(str(exc).strip() or type(exc).__name__)
                 raise UpstreamError(
-                    f"MyCourseVille request failed for {method.upper()} {target}: {reason}.",
+                    f"MyCourseVille request failed after retries for {method.upper()} "
+                    f"{target}: {reason}.",
                     details={
                         "method": method.upper(),
                         "target": target,
                         "exception": type(exc).__name__,
                         "reason": reason,
+                        "attempts": 3,
                     },
                     resource="mycourseville",
                     operation="request",
@@ -57,13 +74,8 @@ class MCVTransport:
                     operation="request",
                 )
 
-            if response.status_code in {429, 500, 502, 503, 504} and attempt < 2:
-                retry_after = response.headers.get("retry-after")
-                try:
-                    delay = min(float(retry_after), 5.0) if retry_after else 0.5 * (2**attempt)
-                except ValueError:
-                    delay = 0.5 * (2**attempt)
-                self._sleeper(delay)
+            if response.status_code in _RETRYABLE_STATUSES and attempt < 2:
+                self._sleeper(self._retry_delay(attempt, response.headers.get("retry-after")))
                 continue
 
             if response.status_code >= 400:
@@ -82,10 +94,16 @@ class MCVTransport:
     @staticmethod
     def _request_target(url: str) -> str:
         parsed = urlparse(url)
-        target = parsed.path or "/"
-        if parsed.query:
-            target = f"{target}?{parsed.query}"
-        return target
+        return parsed.path or "/"
+
+    @staticmethod
+    def _retry_delay(attempt: int, retry_after: str | None) -> float:
+        if retry_after:
+            try:
+                return max(0.0, min(float(retry_after), 5.0))
+            except ValueError:
+                pass
+        return 0.5 * (2**attempt)
 
     @staticmethod
     def _looks_like_login_page(response: httpx.Response) -> bool:
@@ -107,7 +125,9 @@ class MCVTransport:
                     or payload.get("detail")
                 )
         except (json.JSONDecodeError, ValueError):
-            detail = " ".join(response.text.split())[:300] or None
+            detail = _redact(" ".join(response.text.split())[:300]) or None
+        if detail is not None:
+            detail = _redact(" ".join(str(detail).split())[:300]) or None
         message = f"MyCourseVille returned HTTP {response.status_code}."
         if detail:
             message = f"{message} Server message: {detail}"
@@ -116,5 +136,10 @@ class MCVTransport:
             details={"status_code": response.status_code},
             resource="mycourseville",
             operation="request",
-            retryable=response.status_code in {408, 429, 500, 502, 503, 504},
+            retryable=response.status_code in _RETRYABLE_STATUSES,
         )
+
+
+def _redact(value: str) -> str:
+    value = _SENSITIVE_QUERY.sub(r"\1[redacted]", value)
+    return _SENSITIVE_VALUE.sub(r"\1[redacted]", value)

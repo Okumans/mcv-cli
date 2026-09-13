@@ -8,7 +8,7 @@ from mcv_cli.api.aggregates.assignments import AssignmentService
 from mcv_cli.api.aggregates.meetings import MeetingService
 from mcv_cli.api.resources.assignments.models import Assignment
 from mcv_cli.api.resources.courses.models import Course
-from mcv_cli.api.resources.meetings.models import OnlineMeeting
+from mcv_cli.api.resources.meetings.models import MeetingCollection, OnlineMeeting
 
 
 class FakeCourses:
@@ -45,28 +45,31 @@ class FakeAssignments:
 
 
 class FakeMeetings:
-    def list(self, cv_cid: int) -> list[OnlineMeeting]:
+    def list(self, cv_cid: int) -> MeetingCollection:
         if cv_cid != 86428:
-            return []
-        return [
-            OnlineMeeting(
-                itemid=29630,
-                cv_cid=cv_cid,
-                scheduled_at="Sep 10 2026 09:00",
-                detail_url="https://mycourseville.example/meeting/29630",
-            ),
-            OnlineMeeting(
-                itemid=29631,
-                cv_cid=cv_cid,
-                scheduled_at="Sep 20 2026 09:00",
-                join_url="https://zoom.example/meeting/29631",
-            ),
-            OnlineMeeting(
-                itemid=29632,
-                cv_cid=cv_cid,
-                detail_url="https://mycourseville.example/meeting/29632",
-            ),
-        ]
+            return MeetingCollection(cv_cid=cv_cid, available=False)
+        return MeetingCollection(
+            cv_cid=cv_cid,
+            meetings=[
+                OnlineMeeting(
+                    itemid=29630,
+                    cv_cid=cv_cid,
+                    scheduled_at="Sep 10 2026 09:00",
+                    detail_url="https://mycourseville.example/meeting/29630",
+                ),
+                OnlineMeeting(
+                    itemid=29631,
+                    cv_cid=cv_cid,
+                    scheduled_at="Sep 20 2026 09:00",
+                    join_url="https://zoom.example/meeting/29631",
+                ),
+                OnlineMeeting(
+                    itemid=29632,
+                    cv_cid=cv_cid,
+                    detail_url="https://mycourseville.example/meeting/29632",
+                ),
+            ],
+        )
 
 
 class FakeAPI:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import Field, computed_field
 
 from ...core.resource import Resource
@@ -32,3 +34,13 @@ class OnlineMeeting(Resource):
     @property
     def url(self) -> str | None:
         return self.join_url or self.detail_url
+
+
+class MeetingCollection(Resource):
+    """The meeting section belonging to one course."""
+
+    cv_cid: int = Field(gt=0)
+    collection_type: Literal["meeting"] = "meeting"
+    source_url: str | None = None
+    available: bool = True
+    meetings: list[OnlineMeeting] = Field(default_factory=list)

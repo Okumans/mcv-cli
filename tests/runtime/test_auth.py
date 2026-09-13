@@ -177,3 +177,13 @@ def test_google_login_requires_oauth_registration(file_store) -> None:
 
     with pytest.raises(ConfigurationError, match="Google login"):
         manager.login(AuthProvider.GOOGLE, username="ignored", password="ignored")
+
+
+def test_logout_deletes_the_stored_profile(file_store, profile) -> None:
+    file_store.save(profile)
+    manager = AuthManager(store=file_store, settings=file_store.settings)
+
+    manager.logout()
+
+    assert file_store.load() is None
+    assert not file_store.file_path.exists()

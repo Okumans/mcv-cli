@@ -25,10 +25,20 @@ from .resources.materials import (
     render_material_folders,
     render_materials,
 )
-from .resources.meetings import render_meeting, render_meetings, render_recording, render_recordings
-from .resources.playlists import render_playlist, render_playlists
+from .resources.meetings import (
+    render_meeting,
+    render_meeting_collection,
+    render_meetings,
+    render_recording,
+    render_recordings,
+)
+from .resources.playlists import render_playlist_collection, render_playlist_collections
 from .resources.portfolio import render_portfolio
-from .resources.schedule import render_schedule_event, render_schedule_events
+from .resources.schedule import (
+    render_schedule_collection,
+    render_schedule_event,
+    render_schedule_events,
+)
 from .resources.web_resources import render_web_resource, render_web_resources
 
 
@@ -55,10 +65,10 @@ def renderer_for(value: Any) -> Renderer | None:
         Material,
         MaterialFolder,
     )
-    from ..api.resources.meetings.models import MeetingRecording, OnlineMeeting
-    from ..api.resources.playlists.models import Playlist
+    from ..api.resources.meetings.models import MeetingCollection, MeetingRecording, OnlineMeeting
+    from ..api.resources.playlists.models import PlaylistCollection
     from ..api.resources.portfolio.models import Portfolio
-    from ..api.resources.schedule.models import ScheduleEvent
+    from ..api.resources.schedule.models import ScheduleCollection, ScheduleEvent
     from ..api.resources.web_resources.models import WebResource
 
     mapping: tuple[tuple[type[Any], Renderer], ...] = (
@@ -76,11 +86,13 @@ def renderer_for(value: Any) -> Renderer | None:
         (Announcement, Renderer(render_announcement, render_announcements)),
         (MeetingRecording, Renderer(render_recording, render_recordings)),
         (OnlineMeeting, Renderer(render_meeting, render_meetings)),
+        (MeetingCollection, Renderer(render_meeting_collection)),
+        (ScheduleCollection, Renderer(render_schedule_collection)),
         (ScheduleEvent, Renderer(render_schedule_event, render_schedule_events)),
         (CourseAbout, Renderer(render_about)),
         (StudentGroup, Renderer(render_group, render_groups)),
         (Portfolio, Renderer(render_portfolio)),
-        (Playlist, Renderer(render_playlist, render_playlists)),
+        (PlaylistCollection, Renderer(render_playlist_collection, render_playlist_collections)),
         (WebResource, Renderer(render_web_resource, render_web_resources)),
         (DownloadResult, Renderer(render_download)),
         (ArchiveResult, Renderer(render_archive)),

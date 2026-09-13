@@ -89,6 +89,26 @@ def make_http_client(
     return http_client, False
 
 
+def make_download_client(
+    auth: SessionProvider,
+    *,
+    http_client: httpx.Client | None = None,
+    timeout: float | None = None,
+) -> tuple[httpx.Client, bool]:
+    """Create a client that never receives MyCourseVille session cookies."""
+
+    if http_client is not None:
+        return http_client, False
+    return (
+        httpx.Client(
+            timeout=timeout or getattr(getattr(auth, "settings", None), "timeout", 20.0),
+            follow_redirects=False,
+            headers={"Accept": "*/*"},
+        ),
+        True,
+    )
+
+
 def make_transport(
     auth: SessionProvider,
     *,

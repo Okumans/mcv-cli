@@ -4,7 +4,7 @@ from collections.abc import Iterable
 
 from rich.console import RenderableType
 
-from ...api.resources.schedule.models import ScheduleEvent
+from ...api.resources.schedule.models import ScheduleCollection, ScheduleEvent
 from ..common import fields_table
 from ..tables import table_for
 
@@ -26,6 +26,15 @@ def render_schedule_events(
             for item in items
         ),
     )
+
+
+def render_schedule_collection(
+    collection: ScheduleCollection, *, detail: bool = False
+) -> RenderableType:
+    del detail
+    if not collection.available:
+        return "No schedule is available for this course."
+    return render_schedule_events(collection.events)
 
 
 def render_schedule_event(item: ScheduleEvent, *, detail: bool = False) -> RenderableType:

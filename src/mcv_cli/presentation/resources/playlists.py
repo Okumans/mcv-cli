@@ -5,20 +5,38 @@ from collections.abc import Iterable
 from rich.console import Group, RenderableType
 from rich.text import Text
 
-from ...api.resources.playlists.models import Playlist, PlaylistFolder, PlaylistNode, PlaylistVideo
+from ...api.resources.playlists.models import (
+    PlaylistCollection,
+    PlaylistFolder,
+    PlaylistNode,
+    PlaylistVideo,
+)
 from ..common import fields_table, resource_ref
 from ..tables import table_for
 
 
-def render_playlists(items: Iterable[Playlist], *, detail: bool = False) -> RenderableType:
+def render_playlist_collections(
+    items: Iterable[PlaylistCollection], *, detail: bool = False
+) -> RenderableType:
     del detail
     return table_for(
-        ("Course", "Title", "Videos"),
-        ((item.cv_cid, item.title or "", _video_count(item.nodes)) for item in items),
+        ("Course", "Title", "Playlists", "Videos", "Available"),
+        (
+            (
+                item.cv_cid,
+                item.title or "",
+                len(item.playlists),
+                _collection_video_count(item),
+                "yes" if item.available else "no",
+            )
+            for item in items
+        ),
     )
 
 
-def render_playlist(item: Playlist, *, detail: bool = False) -> RenderableType:
+def render_playlist_collection(
+    item: PlaylistCollection, *, detail: bool = False
+) -> RenderableType:
     del detail
     parts: list[RenderableType] = [
         fields_table(
@@ -28,14 +46,26 @@ def render_playlist(item: Playlist, *, detail: bool = False) -> RenderableType:
                 ("title", item.title),
                 ("description", item.description),
                 ("source", item.source_url),
-                ("videos", _video_count(item.nodes)),
+                ("available", item.available),
+                ("playlists", len(item.playlists)),
+                ("videos", _collection_video_count(item)),
             ]
         )
     ]
-    if item.nodes:
-        parts.append(Group(*_render_nodes(item.nodes)))
+    if not item.available:
+        parts.append("No playlist is available for this course.")
+    elif item.playlists:
+        for index, playlist in enumerate(item.playlists):
+            if index:
+                parts.append("")
+            label = playlist.title or playlist.playlist_id or f"Playlist {index + 1}"
+            parts.append(Text(label, style="bold cyan"))
+            if playlist.nodes:
+                parts.append(Group(*_render_nodes(playlist.nodes)))
+            else:
+                parts.append("No videos.")
     else:
-        parts.append("No videos.")
+        parts.append("No playlists.")
     return Group(*parts)
 
 
@@ -69,3 +99,7 @@ def _video_count(nodes: Iterable[PlaylistNode]) -> int:
         else:
             count += _video_count(node.children)
     return count
+
+
+def _collection_video_count(collection: PlaylistCollection) -> int:
+    return sum(_video_count(playlist.nodes) for playlist in collection.playlists)

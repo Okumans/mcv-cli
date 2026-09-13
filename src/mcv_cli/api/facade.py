@@ -8,7 +8,7 @@ import httpx
 from .aggregates import AggregateClients
 from .core.refs import ResourceRef, ResourceType
 from .core.resource import Resource
-from .resources._base import SessionProvider, make_transport
+from .resources._base import SessionProvider, make_download_client, make_transport
 from .resources.about.client import AboutClient
 from .resources.announcements.client import AnnouncementsClient
 from .resources.assignments.client import AssignmentsClient
@@ -30,6 +30,7 @@ class MCVAPI:
         auth: SessionProvider,
         *,
         http_client: httpx.Client | None = None,
+        download_client: httpx.Client | None = None,
         timeout: float | None = None,
         sleeper: Callable[[float], None] = time.sleep,
     ) -> None:
@@ -39,8 +40,16 @@ class MCVAPI:
             timeout=timeout,
             sleeper=sleeper,
         )
+        (
+            self._download_client,
+            self._owns_download_client,
+        ) = make_download_client(auth, http_client=download_client, timeout=timeout)
         self.courses = CourseClient(self._transport, self._http_client)
-        self.materials = MaterialsClient(self._transport, self._http_client)
+        self.materials = MaterialsClient(
+            self._transport,
+            self._http_client,
+            download_client=self._download_client,
+        )
         self.assignments = AssignmentsClient(self._transport, self._http_client)
         self.announcements = AnnouncementsClient(self._transport, self._http_client)
         self.meetings = MeetingsClient(self._transport, self._http_client)
@@ -61,6 +70,8 @@ class MCVAPI:
     def close(self) -> None:
         if self._owns_client:
             self._http_client.close()
+        if self._owns_download_client:
+            self._download_client.close()
 
     def get(self, reference: str | ResourceRef) -> Resource:
         ref = ResourceRef.parse(reference) if isinstance(reference, str) else reference

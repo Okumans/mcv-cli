@@ -174,9 +174,18 @@ Playlist output is read-only metadata. It preserves nested folders and can
 include video titles, providers, ids, thumbnails, durations, watch percentages,
 and source/embed URLs; it does not play, download, or mutate video progress.
 
+The playlist page is a course-level collection: one course can contain several
+playlists. `mcv courses COURSE playlist`, `mcv get mcv:playlist:COURSE_ID`, and
+the equivalent MyCourseVille URL all expose a `PlaylistCollection`. Its JSON
+has `available` and `playlists`; human output displays the contained playlists
+and videos directly. A missing optional playlist section is
+`available: false` with an empty list, while an empty present section is
+`available: true` with an empty list.
+
 For shell composition, use one ref per line and `xargs`:
 
 ```bash
+set -o pipefail
  mcv courses 2110575 materials list \
   --folder "IoT Hardware" --refs \
   | xargs -r -n 20  mcv get
@@ -273,6 +282,11 @@ semester, or pass course references to refresh selected scopes. The cache
 contains completion metadata such as course names, folder names, titles,
 semesters, grouping ids, and refs; it does not contain cookies, passwords,
 resource bodies, signed URLs, or meeting credentials.
+
+Course-scoped schedule and meeting calls also return typed collections with an
+`available` flag. The cache records those flags so playlist references are
+suggested only for courses whose playlist section was observed as available;
+failed refreshes leave the prior snapshot intact.
 
 ## Development boundary
 

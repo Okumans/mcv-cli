@@ -12,7 +12,9 @@ from ..api.resources.announcements.models import Announcement
 from ..api.resources.assignments.models import Assignment
 from ..api.resources.courses.models import Course
 from ..api.resources.materials.models import Material, MaterialFolder
-from ..api.resources.meetings.models import OnlineMeeting
+from ..api.resources.meetings.models import MeetingCollection, OnlineMeeting
+from ..api.resources.playlists.models import PlaylistCollection
+from ..api.resources.schedule.models import ScheduleCollection
 from ..presentation.json import ShellIdList
 from ..presentation.output import DisplayMode, emit, emit_error
 from ..runtime.auth import AuthManager
@@ -100,6 +102,8 @@ def cache_record_value(cache: CacheStore, value: Any) -> None:
             cache.record_semesters([semester])
     elif isinstance(value, (Material, Assignment, Announcement, OnlineMeeting)):
         cache.upsert_resources([value])
+    elif isinstance(value, (PlaylistCollection, ScheduleCollection, MeetingCollection)):
+        cache.record_collection_status(value)
     elif isinstance(value, MaterialFolder):
         course_id = next(
             (item.cv_cid for item in value.materials if item.cv_cid is not None),

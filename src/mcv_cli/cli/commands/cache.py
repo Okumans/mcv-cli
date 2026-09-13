@@ -108,12 +108,21 @@ def refresh(
                     assignments = api.assignments.list(course.cv_cid)
                     announcements = api.announcements.list(course.cv_cid)
                     meetings = api.meetings.list(course.cv_cid)
+                    schedule = api.schedule.list(course.cv_cid)
+                    playlists = api.playlists.get(course.cv_cid)
                     groups = api.groups.list(course.cv_cid)
                     cache.replace_folders(folders, cv_cid=course.cv_cid)
                     cache.replace_resources(ResourceType.MATERIAL, course.cv_cid, materials)
                     cache.replace_resources(ResourceType.ASSIGNMENT, course.cv_cid, assignments)
                     cache.replace_resources(ResourceType.ANNOUNCEMENT, course.cv_cid, announcements)
-                    cache.replace_resources(ResourceType.MEETING, course.cv_cid, meetings)
+                    cache.replace_resources(
+                        ResourceType.MEETING,
+                        course.cv_cid,
+                        meetings.meetings,
+                    )
+                    cache.record_collection_status(meetings)
+                    cache.record_collection_status(schedule)
+                    cache.record_collection_status(playlists)
                     cache.upsert_groupings(groups, cv_cid=course.cv_cid)
                     refreshed.append(
                         {
@@ -122,7 +131,9 @@ def refresh(
                             "materials": len(materials),
                             "assignments": len(assignments),
                             "announcements": len(announcements),
-                            "meetings": len(meetings),
+                            "meetings": len(meetings.meetings),
+                            "schedule": len(schedule.events),
+                            "playlists": len(playlists.playlists),
                             "groups": len(groups),
                         }
                     )

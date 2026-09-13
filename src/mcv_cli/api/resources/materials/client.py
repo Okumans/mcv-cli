@@ -11,8 +11,10 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 
+from ...core.constants import BASE_URL
 from ...core.errors import AuthenticationRequired, DownloadError, NotFoundError
 from ...core.parsing import html_from_response
+from ...core.transport import MCVTransport
 from .._base import ResourceClient
 from .archive import archive_filename, resolve_archive_format, unique_archive_name
 from .models import ArchiveFormat, ArchiveResult, DownloadResult, Material, MaterialFolder
@@ -20,6 +22,16 @@ from .parser import parse_material_detail, parse_materials
 
 
 class MaterialsClient(ResourceClient):
+    def __init__(
+        self,
+        transport: MCVTransport,
+        http_client: httpx.Client,
+        *,
+        download_client: httpx.Client,
+    ) -> None:
+        super().__init__(transport, http_client)
+        self.download_client = download_client
+
     def list(self, cv_cid: int) -> list[Material]:
         return parse_materials(self.course_home_html(cv_cid), cv_cid)
 
@@ -194,7 +206,8 @@ class MaterialsClient(ResourceClient):
             parsed = urlparse(current_url)
             if parsed.scheme != "https" or not parsed.netloc:
                 raise DownloadError("MyCourseVille returned a non-HTTPS material URL.")
-            with self.http_client.stream("GET", current_url) as response:
+            client = self.http_client if _is_official_origin(current_url) else self.download_client
+            with client.stream("GET", current_url) as response:
                 if response.is_redirect:
                     location = response.headers.get("location")
                     if not location:
@@ -216,3 +229,12 @@ class MaterialsClient(ResourceClient):
                     total += len(chunk)
                 return total
         raise DownloadError("The material download exceeded the redirect limit.")
+
+
+def _is_official_origin(url: str) -> bool:
+    parsed = urlparse(url)
+    return (
+        parsed.scheme == "https"
+        and parsed.hostname in {urlparse(BASE_URL).hostname, "mycourseville.com"}
+        and (parsed.port in (None, 443))
+    )

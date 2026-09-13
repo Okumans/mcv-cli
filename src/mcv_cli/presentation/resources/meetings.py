@@ -4,7 +4,7 @@ from collections.abc import Iterable
 
 from rich.console import RenderableType
 
-from ...api.resources.meetings.models import MeetingRecording, OnlineMeeting
+from ...api.resources.meetings.models import MeetingCollection, MeetingRecording, OnlineMeeting
 from ..common import fields_table, resource_ref
 from ..tables import table_for
 
@@ -34,6 +34,15 @@ def render_meetings(items: Iterable[OnlineMeeting], *, detail: bool = False) -> 
             )
         )
     return table_for(columns, rows, overflow_columns={"Link"})
+
+
+def render_meeting_collection(
+    collection: MeetingCollection, *, detail: bool = False
+) -> RenderableType:
+    del detail
+    if not collection.available:
+        return "No meetings are available for this course."
+    return render_meetings(collection.meetings)
 
 
 def render_meeting(item: OnlineMeeting, *, detail: bool = False) -> RenderableType:

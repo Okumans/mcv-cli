@@ -105,8 +105,10 @@ def _diagnostic_text(value: object) -> str | None:
         else str(value)
     )
     text = re.sub(
-        r"(?i)((?:password|passwd|_token|client_secret|access_token|refresh_token|"
-        r"authorization|cookie)\s*[:=]\s*[\"']?)[^,}\s\"']+",
+        r"(?i)((?:[\"']?(?:password|passwd|_?token|csrf|csrf_token|session|"
+        r"client_secret|access_token|refresh_token|authorization|cookie)[\"']?\s*[:=]\s*"
+        r"[\"']?))"
+        r"[^,}\s\"']+",
         r"\1[redacted]",
         text,
     )
@@ -248,7 +250,7 @@ class AuthManager:
     def logout(self) -> None:
         profile = self.store.load()
         if profile is not None:
-            self.store.save(StoredProfile(provider=profile.provider))
+            self.store.delete()
 
     def _load_login_form(self, client: httpx.Client, provider: AuthProvider) -> LoginForm:
         response = client.get(

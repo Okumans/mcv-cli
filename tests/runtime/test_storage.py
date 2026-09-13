@@ -30,6 +30,47 @@ def test_encrypted_file_rejects_wrong_passphrase(file_store, profile, tmp_path) 
         wrong_store.load()
 
 
+def test_delete_removes_an_encrypted_profile(file_store, profile) -> None:
+    file_store.save(profile)
+
+    file_store.delete()
+
+    assert not file_store.file_path.exists()
+    assert file_store.load() is None
+
+
+def test_delete_removes_a_keyring_profile(monkeypatch, tmp_path, profile) -> None:
+    class FakeKeyring:
+        value: str | None = None
+
+        def get_password(self, service: str, username: str) -> str | None:
+            assert service == "mcv"
+            assert username == "default"
+            return self.value
+
+        def set_password(self, service: str, username: str, value: str) -> None:
+            assert service == "mcv"
+            assert username == "default"
+            self.value = value
+
+        def delete_password(self, service: str, username: str) -> None:
+            assert service == "mcv"
+            assert username == "default"
+            self.value = None
+
+    fake_keyring = FakeKeyring()
+    monkeypatch.setattr("mcv_cli.runtime.storage.keyring", fake_keyring)
+    store = __import__("mcv_cli.runtime.storage", fromlist=["CredentialStore"]).CredentialStore(
+        file_path=tmp_path / "credentials.enc",
+        prefer_keyring=True,
+    )
+    store.save(profile)
+
+    store.delete()
+
+    assert store.load() is None
+
+
 def test_keyring_is_preferred(monkeypatch, tmp_path, profile) -> None:
     class FakeKeyring:
         value: str | None = None

@@ -4,7 +4,7 @@ from typer.testing import CliRunner
 
 from mcv_cli.api.resources.assignments.models import Assignment
 from mcv_cli.api.resources.courses.models import Course
-from mcv_cli.api.resources.playlists.models import Playlist, PlaylistVideo
+from mcv_cli.api.resources.playlists.models import Playlist, PlaylistCollection, PlaylistVideo
 from mcv_cli.cli.app import app
 
 runner = CliRunner()
@@ -139,7 +139,11 @@ def test_courses_accepts_playlist_after_course(monkeypatch) -> None:
     class FakePlaylists:
         def get(self, cv_cid):
             calls.append(cv_cid)
-            return Playlist(cv_cid=cv_cid, title="Course playlist")
+            return PlaylistCollection(
+                cv_cid=cv_cid,
+                title="Course playlist",
+                playlists=[Playlist(title="Course playlist")],
+            )
 
     class FakeAPI:
         courses = FakeCourses()
@@ -165,6 +169,21 @@ def test_course_playlist_help_uses_the_course_aware_route() -> None:
 
     assert result.exit_code == 0
     assert "{course}" in result.stdout
+    assert "playlist_show" not in result.stdout
+
+
+def test_course_resource_help_uses_public_routes() -> None:
+    for route in (
+        ["materials", "list"],
+        ["assignments", "show"],
+        ["meetings", "list"],
+    ):
+        result = runner.invoke(app, ["courses", "2110575", *route, "--help"])
+
+        assert result.exit_code == 0, result.output
+        assert "_show" not in result.stdout
+        assert "_list" not in result.stdout
+        assert "courses COURSE" in result.stdout
 
 
 def test_course_scoped_commands_expose_semester_selection() -> None:
@@ -231,6 +250,15 @@ def test_flat_resource_commands_are_not_exposed() -> None:
 
     assert "materials" not in result.stdout
     assert "courses" in result.stdout
+
+
+def test_courses_help_documents_the_public_course_route() -> None:
+    result = runner.invoke(app, ["courses", "--help"])
+
+    assert result.exit_code == 0
+    assert "mcv courses COURSE RESOURCE ACTION" in result.stdout
+    assert "playlist" in result.stdout
+    assert "playlist_show" not in result.stdout
 
 
 def test_material_list_exposes_shell_query_options() -> None:
@@ -326,10 +354,21 @@ def test_get_accepts_a_playlist_reference(monkeypatch) -> None:
 
         def get(self, reference):
             received.append((reference.resource_type.value, reference.cv_cid, reference.item_id))
-            return Playlist(
+            return PlaylistCollection(
                 cv_cid=reference.cv_cid,
                 title="Computer Networks playlist",
-                nodes=[PlaylistVideo(title="Introduction", provider="youtube", video_id="abc")],
+                playlists=[
+                    Playlist(
+                        title="Computer Networks playlist",
+                        nodes=[
+                            PlaylistVideo(
+                                title="Introduction",
+                                provider="youtube",
+                                video_id="abc",
+                            )
+                        ],
+                    )
+                ],
             )
 
     monkeypatch.setattr("mcv_cli.cli.commands.get.make_api", lambda: FakeAPI())

@@ -24,10 +24,15 @@ from mcv_cli.api.resources.materials.models import (
     Material,
     MaterialFolder,
 )
-from mcv_cli.api.resources.meetings.models import MeetingRecording, OnlineMeeting
-from mcv_cli.api.resources.playlists.models import Playlist, PlaylistFolder, PlaylistVideo
+from mcv_cli.api.resources.meetings.models import MeetingCollection, MeetingRecording, OnlineMeeting
+from mcv_cli.api.resources.playlists.models import (
+    Playlist,
+    PlaylistCollection,
+    PlaylistFolder,
+    PlaylistVideo,
+)
 from mcv_cli.api.resources.portfolio.models import Portfolio
-from mcv_cli.api.resources.schedule.models import ScheduleEvent
+from mcv_cli.api.resources.schedule.models import ScheduleCollection, ScheduleEvent
 from mcv_cli.api.resources.web_resources.models import WebResource
 from mcv_cli.presentation.output import ShellIdList, emit, emit_error, to_jsonable
 
@@ -388,12 +393,26 @@ def test_assignment_machine_data_includes_question_set_submission() -> None:
         (MeetingRecording(recording_type="video", play_url="https://example.test/play"), "video"),
         (OnlineMeeting(itemid=29632, cv_cid=86428, name="Lecture"), "Lecture"),
         (
-            Playlist(
+            PlaylistCollection(
                 cv_cid=86428,
                 title="Recorded lectures",
-                nodes=[PlaylistVideo(title="Introduction")],
+                playlists=[Playlist(nodes=[PlaylistVideo(title="Introduction")])],
             ),
             "Recorded lectures",
+        ),
+        (
+            ScheduleCollection(
+                cv_cid=86428,
+                events=[ScheduleEvent(cv_cid=86428, title="Exam")],
+            ),
+            "Exam",
+        ),
+        (
+            MeetingCollection(
+                cv_cid=86428,
+                meetings=[OnlineMeeting(itemid=1, cv_cid=86428, name="Office hour")],
+            ),
+            "Office hour",
         ),
         (ScheduleEvent(cv_cid=86428, date="2026-09-20", title="Exam"), "Exam"),
         (CourseAbout(cv_cid=86428, title="Operating Systems"), "Operating Systems"),
@@ -491,26 +510,31 @@ def test_playlist_detail_renders_nested_folders_and_video_metadata() -> None:
     console = Console(record=True, width=200)
 
     emit(
-        Playlist(
+        PlaylistCollection(
             cv_cid=86428,
             title="Recorded lectures",
             description="Weekly videos",
-            nodes=[
-                PlaylistFolder(
-                    folder_id="week-1",
-                    name="Week 1",
-                    children=[
+            playlists=[
+                Playlist(
+                    title="Week 1",
+                    nodes=[
                         PlaylistFolder(
-                            folder_id="part-a",
-                            name="Part A",
+                            folder_id="week-1",
+                            name="Week 1",
                             children=[
-                                PlaylistVideo(
-                                    title="Introduction",
-                                    provider="youtube",
-                                    video_id="abc123",
-                                    duration="10:00",
-                                    watched_percent=50,
-                                    source_url="https://youtu.be/abc123",
+                                PlaylistFolder(
+                                    folder_id="part-a",
+                                    name="Part A",
+                                    children=[
+                                        PlaylistVideo(
+                                            title="Introduction",
+                                            provider="youtube",
+                                            video_id="abc123",
+                                            duration="10:00",
+                                            watched_percent=50,
+                                            source_url="https://youtu.be/abc123",
+                                        )
+                                    ],
                                 )
                             ],
                         )
@@ -533,14 +557,18 @@ def test_playlist_detail_renders_nested_folders_and_video_metadata() -> None:
 
 def test_playlist_machine_data_includes_course_reference_and_nested_nodes() -> None:
     data = to_jsonable(
-        Playlist(
+        PlaylistCollection(
             cv_cid=86428,
             title="Recorded lectures",
-            nodes=[
-                PlaylistFolder(
-                    folder_id="week-1",
-                    name="Week 1",
-                    children=[PlaylistVideo(title="Introduction", video_id="abc123")],
+            playlists=[
+                Playlist(
+                    nodes=[
+                        PlaylistFolder(
+                            folder_id="week-1",
+                            name="Week 1",
+                            children=[PlaylistVideo(title="Introduction", video_id="abc123")],
+                        )
+                    ]
                 )
             ],
         )
@@ -548,4 +576,47 @@ def test_playlist_machine_data_includes_course_reference_and_nested_nodes() -> N
 
     assert data["resource_type"] == "playlist"
     assert data["ref"] == "mcv:playlist:86428"
-    assert data["nodes"][0]["children"][0]["video_id"] == "abc123"
+    assert data["playlists"][0]["nodes"][0]["children"][0]["video_id"] == "abc123"
+
+
+def test_optional_collection_availability_is_preserved_in_machine_output() -> None:
+    schedule = to_jsonable(ScheduleCollection(cv_cid=86428, available=False))
+    meetings = to_jsonable(MeetingCollection(cv_cid=86428, available=False))
+    playlist = to_jsonable(PlaylistCollection(cv_cid=86428, available=False))
+
+    assert schedule == {
+        "cv_cid": 86428,
+        "collection_type": "schedule",
+        "available": False,
+        "events": [],
+    }
+    assert meetings == {
+        "cv_cid": 86428,
+        "collection_type": "meeting",
+        "available": False,
+        "meetings": [],
+    }
+    assert playlist["resource_type"] == "playlist"
+    assert playlist["ref"] == "mcv:playlist:86428"
+    assert playlist["available"] is False
+    assert playlist["playlists"] == []
+
+
+def test_optional_collection_unavailability_has_human_messages() -> None:
+    console = Console(record=True)
+
+    emit(
+        [
+            PlaylistCollection(cv_cid=86428, available=False),
+            ScheduleCollection(cv_cid=86428, available=False),
+            MeetingCollection(cv_cid=86428, available=False),
+        ],
+        json_mode=False,
+        display_mode="detail",
+        console=console,
+    )
+
+    rendered = console.export_text()
+    assert "No playlist is available for this course." in rendered
+    assert "No schedule is available for this course." in rendered
+    assert "No meetings are available for this course." in rendered

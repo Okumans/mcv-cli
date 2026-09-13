@@ -127,6 +127,12 @@ preserve nested folders and expose read-only video metadata such as titles,
 providers, ids, thumbnails, durations, watch percentages, and source URLs.
 They do not download or play videos.
 
+`playlist` is a course-level collection even though it is a direct action: one
+course page may contain several named playlists. The API returns a
+`PlaylistCollection` with an `available` flag and a `playlists` list, and
+`mcv get mcv:playlist:CV_CID` returns that same wrapper. Human output flattens
+the wrapper into a readable playlist/video display; JSON retains the wrapper.
+
 Assignment details use a compact human-readable question-set view by default.
 Use the assignment-specific `--full` option when you need worksheet ids,
 question types, instructions, grading metadata, and all assignment links. This
@@ -311,6 +317,14 @@ Use `--include-past` to include them. Meeting records expose `url`, which
 prefers the direct `join_url` and falls back to the MyCourseVille
 `detail_url`.
 
+Course-scoped schedule and meeting lists return typed collections in JSON:
+`ScheduleCollection.events` and `MeetingCollection.meetings`. Their
+`available` field distinguishes a missing optional page section from an
+available section with zero rows. An unavailable collection is a successful
+empty result for that course, while an unrelated or malformed upstream page
+still returns a parse error. Human output reports the unavailable state
+without exposing the wrapper mechanics.
+
 ## Universal resource lookup
 
 Addressable resources use the generic reference format:
@@ -334,6 +348,7 @@ mcv get \
   mcv:assignment:86428:2160997 \
   mcv:material:86428:2160993
 
+set -o pipefail
 mcv assignments list --pending --refs | xargs -r -n 20 mcv get
 ```
 
@@ -400,9 +415,16 @@ manager = AuthManager(settings=Settings())
 with MCVAPI(manager) as api:
     course = api.courses.resolve("2110575")
     playlist = api.playlists.get(course.cv_cid)
+    schedule = api.schedule.list(course.cv_cid)
+    meetings = api.meetings.list(course.cv_cid)
     materials = api.materials.list(course.cv_cid)
     assignment = api.get("mcv:assignment:86428:2160997")
 ```
+
+`playlist`, `schedule`, and `meetings` are typed course collections. A
+collection with `available=False` means that MyCourseVille omitted that
+optional feature for the course; `available=True` with an empty child list
+means the feature exists but currently has no entries.
 
 Cross-course queries are exposed by `mcv_cli.api.aggregates`; presentation
 and CLI concerns are not part of the API model or client contracts.

@@ -135,3 +135,36 @@ def is_assignment_page_url(value: str) -> bool:
 def is_download_href(value: str) -> bool:
     parsed = urlparse(value)
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def looks_like_course_page(html_doc: str, cv_cid: int) -> bool:
+    """Return whether an HTML response has the normal course-page shell.
+
+    Optional course sections are legitimately omitted by MyCourseVille.  The
+    resource parsers use this narrow signal to distinguish that state from a
+    completely unrelated or structurally changed response, which should stay
+    a parse error.
+    """
+
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html_doc, "html.parser")
+    course_path = f"courseville/course/{cv_cid}"
+    if any(
+        isinstance(href, str) and course_path in href
+        for anchor in soup.select("a[href]")
+        for href in [anchor.get("href")]
+    ):
+        return True
+    for selector in (
+        f"[data-cv-cid='{cv_cid}']",
+        f"[data-course-id='{cv_cid}']",
+        f"input[name='cv_cid'][value='{cv_cid}']",
+        f"input[name='course_id'][value='{cv_cid}']",
+    ):
+        if soup.select_one(selector) is not None:
+            return True
+    return soup.select_one(
+        "#courseville-content-course-main-column, "
+        "#courseville-content-course, #courseville-course-main"
+    ) is not None

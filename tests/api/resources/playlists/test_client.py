@@ -8,7 +8,10 @@ import httpx
 from mcv_cli.api.core.constants import BASE_URL
 from mcv_cli.api.core.refs import ResourceRef, ResourceType
 from mcv_cli.api.facade import MCVAPI
-from mcv_cli.api.resources.playlists.models import Playlist, PlaylistFolder, PlaylistVideo
+from mcv_cli.api.resources.playlists.models import (
+    PlaylistCollection,
+    PlaylistVideo,
+)
 from mcv_cli.runtime.config import Settings
 
 
@@ -45,7 +48,7 @@ def test_playlist_client_fetches_the_course_playlist_route() -> None:
         with MCVAPI(FakeAuth(), http_client=http_client) as api:
             playlist = api.playlists.get(78748)
 
-    assert isinstance(playlist, Playlist)
+    assert isinstance(playlist, PlaylistCollection)
     assert requests == ["courseville/course/78748/playlist"]
     assert playlist.cv_cid == 78748
 
@@ -81,12 +84,11 @@ def test_playlist_client_hydrates_cvdlit_deferred_clips() -> None:
             {"cvcid": ["78748"], "playlistid": ["7662"]},
         ),
     ]
-    assert len(playlist.nodes) == 1
-    folder = playlist.nodes[0]
-    assert isinstance(folder, PlaylistFolder)
-    assert folder.folder_id == "7662"
-    assert len(folder.children) == 2
-    first_video = folder.children[0]
+    assert len(playlist.playlists) == 1
+    course_playlist = playlist.playlists[0]
+    assert course_playlist.playlist_id == "7662"
+    assert len(course_playlist.nodes) == 2
+    first_video = course_playlist.nodes[0]
     assert isinstance(first_video, PlaylistVideo)
     assert first_video.video_id == "dQuuUJJxFis"
 

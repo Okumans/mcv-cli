@@ -43,15 +43,30 @@ class PlaylistFolder(BaseModel):
 PlaylistNode = PlaylistFolder | PlaylistVideo
 
 
-class Playlist(Resource):
-    """One course's ordered playlist tree."""
+class Playlist(BaseModel):
+    """One playlist entry from a course's playlist page."""
 
-    cv_cid: int = Field(gt=0)
+    model_config = ConfigDict(extra="ignore")
+
+    playlist_id: str | None = None
     title: str | None = None
     description: str | None = None
     source_url: str | None = None
     nodes: list[PlaylistNode] = Field(default_factory=list)
 
 
+class PlaylistCollection(Resource):
+    """The complete playlist collection exposed by one course page."""
+
+    cv_cid: int = Field(gt=0)
+    collection_type: Literal["playlist"] = "playlist"
+    title: str | None = None
+    description: str | None = None
+    source_url: str | None = None
+    available: bool = True
+    playlists: list[Playlist] = Field(default_factory=list)
+
+
 PlaylistFolder.model_rebuild()
 Playlist.model_rebuild()
+PlaylistCollection.model_rebuild()

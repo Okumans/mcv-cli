@@ -260,6 +260,7 @@ For large result sets, use `xargs` instead of command substitution to avoid
 the shell argument-size limit:
 
 ```bash
+set -o pipefail
 mcv courses "$MCV_COURSE" materials list \
   --folder "IoT Hardware" --refs \
   | xargs -r -n 20 uv run mcv courses "$MCV_COURSE" materials show
@@ -268,6 +269,7 @@ mcv courses "$MCV_COURSE" materials list \
 Universal dereferencing removes the need to repeat the course context:
 
 ```bash
+set -o pipefail
 mcv courses "$MCV_COURSE" materials list \
   --folder "IoT Hardware" --refs \
   | xargs -r -n 20 uv run mcv get
@@ -348,6 +350,14 @@ the JSON model and human output; video entries can include their title,
 provider, upstream id, thumbnail, duration, watch percentage, and source or
 embed URL. The client does not resolve playback streams, download videos, or
 change progress.
+
+The playlist page is a collection resource: a course can expose multiple
+named playlists. `api.playlists.get()` and `mcv get mcv:playlist:CV_CID`
+return a `PlaylistCollection` with `available` and `playlists`; human output
+shows the contained playlists and videos directly, while JSON keeps the
+collection wrapper. A valid course without this optional page returns
+`available: false` and an empty list. A present page with no entries returns
+`available: true` and an empty list.
 
 ## 6. Materials API
 
@@ -503,6 +513,12 @@ Meeting lists hide meetings whose scheduled time has passed by default;
 `--include-past` returns the complete list. Each result includes `url`, which
 prefers the direct `join_url` and falls back to `detail_url`.
 
+The course-scoped API returns a `MeetingCollection`. Its `available` flag is
+false when MyCourseVille omits the optional meeting section for that course;
+an empty but present meeting table is `available: true` with
+`meetings: []`. The human renderer turns either state into a concise course
+display, while machine output preserves the wrapper and flag.
+
 Meeting detail can include:
 
 - provider, meeting id, host, schedule, and duration;
@@ -523,8 +539,12 @@ uv run mcv --json courses "$MCV_COURSE" schedule list
 ```
 
 Each schedule event exposes index, date, time, title, comment, and `cv_cid`.
-An empty schedule is a valid result and is rendered as `data: []` in JSON
-mode.
+The course-scoped API returns a `ScheduleCollection` with `available` and
+`events`. A missing optional schedule section is `available: false` with
+`events: []`; a present schedule with no rows is `available: true` with an
+empty list. Unrelated or malformed pages remain parse errors. Human output
+flattens the collection into its event table, while JSON and JSONL preserve
+the collection wrapper.
 
 ## 11. Course information API
 
@@ -672,6 +692,8 @@ manager = AuthManager(settings=Settings())
 with MCVAPI(manager) as api:
     course = api.courses.resolve("2110575")
     playlist = api.playlists.get(course.cv_cid)
+    schedule = api.schedule.list(course.cv_cid)
+    meetings = api.meetings.list(course.cv_cid)
     materials = api.materials.list(course.cv_cid)
     assignment = api.get(ResourceRef.parse("mcv:assignment:86428:2160997"))
 ```
@@ -681,12 +703,12 @@ Resource clients expose domain operations under their resource namespace:
 | Client | Operations |
 | --- | --- |
 | `api.courses` | `list`, `get`, `resolve` |
-| `api.playlists` | `get` |
+| `api.playlists` | `get` → `PlaylistCollection` |
 | `api.materials` | `list`, `list_folders`, `get`, `download`, `archive` |
 | `api.assignments` | `list`, `get` |
 | `api.announcements` | `list`, `get` |
-| `api.meetings` | `list`, `get` |
-| `api.schedule` | `list` |
+| `api.meetings` | `list` → `MeetingCollection`, `get` |
+| `api.schedule` | `list` → `ScheduleCollection` |
 | `api.about` | `get` |
 | `api.groups` | `list` |
 | `api.portfolio` | `get` |
@@ -739,7 +761,8 @@ The public Pydantic models are:
 | Model | Main fields |
 | --- | --- |
 | `Course` | `cv_cid`, `course_no`, `title`, `year`, `semester`, `section`, `role` |
-| `Playlist` | `cv_cid`, title/description/source URL, ordered nested nodes |
+| `PlaylistCollection` | `cv_cid`, title/description/source URL, `available`, ordered playlists |
+| `Playlist` | optional playlist id/title/description/source URL, ordered nested nodes |
 | `PlaylistFolder` | optional folder id, name, position, child folders/videos |
 | `PlaylistVideo` | provider/id, title, source/embed/thumbnail URLs, duration, watch percentage |
 | `Material` | `itemid`, `cv_cid`, `title`, folder fields, URLs, metadata |
@@ -750,8 +773,10 @@ The public Pydantic models are:
 | `QuestionSetChoice` | label, upstream value, selected state, optional correctness |
 | `Announcement` | `itemid`, `cv_cid`, optional `course_no`, title, body, posted/modified dates, links |
 | `OnlineMeeting` | `itemid`, `cv_cid`, optional `course_no`, provider, schedule, preferred `url`, join/detail URLs, recordings |
+| `MeetingCollection` | `cv_cid`, source URL, `available`, ordered meetings |
 | `MeetingRecording` | recording type, play/download URL, timing, password |
 | `ScheduleEvent` | index, `cv_cid`, date, time, title, comment |
+| `ScheduleCollection` | `cv_cid`, source URL, `available`, ordered events |
 | `CourseAbout` | course identity, names, descriptions, staff, outcomes |
 | `StudentGroup` | grouping/group identity, slogan, members |
 | `Portfolio` | points, rank, grade, badges, group membership |
@@ -781,7 +806,7 @@ UV_CACHE_DIR=/tmp/mcv-uv-cache uv run pyright
 The current local evaluation recorded while writing this document is:
 
 ```text
-139 passed
+163 passed
 Ruff: all checks passed
 Pyright: 0 errors, 0 warnings
 ```

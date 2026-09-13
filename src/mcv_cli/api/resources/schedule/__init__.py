@@ -1,4 +1,4 @@
 from .client import ScheduleClient
-from .models import ScheduleEvent
+from .models import ScheduleCollection, ScheduleEvent
 
-__all__ = ["ScheduleClient", "ScheduleEvent"]
+__all__ = ["ScheduleClient", "ScheduleCollection", "ScheduleEvent"]

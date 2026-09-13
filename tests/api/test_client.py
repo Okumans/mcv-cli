@@ -370,9 +370,9 @@ def test_client_parses_student_resources() -> None:
     assert assignments[0].submitted_at == "02 Sep 2026 10:00"
     assert assignments[0].submission_url is None
     assert announcements[0].itemid == 77
-    assert meetings[0].itemid == 99
-    assert meetings[0].provider == "Zoom"
-    assert schedule[0].title == "Lecture"
+    assert meetings.meetings[0].itemid == 99
+    assert meetings.meetings[0].provider == "Zoom"
+    assert schedule.events[0].title == "Lecture"
     assert about.title == "Computer Science"
     assert groups[0].members == ["Ada Lovelace", "Grace Hopper"]
     assert portfolio.total_points == "85.00"
@@ -562,12 +562,20 @@ def test_question_set_submission_extracts_questions_choices_and_answers() -> Non
 
 
 def test_client_downloads_material_folder_as_zip_and_tar(tmp_path: Path) -> None:
+    transport = httpx.MockTransport(resource_response_for)
     with httpx.Client(
         base_url=BASE_URL,
-        transport=httpx.MockTransport(resource_response_for),
+        transport=transport,
         follow_redirects=False,
-    ) as http_client:
-        client = MCVAPI(FakeAuth(), http_client=http_client)
+    ) as http_client, httpx.Client(
+        transport=transport,
+        follow_redirects=False,
+    ) as download_client:
+        client = MCVAPI(
+            FakeAuth(),
+            http_client=http_client,
+            download_client=download_client,
+        )
         zip_path = tmp_path / "materials.zip"
         tar_path = tmp_path / "materials.tar"
         tar_gz_path = tmp_path / "materials.tar.gz"
@@ -622,7 +630,7 @@ def test_client_reports_transport_error_details() -> None:
         transport=httpx.MockTransport(handler),
         follow_redirects=False,
     ) as http_client:
-        client = MCVAPI(FakeAuth(), http_client=http_client)
+        client = MCVAPI(FakeAuth(), http_client=http_client, sleeper=lambda _delay: None)
         with pytest.raises(UpstreamError) as raised:
             client.courses.list()
 
@@ -631,10 +639,67 @@ def test_client_reports_transport_error_details() -> None:
     assert "DNS unavailable" in error.message
     assert error.details == {
         "method": "GET",
-        "target": "/?q=courseville",
+        "target": "/",
         "exception": "ConnectError",
         "reason": "DNS unavailable",
+        "attempts": 3,
     }
+
+
+def test_client_retries_http_408_before_returning_a_response() -> None:
+    attempts = 0
+    delays: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            return httpx.Response(408, request=request)
+        return httpx.Response(200, text=MATERIALS_HTML, request=request)
+
+    with httpx.Client(
+        base_url=BASE_URL,
+        transport=httpx.MockTransport(handler),
+        follow_redirects=False,
+    ) as http_client:
+        client = MCVAPI(FakeAuth(), http_client=http_client, sleeper=delays.append)
+        materials = client.materials.list(123)
+
+    assert attempts == 3
+    assert delays == [0.5, 1.0]
+    assert materials[0].itemid == 9
+
+
+def test_client_redacts_sensitive_upstream_error_details() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            400,
+            json={
+                "message": {
+                    "url": (
+                        "https://storage.example/file.pdf?token=secret-token"
+                        "&password=secret-password"
+                    ),
+                    "token": "nested-secret-token",
+                },
+            },
+            request=request,
+        )
+
+    with httpx.Client(
+        base_url=BASE_URL,
+        transport=httpx.MockTransport(handler),
+        follow_redirects=False,
+    ) as http_client:
+        client = MCVAPI(FakeAuth(), http_client=http_client)
+        with pytest.raises(UpstreamError) as raised:
+            client.materials.list(123)
+
+    error = raised.value
+    assert "secret-token" not in error.message
+    assert "secret-password" not in error.message
+    assert "nested-secret-token" not in error.message
+    assert "[redacted]" in error.message
 
 
 def test_client_parses_semester_selector() -> None:
@@ -753,25 +818,35 @@ def test_client_sends_session_cookie() -> None:
 
 
 def test_download_does_not_send_bearer_to_external_host(tmp_path: Path) -> None:
-    seen_headers: list[str | None] = []
+    seen_headers: list[tuple[str | None, str | None]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.params.get("q") == "courseville/ajax/course":
             return httpx.Response(200, text=MATERIALS_HTML, request=request)
-        seen_headers.append(request.headers.get("authorization"))
+        seen_headers.append(
+            (request.headers.get("authorization"), request.headers.get("cookie"))
+        )
         return httpx.Response(200, content=b"pdf-content", request=request)
 
     output = tmp_path / "lecture.pdf"
+    transport = httpx.MockTransport(handler)
     with httpx.Client(
         base_url=BASE_URL,
-        transport=httpx.MockTransport(handler),
+        transport=transport,
         follow_redirects=False,
-    ) as http_client:
-        client = MCVAPI(FakeAuth(), http_client=http_client)
+    ) as http_client, httpx.Client(
+        transport=transport,
+        follow_redirects=False,
+    ) as download_client:
+        client = MCVAPI(
+            FakeAuth(),
+            http_client=http_client,
+            download_client=download_client,
+        )
         result = client.materials.download(123, 9, output)
 
     assert output.read_bytes() == b"pdf-content"
-    assert seen_headers == [None]
+    assert seen_headers == [(None, None)]
     assert result.bytes == len(b"pdf-content")
     assert result.sha256 == hashlib.sha256(b"pdf-content").hexdigest()
 

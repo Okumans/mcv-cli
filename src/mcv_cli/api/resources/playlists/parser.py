@@ -10,8 +10,14 @@ from bs4 import BeautifulSoup, Tag
 
 from ...core.constants import BASE_URL
 from ...core.errors import ParseError
-from ...core.parsing import absolute_url, text
-from .models import Playlist, PlaylistFolder, PlaylistNode, PlaylistVideo
+from ...core.parsing import absolute_url, looks_like_course_page, text
+from .models import (
+    Playlist,
+    PlaylistCollection,
+    PlaylistFolder,
+    PlaylistNode,
+    PlaylistVideo,
+)
 
 _FOLDER_ATTRIBUTE_NAMES = (
     "data-plid",
@@ -73,59 +79,67 @@ def parse_playlist(
     cv_cid: int,
     *,
     source_url: str | None = None,
-) -> Playlist:
-    """Normalize an authenticated playlist page into an ordered tree.
+) -> PlaylistCollection:
+    """Normalize an authenticated course playlist page into a collection.
 
     The classic page has appeared both as server-rendered HTML and as a page
     containing embedded JSON.  Prefer a recognized embedded payload, then use
-    the DOM so folder/video order is preserved exactly as displayed.
+    the DOM so playlist and folder/video order is preserved exactly as
+    displayed.  A course can validly have no playlist section at all.
     """
 
     source = source_url or f"{BASE_URL}/?q=courseville/course/{cv_cid}/playlist"
     soup = BeautifulSoup(html_doc, "html.parser")
-    empty_payload: Playlist | None = None
+    empty_payload: PlaylistCollection | None = None
     for payload in _embedded_payloads(soup):
-        playlist = _playlist_from_payload(payload, cv_cid, source)
-        if playlist is not None:
-            if playlist.nodes:
-                return playlist
-            empty_payload = empty_payload or playlist
+        collection = _collection_from_payload(payload, cv_cid, source)
+        if collection is not None:
+            if _collection_has_nodes(collection):
+                return collection
+            empty_payload = empty_payload or collection
 
     root = _find_playlist_root(soup)
     if root is None:
+        if empty_payload is not None:
+            return empty_payload.model_copy(
+                update={
+                    "title": _document_title(soup) or empty_payload.title,
+                    "description": _document_description(soup) or empty_payload.description,
+                    "source_url": source,
+                    "available": True,
+                }
+            )
+        if looks_like_course_page(html_doc, cv_cid):
+            return PlaylistCollection(
+                cv_cid=cv_cid,
+                title=_document_title(soup),
+                description=_document_description(soup),
+                source_url=source,
+                available=False,
+            )
         raise ParseError(
             "MyCourseVille returned a playlist page without recognizable playlist content.",
             resource="playlist",
             operation="get",
         )
 
-    folder_candidates = [element for element in root.find_all(True) if _is_folder(element)]
-    video_candidates = _top_level_candidates(
-        [element for element in root.find_all(True) if _is_video(element)]
-    )
-    order = {id(element): index for index, element in enumerate(root.find_all(True))}
-    counter = [0]
-    nodes = _build_nodes(
-        root,
-        folder_candidates=folder_candidates,
-        video_candidates=video_candidates,
-        order=order,
-        counter=counter,
-    )
-    if not nodes and empty_payload is not None:
+    playlists = _dom_playlists(soup, root, source)
+    if not playlists and empty_payload is not None:
         return empty_payload.model_copy(
             update={
                 "title": _playlist_title(soup, root) or empty_payload.title,
                 "description": _playlist_description(soup, root) or empty_payload.description,
                 "source_url": source,
+                "available": True,
             }
         )
-    return Playlist(
+    return PlaylistCollection(
         cv_cid=cv_cid,
         title=_playlist_title(soup, root),
         description=_playlist_description(soup, root),
         source_url=source,
-        nodes=nodes,
+        available=True,
+        playlists=playlists,
     )
 
 
@@ -154,21 +168,81 @@ def _embedded_payloads(soup: BeautifulSoup) -> Iterator[Any]:
             continue
 
 
-def _playlist_from_payload(payload: Any, cv_cid: int, source_url: str) -> Playlist | None:
+def _collection_from_payload(
+    payload: Any,
+    cv_cid: int,
+    source_url: str,
+) -> PlaylistCollection | None:
     candidate = _payload_candidate(payload)
     if candidate is None:
         return None
-    nodes_value = _first_value(candidate, "nodes", "items", "entries", "videos", "folders")
-    if not isinstance(nodes_value, list):
-        return None
-    counter = [0]
-    nodes = _payload_nodes(nodes_value, counter)
-    if not nodes and nodes_value:
-        return None
-    return Playlist(
+
+    raw_playlists = candidate.get("playlists")
+    if isinstance(raw_playlists, list):
+        playlists = [
+            playlist
+            for value in raw_playlists
+            if (playlist := _playlist_from_payload_value(value, source_url)) is not None
+        ]
+        if raw_playlists and not playlists:
+            return None
+    else:
+        nodes_value = _first_value(
+            candidate,
+            "nodes",
+            "items",
+            "entries",
+            "videos",
+            "folders",
+            "clips",
+            "children",
+        )
+        if not isinstance(nodes_value, list):
+            return None
+        nodes = _payload_nodes(nodes_value, [0])
+        if nodes_value and not nodes:
+            return None
+        playlists = [
+            Playlist(
+                title=_string_value(candidate, "title", "name", "label"),
+                description=_string_value(candidate, "description", "summary"),
+                source_url=source_url,
+                nodes=nodes,
+            )
+        ]
+    return PlaylistCollection(
         cv_cid=cv_cid,
+        collection_type="playlist",
         title=_string_value(candidate, "title", "name", "label"),
         description=_string_value(candidate, "description", "summary"),
+        source_url=source_url,
+        available=True,
+        playlists=playlists,
+    )
+
+
+def _playlist_from_payload_value(value: Any, source_url: str) -> Playlist | None:
+    if not isinstance(value, dict):
+        return None
+    nodes_value = _first_value(
+        value,
+        "nodes",
+        "items",
+        "entries",
+        "videos",
+        "folders",
+        "clips",
+        "children",
+    )
+    if not isinstance(nodes_value, list):
+        return None
+    nodes = _payload_nodes(nodes_value, [0])
+    if nodes_value and not nodes:
+        return None
+    return Playlist(
+        playlist_id=_string_value(value, "playlist_id", "playlistId", "plid", "id"),
+        title=_string_value(value, "title", "name", "label"),
+        description=_string_value(value, "description", "summary"),
         source_url=source_url,
         nodes=nodes,
     )
@@ -176,13 +250,127 @@ def _playlist_from_payload(payload: Any, cv_cid: int, source_url: str) -> Playli
 
 def _payload_candidate(payload: Any) -> dict[str, Any] | None:
     if isinstance(payload, dict):
-        if any(key in payload for key in ("nodes", "items", "entries", "videos", "folders")):
+        if any(
+            key in payload
+            for key in (
+                "playlists",
+                "nodes",
+                "items",
+                "entries",
+                "videos",
+                "folders",
+                "clips",
+                "children",
+            )
+        ):
             return payload
         for key in ("playlist", "data", "result"):
             candidate = _payload_candidate(payload.get(key))
             if candidate is not None:
                 return candidate
     return None
+
+
+def _collection_has_nodes(collection: PlaylistCollection) -> bool:
+    return any(playlist.nodes for playlist in collection.playlists)
+
+
+def _dom_playlists(soup: BeautifulSoup, root: Tag, source_url: str) -> list[Playlist]:
+    entries = _playlist_entries(root)
+    if entries:
+        return [
+            Playlist(
+                playlist_id=_folder_id(entry),
+                title=_playlist_entry_title(entry),
+                description=_playlist_entry_description(entry),
+                source_url=source_url,
+                nodes=_nodes_for_container(entry),
+            )
+            for entry in entries
+        ]
+
+    nodes = _nodes_for_container(root)
+    if not nodes:
+        return []
+    return [
+        Playlist(
+            title=_playlist_title(soup, root),
+            description=_playlist_description(soup, root),
+            source_url=source_url,
+            nodes=nodes,
+        )
+    ]
+
+
+def _playlist_entries(root: Tag) -> list[Tag]:
+    candidates: list[Tag] = []
+    if _is_playlist_entry(root):
+        candidates.append(root)
+    candidates.extend(element for element in root.find_all(True) if _is_playlist_entry(element))
+    candidate_set = set(candidates)
+    entries: list[Tag] = []
+    for element in candidates:
+        parent = element.parent
+        nested = False
+        while isinstance(parent, Tag):
+            if parent in candidate_set:
+                nested = True
+                break
+            parent = parent.parent
+        if not nested and element not in entries:
+            entries.append(element)
+    return entries
+
+
+def _is_playlist_entry(element: Tag) -> bool:
+    classes = element.get("class")
+    if isinstance(classes, list) and "cvdlit-cv-playlist" in classes:
+        return True
+    identity = _identity(element)
+    return "playlist" in identity and any(
+        name in element.attrs
+        for name in ("data-plid", "data-playlist-id", "data-playlistid")
+    )
+
+
+def _playlist_entry_title(element: Tag) -> str | None:
+    return _element_text(
+        element,
+        (
+            ":scope > [data-info='playlist-title']",
+            ":scope > .playlist-title",
+            ":scope > h1",
+            ":scope > h2",
+            ":scope > h3",
+            "[data-info='playlist-title']",
+            ".playlist-title",
+            "h1",
+            "h2",
+            "h3",
+        ),
+    )
+
+
+def _playlist_entry_description(element: Tag) -> str | None:
+    return _element_text(
+        element,
+        (":scope > [data-part='description']", ":scope > .playlist-description"),
+    )
+
+
+def _nodes_for_container(container: Tag) -> list[PlaylistNode]:
+    folder_candidates = [element for element in container.find_all(True) if _is_folder(element)]
+    video_candidates = _top_level_candidates(
+        [element for element in container.find_all(True) if _is_video(element)]
+    )
+    order = {id(element): index for index, element in enumerate(container.find_all(True))}
+    return _build_nodes(
+        container,
+        folder_candidates=folder_candidates,
+        video_candidates=video_candidates,
+        order=order,
+        counter=[0],
+    )
 
 
 def _payload_nodes(values: list[Any], counter: list[int]) -> list[PlaylistNode]:
@@ -264,6 +452,8 @@ def _find_playlist_root(soup: BeautifulSoup) -> Tag | None:
         exact_marker = int(
             any(marker in identity for marker in ("playlist-root", "playlist-page"))
         )
+        if marker_count == 0 and not exact_marker:
+            continue
         candidates.append((exact_marker, marker_count, element))
     if not candidates:
         playlist_links = [
@@ -605,6 +795,22 @@ def _element_text(element: Tag, selectors: Iterable[str]) -> str | None:
         value = text(child)
         if value:
             return value
+    return None
+
+
+def _document_title(soup: BeautifulSoup) -> str | None:
+    meta = soup.select_one("meta[property='og:title'], meta[name='title']")
+    content = meta.get("content") if meta is not None else None
+    if isinstance(content, str):
+        return _clean(content)
+    return text(soup.select_one("title"))
+
+
+def _document_description(soup: BeautifulSoup) -> str | None:
+    meta = soup.select_one("meta[property='og:description'], meta[name='description']")
+    content = meta.get("content") if meta is not None else None
+    if isinstance(content, str):
+        return _clean(content)
     return None
 
 
