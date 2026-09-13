@@ -22,6 +22,7 @@ from .core.errors import (
     MCVError,
     NotFoundError,
     ParseError,
+    SearchUnavailableError,
     TransportError,
     UnsupportedResourceError,
     UpstreamError,
@@ -30,6 +31,7 @@ from .core.errors import (
 from .core.refs import ResourceRef, ResourceType, ref_for_resource
 from .core.resource import AddressableResource, Resource
 from .facade import MCVAPI
+from .search import SearchClient, SearchDocument, SearchResult, SearchService
 
 __all__ = [
     "AmbiguousError",
@@ -49,6 +51,11 @@ __all__ = [
     "Resource",
     "ResourceRef",
     "ResourceType",
+    "SearchClient",
+    "SearchDocument",
+    "SearchResult",
+    "SearchService",
+    "SearchUnavailableError",
     "TransportError",
     "UnsupportedResourceError",
     "UpstreamError",

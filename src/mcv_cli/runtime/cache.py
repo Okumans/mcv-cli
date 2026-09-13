@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import sqlite3
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -19,11 +20,14 @@ from ..api.resources.materials.models import Material, MaterialFolder
 from ..api.resources.meetings.models import MeetingCollection, OnlineMeeting
 from ..api.resources.playlists.models import PlaylistCollection
 from ..api.resources.schedule.models import ScheduleCollection
+from ..api.search.documents import searchable_document, snapshot_for_resource
+from ..api.search.models import SearchCandidate, SearchDocument
 from .config import DEFAULT_PROFILE
 from .models import AuthProvider
 
-_CACHE_SCHEMA_VERSION = 2
+_CACHE_SCHEMA_VERSION = 3
 _SAFE_COMPONENT = re.compile(r"[^A-Za-z0-9_.-]+")
+_SEARCHABLE_RESOURCE_TYPES = frozenset(ResourceType)
 
 
 def _component(value: str) -> str:
@@ -46,12 +50,27 @@ def _timestamp() -> str:
     return datetime.now(UTC).isoformat()
 
 
-class CacheStore:
-    """SQLite index for shell-completion values.
+def course_semester(course: Course) -> str | None:
+    if course.year is None or course.semester is None:
+        return None
+    return f"{course.year}/{course.semester}"
 
-    The cache deliberately stores labels and identifiers only.  It never stores
-    cookies, passwords, signed URLs, assignment bodies, meeting credentials, or
-    other full resource content.
+
+def _resource_type_values(
+    resource_types: Collection[ResourceType] | None,
+) -> list[str]:
+    if not resource_types:
+        return []
+    return sorted({item.value for item in resource_types})
+
+
+class CacheStore:
+    """One protected SQLite local store with separate logical namespaces.
+
+    Completion tables contain labels and identifiers.  Search tables contain
+    only an allow-listed projection of successful resource responses; they do
+    not contain cookies, passwords, signed URLs, submission material, feedback,
+    or recording credentials.
     """
 
     def __init__(
@@ -157,6 +176,64 @@ class CacheStore:
             );
             CREATE INDEX IF NOT EXISTS resources_by_course
                 ON resources (cv_cid, resource_type);
+            CREATE TABLE IF NOT EXISTS resource_cache (
+                ref TEXT PRIMARY KEY,
+                resource_type TEXT NOT NULL,
+                cv_cid INTEGER NOT NULL,
+                item_id INTEGER,
+                course_no TEXT,
+                title TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                detail_level TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS resource_cache_by_scope
+                ON resource_cache (cv_cid, resource_type);
+            CREATE TABLE IF NOT EXISTS search_documents (
+                id INTEGER PRIMARY KEY,
+                ref TEXT NOT NULL UNIQUE,
+                resource_type TEXT NOT NULL,
+                cv_cid INTEGER NOT NULL,
+                course_no TEXT,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS search_documents_by_scope
+                ON search_documents (cv_cid, resource_type);
+            CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
+                title,
+                content,
+                content='search_documents',
+                content_rowid='id'
+            );
+            CREATE TRIGGER IF NOT EXISTS search_documents_ai
+            AFTER INSERT ON search_documents BEGIN
+                INSERT INTO search_fts(rowid, title, content)
+                VALUES (new.id, new.title, new.content);
+            END;
+            CREATE TRIGGER IF NOT EXISTS search_documents_ad
+            AFTER DELETE ON search_documents BEGIN
+                INSERT INTO search_fts(search_fts, rowid, title, content)
+                VALUES ('delete', old.id, old.title, old.content);
+            END;
+            CREATE TRIGGER IF NOT EXISTS search_documents_au
+            AFTER UPDATE ON search_documents BEGIN
+                INSERT INTO search_fts(search_fts, rowid, title, content)
+                VALUES ('delete', old.id, old.title, old.content);
+                INSERT INTO search_fts(rowid, title, content)
+                VALUES (new.id, new.title, new.content);
+            END;
+            CREATE TABLE IF NOT EXISTS search_scopes (
+                cv_cid INTEGER NOT NULL,
+                resource_type TEXT NOT NULL,
+                available INTEGER NOT NULL,
+                detail_level TEXT NOT NULL,
+                refreshed_at TEXT NOT NULL,
+                PRIMARY KEY (cv_cid, resource_type)
+            );
+            CREATE INDEX IF NOT EXISTS search_scopes_by_type
+                ON search_scopes (resource_type, cv_cid);
             """
         )
         connection.execute(
@@ -176,6 +253,24 @@ class CacheStore:
         return connection
 
     def status(self) -> dict[str, Any]:
+        empty_completion_counts = {
+            "courses": 0,
+            "folders": 0,
+            "materials": 0,
+            "assignments": 0,
+            "announcements": 0,
+            "meetings": 0,
+            "playlist_collections": 0,
+            "schedule_collections": 0,
+            "meeting_collections": 0,
+            "groupings": 0,
+            "semesters": 0,
+        }
+        empty_search_counts = {
+            "resource_snapshots": 0,
+            "search_documents": 0,
+            "search_scopes": 0,
+        }
         if not self.path.exists():
             return {
                 "path": str(self.path),
@@ -183,18 +278,14 @@ class CacheStore:
                 "provider": self.provider,
                 "exists": False,
                 "last_refresh": None,
-                "counts": {
-                    "courses": 0,
-                    "folders": 0,
-                    "materials": 0,
-                    "assignments": 0,
-                    "announcements": 0,
-                    "meetings": 0,
-                    "playlist_collections": 0,
-                    "schedule_collections": 0,
-                    "meeting_collections": 0,
-                    "groupings": 0,
-                    "semesters": 0,
+                "counts": empty_completion_counts,
+                "completion": {
+                    "last_refresh": None,
+                    "counts": empty_completion_counts,
+                },
+                "search": {
+                    "last_refresh": None,
+                    "counts": empty_search_counts,
                 },
             }
         connection = self._connect(read_only=True)
@@ -215,13 +306,28 @@ class CacheStore:
             row = connection.execute(
                 "SELECT value FROM metadata WHERE key = 'last_refresh'"
             ).fetchone()
+            search_row = connection.execute(
+                "SELECT value FROM metadata WHERE key = 'search_last_refresh'"
+            ).fetchone()
+            search_counts = {
+                "resource_snapshots": self._safe_count(connection, "resource_cache"),
+                "search_documents": self._safe_count(connection, "search_documents"),
+                "search_scopes": self._safe_count(connection, "search_scopes"),
+            }
+            last_refresh = row[0] if row else None
+            search_last_refresh = search_row[0] if search_row else None
             return {
                 "path": str(self.path),
                 "profile": self.profile_name,
                 "provider": self.provider,
                 "exists": True,
-                "last_refresh": row[0] if row else None,
+                "last_refresh": last_refresh,
                 "counts": counts,
+                "completion": {"last_refresh": last_refresh, "counts": counts},
+                "search": {
+                    "last_refresh": search_last_refresh,
+                    "counts": search_counts,
+                },
             }
         finally:
             connection.close()
@@ -230,6 +336,13 @@ class CacheStore:
     def _count(connection: sqlite3.Connection, table: str) -> int:
         row = connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
         return int(row[0]) if row is not None else 0
+
+    @staticmethod
+    def _safe_count(connection: sqlite3.Connection, table: str) -> int:
+        try:
+            return CacheStore._count(connection, table)
+        except sqlite3.OperationalError:
+            return 0
 
     @staticmethod
     def _count_resource(connection: sqlite3.Connection, resource_type: ResourceType) -> int:
@@ -251,11 +364,53 @@ class CacheStore:
             return 0
         return int(row[0]) if row is not None else 0
 
-    def clear(self) -> bool:
+    def clear(self, target: str) -> bool:
+        """Clear exactly one local-store namespace or the complete store."""
+
+        if target not in {"completion", "search", "all"}:
+            raise ValueError('Cache target must be "completion", "search", or "all".')
         if not self.path.exists():
             return False
-        self.path.unlink()
-        return True
+        if target == "all":
+            self.path.unlink()
+            return True
+
+        connection = self._open()
+        try:
+            if target == "completion":
+                for table in (
+                    "semesters",
+                    "courses",
+                    "folders",
+                    "resources",
+                    "groupings",
+                    "collection_status",
+                ):
+                    connection.execute(f"DELETE FROM {table}")
+                connection.execute(
+                    "DELETE FROM metadata WHERE key IN ('last_refresh')"
+                )
+            else:
+                connection.execute("DELETE FROM search_documents")
+                connection.execute("DELETE FROM search_fts")
+                connection.execute("DELETE FROM resource_cache")
+                connection.execute("DELETE FROM search_scopes")
+                connection.execute(
+                    "DELETE FROM metadata WHERE key IN ('search_last_refresh')"
+                )
+            connection.commit()
+            return True
+        finally:
+            connection.close()
+
+    def clear_completion(self) -> bool:
+        return self.clear("completion")
+
+    def clear_search(self) -> bool:
+        return self.clear("search")
+
+    def clear_all(self) -> bool:
+        return self.clear("all")
 
     def mark_refresh(self) -> None:
         connection = self._open()
@@ -516,6 +671,425 @@ class CacheStore:
         finally:
             connection.close()
 
+    def record_value(self, value: Any, *, detail_level: str = "summary") -> None:
+        """Persist a successful API result in both local-store namespaces.
+
+        This method is used by the injected API cache sink.  Callers should
+        treat it as best-effort for ordinary requests; explicit refreshes use
+        :meth:`replace_search_scope` for atomic scope replacement.
+        """
+
+        if isinstance(value, Course):
+            self.upsert_courses([value])
+            semester = course_semester(value)
+            if semester is not None:
+                self.record_semesters([semester])
+            return
+        if isinstance(value, MaterialFolder):
+            course_id = next(
+                (item.cv_cid for item in value.materials if item.cv_cid is not None),
+                value.cv_cid,
+            )
+            if course_id is not None:
+                self.upsert_folders([value], cv_cid=course_id)
+            self.record_value(value.materials, detail_level=detail_level)
+            return
+        if isinstance(value, (PlaylistCollection, ScheduleCollection, MeetingCollection)):
+            self.record_collection_status(value)
+            if isinstance(value, PlaylistCollection) and value.available:
+                self.record_searchable_resource(value, detail_level=detail_level)
+            elif isinstance(value, MeetingCollection):
+                self.record_value(value.meetings, detail_level=detail_level)
+            return
+        if isinstance(value, (Material, Assignment, Announcement, OnlineMeeting)):
+            self.upsert_resources([value])
+            self.record_searchable_resource(value, detail_level=detail_level)
+            return
+        if isinstance(value, list | tuple):
+            for item in value:
+                self.record_value(item, detail_level=detail_level)
+
+    def record_searchable_resource(
+        self,
+        resource: Any,
+        *,
+        course_no: str | None = None,
+        detail_level: str = "summary",
+    ) -> None:
+        """Upsert one sanitized resource snapshot and its FTS document."""
+
+        document = searchable_document(resource, course_no=course_no)
+        snapshot = snapshot_for_resource(resource)
+        if document is None or snapshot is None:
+            return
+        now = _timestamp()
+        connection = self._open()
+        try:
+            self._upsert_search_resource(
+                connection,
+                document=document,
+                snapshot=snapshot,
+                detail_level=detail_level,
+                now=now,
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+    def replace_search_scope(
+        self,
+        cv_cid: int,
+        *,
+        course_no: str | None,
+        resources: Mapping[ResourceType, Iterable[Any]],
+        availability: Mapping[ResourceType, bool] | None = None,
+    ) -> dict[str, int]:
+        """Atomically replace all searchable types for one course.
+
+        A successful refresh removes stale rows from the requested course and
+        writes summary/detail projections together.  A failed request never
+        reaches this method, so the previous scope remains intact.
+        """
+
+        available = availability or {}
+        values_by_type = {
+            resource_type: list(resources.get(resource_type, ()))
+            if available.get(resource_type, True)
+            else []
+            for resource_type in _SEARCHABLE_RESOURCE_TYPES
+        }
+        now = _timestamp()
+        connection = self._open()
+        try:
+            placeholders = ", ".join("?" for _ in _SEARCHABLE_RESOURCE_TYPES)
+            connection.execute(
+                f"DELETE FROM resource_cache WHERE cv_cid = ? "
+                f"AND resource_type IN ({placeholders})",
+                (cv_cid, *(item.value for item in _SEARCHABLE_RESOURCE_TYPES)),
+            )
+            connection.execute(
+                f"DELETE FROM search_documents WHERE cv_cid = ? "
+                f"AND resource_type IN ({placeholders})",
+                (cv_cid, *(item.value for item in _SEARCHABLE_RESOURCE_TYPES)),
+            )
+            connection.execute("DELETE FROM search_scopes WHERE cv_cid = ?", (cv_cid,))
+
+            counts: dict[str, int] = {}
+            for resource_type in sorted(_SEARCHABLE_RESOURCE_TYPES, key=lambda item: item.value):
+                count = 0
+                for resource in values_by_type[resource_type]:
+                    document = searchable_document(resource, course_no=course_no)
+                    snapshot = snapshot_for_resource(resource)
+                    if document is None or snapshot is None:
+                        continue
+                    if document.resource_type is not resource_type:
+                        continue
+                    self._upsert_search_resource(
+                        connection,
+                        document=document,
+                        snapshot=snapshot,
+                        detail_level="detail",
+                        now=now,
+                    )
+                    count += 1
+                counts[resource_type.value] = count
+                connection.execute(
+                    """
+                    INSERT INTO search_scopes(
+                        cv_cid, resource_type, available, detail_level, refreshed_at
+                    ) VALUES(?, ?, ?, ?, ?)
+                    ON CONFLICT(cv_cid, resource_type) DO UPDATE SET
+                        available=excluded.available,
+                        detail_level=excluded.detail_level,
+                        refreshed_at=excluded.refreshed_at
+                    """,
+                    (
+                        cv_cid,
+                        resource_type.value,
+                        int(available.get(resource_type, True)),
+                        "detail",
+                        now,
+                    ),
+                )
+            connection.execute(
+                "INSERT INTO metadata(key, value) VALUES('search_last_refresh', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (now,),
+            )
+            connection.commit()
+            return counts
+        finally:
+            connection.close()
+
+    def _upsert_search_resource(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        document: SearchDocument,
+        snapshot: dict[str, Any],
+        detail_level: str,
+        now: str,
+    ) -> None:
+        existing = connection.execute(
+            "SELECT detail_level, course_no FROM resource_cache WHERE ref = ?",
+            (str(document.ref),),
+        ).fetchone()
+        if existing is not None and existing[0] == "detail" and detail_level != "detail":
+            return
+        stored_course_no = (
+            document.course_no
+            or (existing[1] if existing is not None else None)
+            or self._course_no(connection, document.cv_cid)
+        )
+        payload = json.dumps(snapshot, ensure_ascii=False, default=str, sort_keys=True)
+        connection.execute(
+            """
+            INSERT INTO resource_cache(
+                ref, resource_type, cv_cid, item_id, course_no, title,
+                payload_json, detail_level, updated_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(ref) DO UPDATE SET
+                resource_type=excluded.resource_type,
+                cv_cid=excluded.cv_cid,
+                item_id=excluded.item_id,
+                course_no=excluded.course_no,
+                title=excluded.title,
+                payload_json=excluded.payload_json,
+                detail_level=excluded.detail_level,
+                updated_at=excluded.updated_at
+            """,
+            (
+                str(document.ref),
+                document.resource_type.value,
+                document.cv_cid,
+                document.ref.item_id,
+                stored_course_no,
+                document.title,
+                payload,
+                detail_level,
+                now,
+            ),
+        )
+
+        connection.execute(
+            """
+            INSERT INTO search_documents(
+                ref, resource_type, cv_cid, course_no, title, content, updated_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(ref) DO UPDATE SET
+                resource_type=excluded.resource_type,
+                cv_cid=excluded.cv_cid,
+                course_no=excluded.course_no,
+                title=excluded.title,
+                content=excluded.content,
+                updated_at=excluded.updated_at
+            """,
+            (
+                str(document.ref),
+                document.resource_type.value,
+                document.cv_cid,
+                stored_course_no,
+                document.title,
+                document.content,
+                now,
+            ),
+        )
+
+    @staticmethod
+    def _course_no(connection: sqlite3.Connection, cv_cid: int) -> str | None:
+        row = connection.execute(
+            "SELECT course_no FROM courses WHERE cv_cid = ? ORDER BY updated_at DESC LIMIT 1",
+            (cv_cid,),
+        ).fetchone()
+        if row is None or not row[0]:
+            return None
+        return str(row[0])
+
+    def search_candidates(
+        self,
+        query: str,
+        *,
+        cv_cid: int | None = None,
+        resource_types: Collection[ResourceType] | None = None,
+        limit: int = 100,
+    ) -> list[SearchCandidate]:
+        if not self.path.exists():
+            return []
+        try:
+            connection = self._connect(read_only=True)
+        except sqlite3.Error:
+            return []
+        try:
+            tokens = re.findall(r"[\w]+", query.casefold(), flags=re.UNICODE)
+            if not tokens:
+                return []
+            fts_query = " AND ".join(f'"{token.replace(chr(34), "")}"*' for token in tokens)
+            conditions = ["search_fts MATCH ?"]
+            params: list[Any] = [fts_query]
+            if cv_cid is not None:
+                conditions.append("d.cv_cid = ?")
+                params.append(cv_cid)
+            type_values = _resource_type_values(resource_types)
+            if type_values:
+                placeholders = ", ".join("?" for _ in type_values)
+                conditions.append(f"d.resource_type IN ({placeholders})")
+                params.extend(type_values)
+            params.append(limit)
+            rows = connection.execute(
+                f"""
+                SELECT d.ref, d.resource_type, d.cv_cid, d.course_no, d.title,
+                       d.content, snippet(search_fts, 1, '…', '…', '…', 18),
+                       bm25(search_fts, 5.0, 1.0)
+                FROM search_fts
+                JOIN search_documents AS d ON d.id = search_fts.rowid
+                WHERE {' AND '.join(conditions)}
+                ORDER BY bm25(search_fts, 5.0, 1.0), d.ref
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
+            return [self._search_candidate(row) for row in rows]
+        except sqlite3.Error:
+            # A cache created by an older version may not have the search
+            # namespace yet.  Local search should simply have no results.
+            return []
+        finally:
+            connection.close()
+
+    def search_documents(
+        self,
+        *,
+        cv_cid: int | None = None,
+        resource_types: Collection[ResourceType] | None = None,
+        limit: int = 1000,
+    ) -> list[SearchDocument]:
+        rows = self._search_rows(
+            cv_cid=cv_cid,
+            resource_types=resource_types,
+            limit=limit,
+        )
+        return [self._search_document(row) for row in rows]
+
+    def search_by_ref(self, ref: ResourceRef) -> list[SearchDocument]:
+        if not self.path.exists():
+            return []
+        try:
+            connection = self._connect(read_only=True)
+        except sqlite3.Error:
+            return []
+        try:
+            row = connection.execute(
+                """
+                SELECT ref, resource_type, cv_cid, course_no, title, content
+                FROM search_documents WHERE ref = ?
+                """,
+                (str(ref),),
+            ).fetchone()
+            return [] if row is None else [self._search_document(row)]
+        except sqlite3.Error:
+            return []
+        finally:
+            connection.close()
+
+    def search_by_item_id(
+        self,
+        item_id: int,
+        *,
+        cv_cid: int | None = None,
+        resource_types: Collection[ResourceType] | None = None,
+    ) -> list[SearchDocument]:
+        if not self.path.exists():
+            return []
+        try:
+            connection = self._connect(read_only=True)
+        except sqlite3.Error:
+            return []
+        try:
+            conditions = ["item_id = ?"]
+            params: list[Any] = [item_id]
+            if cv_cid is not None:
+                conditions.append("cv_cid = ?")
+                params.append(cv_cid)
+            type_values = _resource_type_values(resource_types)
+            if type_values:
+                placeholders = ", ".join("?" for _ in type_values)
+                conditions.append(f"resource_type IN ({placeholders})")
+                params.extend(type_values)
+            rows = connection.execute(
+                f"""
+                SELECT d.ref, d.resource_type, d.cv_cid, d.course_no, d.title, d.content
+                FROM resource_cache AS c
+                JOIN search_documents AS d ON d.ref = c.ref
+                WHERE {' AND '.join('c.' + condition for condition in conditions)}
+                ORDER BY d.ref
+                """,
+                params,
+            ).fetchall()
+            return [self._search_document(row) for row in rows]
+        except sqlite3.Error:
+            return []
+        finally:
+            connection.close()
+
+    def _search_rows(
+        self,
+        *,
+        cv_cid: int | None,
+        resource_types: Collection[ResourceType] | None,
+        limit: int,
+    ) -> list[sqlite3.Row]:
+        if not self.path.exists():
+            return []
+        try:
+            connection = self._connect(read_only=True)
+        except sqlite3.Error:
+            return []
+        try:
+            conditions: list[str] = []
+            params: list[Any] = []
+            if cv_cid is not None:
+                conditions.append("cv_cid = ?")
+                params.append(cv_cid)
+            type_values = _resource_type_values(resource_types)
+            if type_values:
+                placeholders = ", ".join("?" for _ in type_values)
+                conditions.append(f"resource_type IN ({placeholders})")
+                params.extend(type_values)
+            params.append(limit)
+            return connection.execute(
+                f"""
+                SELECT ref, resource_type, cv_cid, course_no, title, content
+                FROM search_documents
+                {'WHERE ' + ' AND '.join(conditions) if conditions else ''}
+                ORDER BY title COLLATE NOCASE, ref
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
+        except sqlite3.Error:
+            return []
+        finally:
+            connection.close()
+
+    @staticmethod
+    def _search_document(row: sqlite3.Row) -> SearchDocument:
+        return SearchDocument(
+            ref=ResourceRef.parse(str(row[0])),
+            resource_type=ResourceType(str(row[1])),
+            cv_cid=int(row[2]),
+            course_no=str(row[3]) if row[3] is not None else None,
+            title=str(row[4]),
+            content=str(row[5]),
+        )
+
+    @classmethod
+    def _search_candidate(cls, row: sqlite3.Row) -> SearchCandidate:
+        return SearchCandidate(
+            document=cls._search_document(row),
+            snippet=str(row[6]) if row[6] is not None else None,
+            rank=float(row[7] or 0.0),
+        )
+
     def candidates(self, kind: str, *, cv_cid: int | None = None) -> list[dict[str, Any]]:
         """Return completion records without ever opening a network client."""
 
@@ -638,17 +1212,23 @@ class CacheStore:
 
     def resolve_course(self, reference: str) -> int | None:
         normalized = " ".join(reference.split()).casefold()
-        connection = self._connect(read_only=True)
         try:
-            rows = connection.execute(
-                """
-                SELECT DISTINCT cv_cid FROM courses
-                WHERE CAST(cv_cid AS TEXT) = ?
-                   OR lower(course_no) = ?
-                   OR lower(title) = ?
-                """,
-                (reference.strip(), normalized, normalized),
-            ).fetchall()
+            connection = self._connect(read_only=True)
+        except sqlite3.Error:
+            return None
+        try:
+            try:
+                rows = connection.execute(
+                    """
+                    SELECT DISTINCT cv_cid FROM courses
+                    WHERE CAST(cv_cid AS TEXT) = ?
+                       OR lower(course_no) = ?
+                       OR lower(title) = ?
+                    """,
+                    (reference.strip(), normalized, normalized),
+                ).fetchall()
+            except sqlite3.Error:
+                return None
             values = {int(row[0]) for row in rows}
             return next(iter(values)) if len(values) == 1 else None
         finally:

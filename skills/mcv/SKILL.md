@@ -1,6 +1,6 @@
 ---
 name: mcv
-description: Use the mcv CLI to read and compose MyCourseVille course content on Unix, including session authentication, course/resource lookup, cached completion, archives, and JSON pipelines; do not use it for write or submission actions.
+description: Use the mcv CLI to read and compose MyCourseVille course content on Unix, including session authentication, course/resource lookup, cached completion, local search, archives, and JSON pipelines; do not use it for write or submission actions.
 metadata:
   short-description: Read MyCourseVille content with mcv
 ---
@@ -74,6 +74,10 @@ command:
  mcv --semester 2025/2 courses 2110575 materials list
 ```
 
+Most course resources use an explicit action such as `list` or `show`. Course
+pages and local search are direct actions, so use `mcv courses COURSE search
+QUERY` without an extra `list` or `show`.
+
 Useful commands:
 
 ```bash
@@ -101,6 +105,7 @@ Useful commands:
  mcv courses 2110575 groups list
  mcv courses 2110575 portfolio
  mcv courses 2110575 web-resources list
+ mcv courses 2110575 search "docker"
 ```
 
 Meetings exclude past events by default. Meeting results expose a preferred
@@ -266,7 +271,7 @@ The archive format is inferred from the output extension first:
 Use `--format zip`, `--format tar`, or `--format tar.gz` to override inference.
 Existing files are not overwritten unless `--force` is supplied.
 
-## Completion index
+## Local store, completion, and search
 
 Completion is deliberately cache-only: it does not log in, make network
 requests, or block the shell. Install it once, then populate the cache after
@@ -277,14 +282,38 @@ authentication:
  mcv courses list
  mcv cache refresh
  mcv cache status
- mcv cache clear
+ mcv cache clear completion
+ mcv cache clear search
+ mcv cache clear all
 ```
 
-Use `mcv cache refresh --all-semesters` when completion should include every
-semester, or pass course references to refresh selected scopes. The cache
-contains completion metadata such as course names, folder names, titles,
-semesters, grouping ids, and refs; it does not contain cookies, passwords,
-resource bodies, signed URLs, or meeting credentials.
+The local store is one SQLite file with separate logical namespaces. The
+completion index contains course names, folder names, titles, semesters,
+grouping ids, and refs. The resource/search cache contains only allow-listed
+snapshots and derived FTS documents for searchable materials, assignments,
+announcements, meetings, and playlist pages. It does not contain cookies,
+passwords, signed URLs, submission material, feedback, or meeting credentials.
+`mcv cache clear completion` preserves search, `mcv cache clear search`
+preserves completion, and `mcv cache clear all` removes both; bare `cache clear`
+is invalid.
+
+Use `mcv cache refresh --all-semesters` when completion and searchable data
+should include every semester, or pass course references to refresh selected
+scopes. Search itself is local and performs no network requests:
+
+```bash
+ mcv search "docker"
+ mcv courses 2110575 search "docker"
+ mcv search "docker" --type material --type assignment --limit 20
+ mcv search "docker" --refs
+ mcv --json search "docker"
+ mcv --jsonl search "docker"
+```
+
+Use `--refresh` when the search command should fetch the relevant scope before
+searching. Human search tables highlight matched terms in titles and snippets;
+machine output remains unstyled. Search results have canonical refs that can
+be passed to `mcv get`.
 
 Course-scoped schedule and meeting calls also return typed collections with an
 `available` flag. The completion index records those flags so playlist

@@ -28,6 +28,10 @@ def test_completion_uses_readable_courses_and_canonical_refs(tmp_path, monkeypat
     monkeypatch.setattr("mcv_cli.runtime.completion.active_cache", lambda: cache)
 
     assert "list" in [item.value for item in complete_course_group(SimpleNamespace(args=[]), "")]
+    assert "search" in [
+        item.value
+        for item in complete_course_group(SimpleNamespace(args=["2110575"]), "")
+    ]
     assert [item.value for item in completion_items("courses", "21")] == ["2110575"]
     assert [item.value for item in completion_items("refs", "mcv:")] == [
         "mcv:assignment:86428:2160997",

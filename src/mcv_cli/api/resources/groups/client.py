@@ -25,12 +25,14 @@ class GroupsClient(ResourceClient):
         )
         selected_id = _as_int(selected.get("value")) if selected is not None else grouping_id
         if selected_id is None:
-            return []
+            return self.record_result([])
         payload = self.post_json(
             listing_url(),
             data={"cid": str(cv_cid), "grouping": str(selected_id)},
         )
-        return parse_groups(page_html, html_from_payload(payload), cv_cid, grouping_id)
+        return self.record_result(
+            parse_groups(page_html, html_from_payload(payload), cv_cid, grouping_id)
+        )
 
 
 def _as_int(value: object) -> int | None:

@@ -25,6 +25,7 @@ _COURSE_RESOURCE_ACTIONS = {
     "portfolio": {"show": "portfolio_show", "": "portfolio_show"},
     "playlists": {"": "playlists_show"},
     "web-resources": {"list": "web_resources_list"},
+    "search": {"": "search_course"},
 }
 
 
@@ -60,7 +61,12 @@ class CourseAwareGroup(TyperGroup):
         elif remaining[0] in _COURSE_RESOURCE_ACTIONS:
             resource, *resource_args = remaining
             action = resource_args[0] if resource_args else None
-            target = _COURSE_RESOURCE_ACTIONS.get(resource, {}).get(action or "")
+            direct_search = resource == "search"
+            if resource == "search":
+                target = _COURSE_RESOURCE_ACTIONS[resource][""]
+                action = None
+            else:
+                target = _COURSE_RESOURCE_ACTIONS.get(resource, {}).get(action or "")
             if target is None and resource in {"about", "portfolio", "playlists"} and action in {
                 "--help",
                 "-h",
@@ -74,7 +80,7 @@ class CourseAwareGroup(TyperGroup):
                 # demo grammar no longer routes legacy flat aliases.
                 args = [resource, course, *resource_args]
             else:
-                args = [target, course, *resource_args[1:]]
+                args = [target, course, *(resource_args if direct_search else resource_args[1:])]
         return super().parse_args(ctx, args)
 
     def shell_complete(self, ctx: Any, incomplete: str) -> list[Any]:
@@ -96,7 +102,7 @@ courses_app = typer.Typer(
         "Inspect enrolled courses.\n\n"
         "Course overview: mcv courses COURSE\n"
         "Course resources: mcv courses COURSE RESOURCE ACTION [ARGS] [OPTIONS]\n"
-        "Direct course pages: playlists, about, portfolio."
+        "Direct course pages: playlists, about, portfolio, search."
     ),
     no_args_is_help=True,
 )
@@ -105,7 +111,7 @@ announcements_app = typer.Typer(
     help="List announcements across current courses.", no_args_is_help=True
 )
 meetings_app = typer.Typer(help="List meetings across current courses.", no_args_is_help=True)
-cache_app = typer.Typer(help="Manage the local completion cache.", no_args_is_help=True)
+cache_app = typer.Typer(help="Manage the local completion and search cache.", no_args_is_help=True)
 
 app.add_typer(auth_app, name="auth")
 app.add_typer(courses_app, name="courses")
@@ -161,7 +167,16 @@ def main(
 # Registration is kept at the application boundary.  Command modules only
 # define handlers and their local Typer apps, so importing the reusable API
 # never imports this module.
-from .commands import announcements, assignments, auth, cache, courses, get, meetings  # noqa: E402
+from .commands import (  # noqa: E402
+    announcements,
+    assignments,
+    auth,
+    cache,
+    courses,
+    get,
+    meetings,
+    search,
+)
 
 auth.register(auth_app)
 cache.register(cache_app)
@@ -169,6 +184,7 @@ courses.register(courses_app)
 assignments.register(assignments_app)
 announcements.register(announcements_app)
 meetings.register(meetings_app)
+search.register(app)
 get.register(app)
 
 

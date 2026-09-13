@@ -30,4 +30,4 @@ class PortfolioClient(ResourceClient):
                 operation="get",
             )
         response = self.request("GET", urljoin(f"{BASE_URL}/", href))
-        return parse_portfolio(html_from_response(response), cv_cid)
+        return self.record_result(parse_portfolio(html_from_response(response), cv_cid))

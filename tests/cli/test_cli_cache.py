@@ -156,14 +156,20 @@ def test_cache_refresh_keeps_old_resource_snapshot_when_scope_fails(
     ]
 
 
-def test_cache_clear_removes_only_the_active_cache(monkeypatch, tmp_path) -> None:
+def test_cache_clear_all_removes_only_the_active_cache(monkeypatch, tmp_path) -> None:
     from mcv_cli.runtime.cache import CacheStore
 
     cache = CacheStore(profile_name="default", provider="chula", root=tmp_path)
     cache.upsert_courses([FakeCacheClient.course])
     monkeypatch.setattr("mcv_cli.cli.commands.cache.cache_namespace", lambda: cache)
 
-    result = runner.invoke(app, ["--quiet", "cache", "clear"])
+    result = runner.invoke(app, ["--quiet", "cache", "clear", "all"])
 
     assert result.exit_code == 0, result.output
     assert not cache.path.exists()
+
+
+def test_cache_clear_requires_an_explicit_namespace() -> None:
+    result = runner.invoke(app, ["--quiet", "cache", "clear"])
+
+    assert result.exit_code == 2

@@ -7,6 +7,7 @@ from pytest import mark
 from rich.console import Console
 
 from mcv_cli.api.core.errors import NotFoundError
+from mcv_cli.api.core.refs import ResourceType
 from mcv_cli.api.core.resource import User
 from mcv_cli.api.resources.about.models import CourseAbout
 from mcv_cli.api.resources.announcements.models import Announcement
@@ -34,7 +35,9 @@ from mcv_cli.api.resources.playlists.models import (
 from mcv_cli.api.resources.portfolio.models import Portfolio
 from mcv_cli.api.resources.schedule.models import ScheduleCollection, ScheduleEvent
 from mcv_cli.api.resources.web_resources.models import WebResource
+from mcv_cli.api.search.models import SearchResult
 from mcv_cli.presentation.output import ShellIdList, emit, emit_error, to_jsonable
+from mcv_cli.presentation.resources.search import _highlight
 
 
 def test_to_jsonable_handles_cli_metadata_values() -> None:
@@ -61,6 +64,35 @@ def test_shell_id_list_is_line_oriented_in_human_mode() -> None:
     emit(ShellIdList([2160993, 2152316]), json_mode=False, console=console)
 
     assert console.export_text() == "2160993\n2152316\n"
+
+
+def test_search_human_output_highlights_matched_title_and_snippet() -> None:
+    title = _highlight("Docker Compose Assignment", "docker compose")
+    snippet = _highlight("Build the Docker service with Compose.", "docker compose")
+
+    assert [(span.start, span.end) for span in title.spans] == [(0, 6), (7, 14)]
+    assert [(span.start, span.end) for span in snippet.spans] == [(10, 16), (30, 37)]
+
+    console = Console(record=True, force_terminal=True, color_system="truecolor")
+    result = SearchResult(
+        resource_type=ResourceType.ASSIGNMENT,
+        ref="mcv:assignment:86428:2160997",  # type: ignore[arg-type]
+        cv_cid=86428,
+        course_no="2110575",
+        title="Docker Compose Assignment",
+        snippet="Build the Docker service with Compose.",
+        score=7000,
+    )
+    result._query = "docker compose"
+    emit(
+        result,
+        json_mode=False,
+        console=console,
+    )
+
+    rendered = console.export_text(styles=True)
+    assert "\x1b[1;33mDocker\x1b[0m" in rendered
+    assert "\x1b[1;33mCompose\x1b[0m" in rendered
 
 
 def test_json_output_is_the_raw_value(capsys) -> None:

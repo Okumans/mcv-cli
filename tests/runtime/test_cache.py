@@ -129,3 +129,125 @@ def test_completion_returns_empty_for_missing_or_corrupt_cache(tmp_path: Path, m
     missing.path.parent.mkdir(parents=True)
     missing.path.write_bytes(b"not a sqlite database")
     assert completion_items("courses", "") == []
+
+
+def test_search_snapshot_is_allow_listed_and_searchable(tmp_path: Path) -> None:
+    from mcv_cli.api.resources.announcements.models import Announcement
+    from mcv_cli.api.resources.meetings.models import MeetingRecording, OnlineMeeting
+
+    cache = CacheStore(profile_name="default", provider="chula", root=tmp_path)
+    cache.upsert_courses([Course(cv_cid=86428, course_no="2110575", title="Containers")])
+    cache.record_value(
+        Material(
+            itemid=2160993,
+            cv_cid=86428,
+            title="Docker Material",
+            description=(
+                "Public Docker instructions https://signed.example/another-token"
+            ),
+            filepath="https://signed.example/private-token.pdf",
+        )
+    )
+    cache.record_value(
+        Assignment(
+            itemid=2160997,
+            cv_cid=86428,
+            title="Docker Assignment",
+            instruction="Build a Docker service",
+            feedback="PRIVATE FEEDBACK",
+            submission_url="https://private.example/submission",
+            submission_files=["https://private.example/file.pdf"],
+        )
+    )
+    cache.record_value(
+        Announcement(
+            itemid=2177455,
+            cv_cid=86428,
+            title="Docker Notice",
+            body="Public Docker announcement",
+            external_links=["https://private.example/link"],
+        )
+    )
+    cache.record_value(
+        OnlineMeeting(
+            itemid=29632,
+            cv_cid=86428,
+            name="Docker Meeting",
+            join_url="https://private.example/join",
+            recordings=[
+                MeetingRecording(
+                    password="PRIVATE PASSWORD",
+                    play_url="https://private.example/recording",
+                )
+            ],
+        )
+    )
+
+    raw_database = cache.path.read_bytes()
+    documents = cache.search_documents()
+
+    assert len(documents) == 4
+    assert all(
+        "Docker" in document.title or "Docker" in document.content for document in documents
+    )
+    assert b"private-token" not in raw_database
+    assert b"another-token" not in raw_database
+    assert b"PRIVATE FEEDBACK" not in raw_database
+    assert b"PRIVATE PASSWORD" not in raw_database
+    assert b"private.example" not in raw_database
+    assert b"Public Docker instructions" in raw_database
+
+
+def test_search_scope_replacement_removes_stale_rows_only_in_that_course(
+    tmp_path: Path,
+) -> None:
+    cache = CacheStore(profile_name="default", provider="chula", root=tmp_path)
+    cache.record_value(
+        Assignment(itemid=1, cv_cid=86428, title="Old Docker assignment")
+    )
+    cache.record_value(
+        Assignment(itemid=2, cv_cid=86429, title="Other Docker assignment")
+    )
+
+    cache.replace_search_scope(
+        86428,
+        course_no="2110575",
+        resources={
+            ResourceType.ASSIGNMENT: [
+                Assignment(itemid=3, cv_cid=86428, title="New Docker assignment")
+            ]
+        },
+    )
+
+    assert [str(item.ref) for item in cache.search_documents(cv_cid=86428)] == [
+        "mcv:assignment:86428:3"
+    ]
+    assert [str(item.ref) for item in cache.search_documents(cv_cid=86429)] == [
+        "mcv:assignment:86429:2"
+    ]
+
+
+def test_search_and_completion_namespaces_can_be_cleared_independently(
+    tmp_path: Path,
+) -> None:
+    cache = CacheStore(profile_name="default", provider="chula", root=tmp_path)
+    cache.upsert_courses([Course(cv_cid=86428, course_no="2110575", title="Containers")])
+    cache.record_value(Material(itemid=2160993, cv_cid=86428, title="Docker Material"))
+
+    assert cache.status()["completion"]["counts"]["courses"] == 1
+    assert cache.status()["search"]["counts"]["search_documents"] == 1
+
+    assert cache.clear("search") is True
+    after_search_clear = cache.status()
+    assert after_search_clear["completion"]["counts"]["courses"] == 1
+    assert after_search_clear["search"]["counts"]["search_documents"] == 0
+    assert cache.candidates("courses")[0]["value"] == "2110575"
+
+    cache.record_value(Material(itemid=2160993, cv_cid=86428, title="Docker Material"))
+    assert cache.clear("completion") is True
+    after_completion_clear = cache.status()
+    assert after_completion_clear["completion"]["counts"]["courses"] == 0
+    assert after_completion_clear["search"]["counts"]["search_documents"] == 1
+
+    assert cache.clear("all") is True
+    assert not cache.path.exists()

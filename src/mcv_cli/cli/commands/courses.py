@@ -24,6 +24,7 @@ from ..context import (
     selected_semester,
 )
 from ..errors import NotFoundError, UsageError
+from .search import search_course
 
 
 def register(app: typer.Typer) -> None:
@@ -46,6 +47,7 @@ def register(app: typer.Typer) -> None:
     app.command("portfolio_show", hidden=True)(portfolio_show)
     app.command("playlists_show", hidden=True)(playlists_show)
     app.command("web_resources_list", hidden=True)(web_resources_list)
+    app.command("search_course", hidden=True)(search_course)
 
 
 def list_courses(

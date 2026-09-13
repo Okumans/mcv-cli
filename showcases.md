@@ -93,8 +93,8 @@ mcv --semester 2025/2 courses "$MCV_COURSE" assignments list
 
 Collection resources generally use `list`, while identifier-addressable
 resources use `show`. Singleton or course-level views may be direct actions,
-such as `about`, `portfolio`, and `playlists`. Cross-course aggregate commands
-are separate from course navigation:
+such as `about`, `portfolio`, `playlists`, and the local `search` action.
+Cross-course aggregate commands are separate from course navigation:
 
 ```bash
 mcv courses "$MCV_COURSE" assignments show 2160997
@@ -118,7 +118,7 @@ multi-semester, archive, and multi-reference operations show progress on
 stderr in human mode. `--quiet`/`-q` suppresses that display, while JSON and
 JSONL modes disable it automatically.
 
-## 3. Local completion index
+## 3. Local store, completion, and search
 
 Completion candidates are indexed locally after successful commands and can be
 refreshed explicitly. Completion itself never performs a network request:
@@ -131,20 +131,26 @@ uv run mcv cache refresh
 uv run mcv cache refresh "$MCV_COURSE" 2110521
 uv run mcv cache refresh --all-semesters
 uv run mcv --json cache status
-uv run mcv cache clear
+uv run mcv cache clear completion
+uv run mcv cache clear search
+uv run mcv cache clear all
 ```
 
-The `mcv cache` commands manage a compact SQLite completion index isolated by
-profile and provider; this is local metadata storage, not a response or
-resource-body cache. It holds course values, semester values, material-folder
-names, grouping ids, and canonical addressable refs such as
-`mcv:assignment:86428:2160997`. Resource rows contain searchable identity and
-summary metadata only, and collection-status rows record whether optional
-course sections were available. It does not hold credentials, page bodies,
-signed links, or meeting passwords, and API retrieval does not use it as a
-parsed-resource cache. If it is missing, locked, or corrupt, shell
-completion returns no dynamic candidates and the command being completed is
-unaffected.
+The local store is one SQLite file with separate logical namespaces. Its
+completion index holds course values, semester values, material-folder names,
+grouping ids, and canonical refs such as `mcv:assignment:86428:2160997`.
+Its resource/search cache holds only allow-listed resource snapshots and
+derived FTS documents for searchable materials, assignments, announcements,
+meetings, and playlist pages. It does not hold credentials, page bodies,
+signed links, submission material, feedback, or meeting passwords. Normal API
+requests update these projections best-effort; they are not raw response
+storage.
+
+Clear namespaces explicitly: `cache clear completion` preserves search,
+`cache clear search` preserves completion, and `cache clear all` removes both.
+Bare `cache clear` is a usage error. If the store is missing, locked, or
+corrupt, shell completion returns no dynamic candidates and local search
+returns no results without contacting MyCourseVille.
 
 With a populated cache, these contexts offer dynamic candidates:
 
@@ -161,6 +167,23 @@ mcv get <TAB>
 course numbers, exact titles, or `cv_cid` values to target specific courses;
 use `--all-semesters` for a full semester scope. A failed course scope leaves
 its previously indexed completion metadata intact.
+
+Search uses only the local search namespace unless `--refresh` is supplied:
+
+```bash
+uv run mcv search "docker"
+uv run mcv courses "$MCV_COURSE" search "docker"
+uv run mcv search "docker" --type material --type assignment --limit 20
+uv run mcv search "docker" --refs
+uv run mcv --json search "docker"
+uv run mcv --jsonl search "docker"
+uv run mcv search "docker" --refresh
+```
+
+Every v1 result is a dereferenceable summary with a canonical `ref`. Human
+tables highlight matched query terms in the title and match snippet; machine
+output keeps those strings plain. `--refresh` fetches the relevant course
+scope first and then executes the same local search.
 
 ## 4. Output contracts for Unix tools
 
@@ -745,6 +768,30 @@ with MCVAPI(manager) as api:
     meetings = api.aggregates.meetings.list()
 ```
 
+Search is a local, cross-resource service. Inject the optional local store
+when the application wants successful API requests to update searchable
+projections:
+
+```python
+from mcv_cli.runtime.cache import CacheStore
+
+store = CacheStore(profile_name="default", provider="chula")
+with MCVAPI(manager, cache_store=store) as api:
+    results = api.search.search(
+        "docker",
+        cv_cid=course.cv_cid,
+        resource_types={"material", "assignment"},
+        limit=20,
+    )
+    resource = api.get(results[0].ref) if results else None
+```
+
+`api.search.search()` never performs network I/O and raises
+`SearchUnavailableError` when no store is injected. It returns
+`SearchResult` summaries for materials, assignments, announcements, meetings,
+and playlist pages. Each result has a canonical `ref` that can be passed to
+`api.get()`; refresh policy remains outside this pure search service.
+
 `ResourceRef.parse` accepts canonical references and supported HTTPS
 MyCourseVille URLs, normalizing both forms to one typed address. It is useful
 when callers need to inspect or store a ref explicitly, but `api.get()` also
@@ -761,8 +808,8 @@ The public Python exception contract uses `MCVError` as the canonical name for
 its exception hierarchy; `APIError` remains a compatibility alias. Expected
 failures include `AuthenticationRequired`, `AuthenticationError`,
 `InvalidReferenceError`, `UnsupportedResourceError`, `NotFoundError`,
-`AmbiguousError`, `TransportError`, `ParseError`, and `DownloadError`. Callers
-can inspect `code`, `message`, `resource`, `operation`, `retryable`, and
+`AmbiguousError`, `TransportError`, `ParseError`, `DownloadError`, and
+`SearchUnavailableError`. Callers can inspect `code`, `message`, `resource`, `operation`, `retryable`, and
 optional `details`; exception strings do not need to be parsed.
 
 Raw temporal fields remain faithful to CourseVille. Typed convenience

@@ -247,4 +247,16 @@ class DownloadError(APIError):
         )
 
 
+class SearchUnavailableError(ValidationError):
+    """Local search was requested without an injected cache store."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Local search requires an injected cache store.",
+            code="search_unavailable",
+            resource="search",
+            operation="search",
+        )
+
+
 MCVError = APIError

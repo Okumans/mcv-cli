@@ -189,7 +189,7 @@ mcv courses 2110575 materials show \
 mcv courses 2110575 assignments show mcv:assignment:86428:2160997
 ```
 
-## Shell completion and local completion index
+## Local store, shell completion, and local search
 
 Install completion for the current shell:
 
@@ -207,22 +207,47 @@ mcv cache refresh                        # current-semester courses
 mcv cache refresh 2110575 2110521        # selected courses
 mcv cache refresh --all-semesters        # every semester exposed by the site
 mcv cache status
-mcv cache clear
+mcv cache clear completion             # clear completion metadata only
+mcv cache clear search                 # clear resource snapshots/search only
+mcv cache clear all                    # clear the complete local store
 ```
 
-The `mcv cache` commands manage a local completion index, not a response or
-resource-body cache. It stores only completion metadata such as course numbers,
-folder names, resource titles, canonical refs, semester values, and grouping
-ids. It does not store cookies, passwords, resource bodies, signed URLs, or
-meeting credentials, and API retrieval does not use it as a parsed-resource
-cache. The index is isolated by the active profile and login provider under
-the platform cache directory. A missing or corrupt index simply produces no
-dynamic candidates.
+The cache is one SQLite file with separate logical namespaces. The completion
+index stores course numbers, folder names, resource titles, canonical refs,
+semester values, and grouping ids. The resource/search cache stores only
+allow-listed snapshots and derived FTS documents for searchable resources. It
+does not store cookies, passwords, signed URLs, submission material, feedback,
+or meeting credentials. Normal API requests update these local projections on
+a best-effort basis; they are not a replacement for the upstream response.
+
+Clear a namespace explicitly: `mcv cache clear completion` preserves local
+search, `mcv cache clear search` preserves shell completion, and `mcv cache
+clear all` removes both. Bare `mcv cache clear` is intentionally a usage
+error. The store is isolated by the active profile and login provider under
+the platform cache directory. A missing or corrupt completion index simply
+produces no dynamic candidates.
 
 The cache refresh accepts either no course arguments or multiple specific
 course references. `--all-semesters` cannot be combined with specific course
 arguments. Refresh reports per-course failures and leaves previously indexed
 completion metadata intact for a resource scope that could not be fetched.
+
+Search is local by default and never performs a hidden network request:
+
+```bash
+mcv search "docker"
+mcv courses 2110575 search "docker"
+mcv search "docker" --type material --type assignment --limit 20
+mcv search "docker" --refs
+mcv --json search "docker"
+mcv --jsonl search "docker"
+```
+
+Search returns summaries with canonical refs for materials, assignments,
+announcements, meetings, and playlist pages. Use `--refresh` to fetch the
+relevant course data first and then run the same local search. Human output
+highlights the matched query terms in result titles and snippets; JSON output
+keeps the text unstyled for machine consumers.
 
 Long-running multi-request commands show a compact progress display on stderr:
 
@@ -437,6 +462,28 @@ with MCVAPI(manager) as api:
     )
 ```
 
+Search is an explicit local service. Inject a store when the Python caller
+wants automatic cache projections and search:
+
+```python
+from mcv_cli.runtime.cache import CacheStore
+
+store = CacheStore(profile_name="default", provider="chula")
+with MCVAPI(manager, cache_store=store) as api:
+    results = api.search.search(
+        "docker",
+        cv_cid=course.cv_cid,
+        resource_types={"material", "assignment"},
+        limit=20,
+    )
+    resource = api.get(results[0].ref) if results else None
+```
+
+`api.search.search()` never performs network I/O. Without an injected local
+store it raises `SearchUnavailableError`; refresh policy belongs to the CLI
+or another application layer. Each `SearchResult` is a summary whose `ref`
+can be passed directly to `api.get()`.
+
 `playlists`, `schedule`, and `meetings` are typed course collections. A
 collection with `available=False` means that MyCourseVille omitted that
 optional feature for the course; `available=True` with an empty child list
@@ -465,7 +512,8 @@ hierarchy; `APIError` remains a compatibility alias. Callers never need to
 parse exception text. Common categories include
 `AuthenticationRequired`, `AuthenticationError`, `InvalidReferenceError`,
 `UnsupportedResourceError`, `NotFoundError`, `AmbiguousError`,
-`TransportError`, `ParseError`, and `DownloadError`. Every error exposes
+`TransportError`, `ParseError`, `DownloadError`, and `SearchUnavailableError`.
+Every error exposes
 `code`, `message`, `resource`, `operation`, `retryable`, and optional `details`.
 
 Raw CourseVille temporal fields remain unchanged for faithful upstream access.

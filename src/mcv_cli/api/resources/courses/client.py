@@ -42,7 +42,7 @@ class CourseClient(ResourceClient):
                 if key not in seen:
                     seen.add(key)
                     courses.append(course)
-        return courses
+        return self.record_result(courses)
 
     def get(self, cv_cid: int, *, semester: str | None = None) -> Course:
         matches = [item for item in self.list(semester=semester) if item.cv_cid == cv_cid]

@@ -8,13 +8,7 @@ import typer
 from ..api import MCVAPI
 from ..api.core.errors import APIError
 from ..api.core.refs import ResourceRef, ResourceType, ref_for_resource
-from ..api.resources.announcements.models import Announcement
-from ..api.resources.assignments.models import Assignment
 from ..api.resources.courses.models import Course
-from ..api.resources.materials.models import Material, MaterialFolder
-from ..api.resources.meetings.models import MeetingCollection, OnlineMeeting
-from ..api.resources.playlists.models import PlaylistCollection
-from ..api.resources.schedule.models import ScheduleCollection
 from ..presentation.json import ShellIdList
 from ..presentation.output import DisplayMode, emit, emit_error
 from ..runtime.auth import AuthManager
@@ -70,12 +64,17 @@ def make_manager() -> AuthManager:
     return AuthManager(settings=Settings(), output=lambda message: typer.echo(message, err=True))
 
 
-def make_api() -> MCVAPI:
-    return MCVAPI(make_manager())
+_AUTO_CACHE = object()
 
 
-def cache_namespace() -> CacheStore:
+def make_api(*, cache_store: CacheStore | None | object = _AUTO_CACHE) -> MCVAPI:
     manager = make_manager()
+    selected_cache = cache_namespace(manager) if cache_store is _AUTO_CACHE else cache_store
+    return MCVAPI(manager, cache_store=selected_cache)  # type: ignore[arg-type]
+
+
+def cache_namespace(manager: AuthManager | None = None) -> CacheStore:
+    manager = manager or make_manager()
     try:
         profile = manager.profile()
     except APIError:
@@ -95,26 +94,7 @@ def cache_update(ctx: typer.Context, value: Any) -> None:
 
 
 def cache_record_value(cache: CacheStore, value: Any) -> None:
-    if isinstance(value, Course):
-        cache.upsert_courses([value])
-        semester = course_semester(value)
-        if semester is not None:
-            cache.record_semesters([semester])
-    elif isinstance(value, (Material, Assignment, Announcement, OnlineMeeting)):
-        cache.upsert_resources([value])
-    elif isinstance(value, (PlaylistCollection, ScheduleCollection, MeetingCollection)):
-        cache.record_collection_status(value)
-    elif isinstance(value, MaterialFolder):
-        course_id = next(
-            (item.cv_cid for item in value.materials if item.cv_cid is not None),
-            value.cv_cid,
-        )
-        if course_id is not None:
-            cache.upsert_folders([value], cv_cid=course_id)
-        cache_record_value(cache, value.materials)
-    elif isinstance(value, list):
-        for item in value:
-            cache_record_value(cache, item)
+    cache.record_value(value)
 
 
 def course_semester(course: Course) -> str | None:
@@ -148,7 +128,6 @@ def run(
         )
         raise typer.Exit(exit_code_for(caught_error)) from caught_error
     if result is not None:
-        cache_update(ctx, result)
         emit(
             result,
             json_mode=json_mode(ctx),

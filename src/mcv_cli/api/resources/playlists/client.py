@@ -20,7 +20,7 @@ class PlaylistClient(ResourceClient):
         collection = parse_playlist(page_html, cv_cid, source_url=url)
         deferred_ids = playlist_ids(page_html)
         if not collection.available or not deferred_ids:
-            return collection
+            return self.record_result(collection)
 
         loaded: dict[str, Playlist] = {}
         for playlist_id in deferred_ids:
@@ -53,13 +53,14 @@ class PlaylistClient(ResourceClient):
                 )
             loaded[playlist_id] = detail.playlists[0]
 
-        return collection.model_copy(
+        result = collection.model_copy(
             update={
                 "playlists": [
                     _hydrate_playlist(playlist, loaded) for playlist in collection.playlists
                 ]
             }
         )
+        return self.record_result(result, detail_level="detail")
 
 
 def _successful_payload(payload: Any) -> bool:

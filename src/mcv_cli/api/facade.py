@@ -21,6 +21,8 @@ from .resources.playlists.client import PlaylistClient
 from .resources.portfolio.client import PortfolioClient
 from .resources.schedule.client import ScheduleClient
 from .resources.web_resources.client import WebResourcesClient
+from .search import SearchClient
+from .search.protocols import LocalStore
 
 
 class MCVAPI:
@@ -34,7 +36,21 @@ class MCVAPI:
         download_client: httpx.Client | None = None,
         timeout: float | None = None,
         sleeper: Callable[[float], None] = time.sleep,
+        cache_store: LocalStore | None = None,
     ) -> None:
+        self._cache_store = cache_store
+
+        def cache_sink(value: object, detail_level: str) -> None:
+            if cache_store is None:
+                return
+            try:
+                cache_store.record_value(value, detail_level=detail_level)
+            except Exception:
+                # Cache persistence is deliberately best-effort for normal API
+                # calls.  Explicit refresh uses a cache-disabled API and writes
+                # its completed scope transactionally in the runtime layer.
+                return
+
         self._transport, self._http_client, self._owns_client = make_transport(
             auth,
             http_client=http_client,
@@ -45,22 +61,56 @@ class MCVAPI:
             self._download_client,
             self._owns_download_client,
         ) = make_download_client(auth, http_client=download_client, timeout=timeout)
-        self.courses = CourseClient(self._transport, self._http_client)
+        self.courses = CourseClient(
+            self._transport,
+            self._http_client,
+            cache_sink=cache_sink,
+        )
         self.materials = MaterialsClient(
             self._transport,
             self._http_client,
             download_client=self._download_client,
+            cache_sink=cache_sink,
         )
-        self.assignments = AssignmentsClient(self._transport, self._http_client)
-        self.announcements = AnnouncementsClient(self._transport, self._http_client)
-        self.meetings = MeetingsClient(self._transport, self._http_client)
-        self.schedule = ScheduleClient(self._transport, self._http_client)
-        self.about = AboutClient(self._transport, self._http_client)
-        self.groups = GroupsClient(self._transport, self._http_client)
-        self.portfolio = PortfolioClient(self._transport, self._http_client)
-        self.playlists = PlaylistClient(self._transport, self._http_client)
-        self.web_resources = WebResourcesClient(self._transport, self._http_client)
+        self.assignments = AssignmentsClient(
+            self._transport,
+            self._http_client,
+            cache_sink=cache_sink,
+        )
+        self.announcements = AnnouncementsClient(
+            self._transport,
+            self._http_client,
+            cache_sink=cache_sink,
+        )
+        self.meetings = MeetingsClient(
+            self._transport,
+            self._http_client,
+            cache_sink=cache_sink,
+        )
+        self.schedule = ScheduleClient(
+            self._transport,
+            self._http_client,
+            cache_sink=cache_sink,
+        )
+        self.about = AboutClient(self._transport, self._http_client, cache_sink=cache_sink)
+        self.groups = GroupsClient(self._transport, self._http_client, cache_sink=cache_sink)
+        self.portfolio = PortfolioClient(
+            self._transport,
+            self._http_client,
+            cache_sink=cache_sink,
+        )
+        self.playlists = PlaylistClient(
+            self._transport,
+            self._http_client,
+            cache_sink=cache_sink,
+        )
+        self.web_resources = WebResourcesClient(
+            self._transport,
+            self._http_client,
+            cache_sink=cache_sink,
+        )
         self.aggregates = AggregateClients(self)
+        self.search = SearchClient(cache_store)
 
     def __enter__(self) -> MCVAPI:
         return self

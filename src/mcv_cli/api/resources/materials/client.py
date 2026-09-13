@@ -28,16 +28,20 @@ class MaterialsClient(ResourceClient):
         http_client: httpx.Client,
         *,
         download_client: httpx.Client,
+        cache_sink=None,
     ) -> None:
-        super().__init__(transport, http_client)
+        super().__init__(transport, http_client, cache_sink=cache_sink)
         self.download_client = download_client
 
-    def list(self, cv_cid: int) -> list[Material]:
-        return parse_materials(self.course_home_html(cv_cid), cv_cid)
+    def list(self, cv_cid: int, *, detail: bool = False) -> list[Material]:
+        materials = parse_materials(self.course_home_html(cv_cid), cv_cid)
+        if detail:
+            materials = [self._detail(material) for material in materials]
+        return self.record_result(materials, detail_level="detail" if detail else "summary")
 
-    def folders(self, cv_cid: int) -> list[MaterialFolder]:
+    def folders(self, cv_cid: int, *, detail: bool = False) -> list[MaterialFolder]:
         folders: dict[str, MaterialFolder] = {}
-        for material in self.list(cv_cid):
+        for material in self.list(cv_cid, detail=detail):
             folder_id = material.folder_id or "ungrouped"
             folder_name = material.folder_name or "Ungrouped"
             folder = folders.setdefault(
@@ -45,23 +49,31 @@ class MaterialsClient(ResourceClient):
                 MaterialFolder(folder_id=folder_id, name=folder_name, cv_cid=cv_cid),
             )
             folder.materials.append(material)
-        return list(folders.values())
+        return self.record_result(
+            list(folders.values()), detail_level="detail" if detail else "summary"
+        )
 
     def get(self, cv_cid: int, item_id: int) -> Material:
         for material in self.list(cv_cid):
             if material.itemid == item_id:
                 if material.detail_url and not material.filepath:
-                    response = self.request("GET", material.detail_url)
-                    return parse_material_detail(
-                        material,
-                        html_from_response(response),
-                        material.detail_url,
-                    )
-                return material
+                    material = self._detail(material)
+                    return self.record_result(material, detail_level="detail")
+                return self.record_result(material, detail_level="summary")
         raise NotFoundError(
             f"Material {item_id} was not found in course {cv_cid}.",
             resource="material",
             operation="get",
+        )
+
+    def _detail(self, material: Material) -> Material:
+        if not material.detail_url:
+            return material
+        response = self.request("GET", material.detail_url)
+        return parse_material_detail(
+            material,
+            html_from_response(response),
+            material.detail_url,
         )
 
     def download(
@@ -154,12 +166,7 @@ class MaterialsClient(ResourceClient):
                 for material in selected.materials:
                     current = material
                     if current.detail_url and not current.filepath:
-                        response = self.request("GET", current.detail_url)
-                        current = parse_material_detail(
-                            current,
-                            html_from_response(response),
-                            current.detail_url,
-                        )
+                        current = self._detail(current)
                     if not current.filepath:
                         skipped.append(current.title or str(current.itemid))
                         continue

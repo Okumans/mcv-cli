@@ -39,6 +39,7 @@ from .resources.schedule import (
     render_schedule_event,
     render_schedule_events,
 )
+from .resources.search import render_search_result, render_search_results
 from .resources.web_resources import render_web_resource, render_web_resources
 
 
@@ -70,6 +71,7 @@ def renderer_for(value: Any) -> Renderer | None:
     from ..api.resources.portfolio.models import Portfolio
     from ..api.resources.schedule.models import ScheduleCollection, ScheduleEvent
     from ..api.resources.web_resources.models import WebResource
+    from ..api.search.models import SearchResult
 
     mapping: tuple[tuple[type[Any], Renderer], ...] = (
         (Course, Renderer(render_course, render_courses)),
@@ -94,6 +96,7 @@ def renderer_for(value: Any) -> Renderer | None:
         (Portfolio, Renderer(render_portfolio)),
         (PlaylistCollection, Renderer(render_playlist_collection, render_playlist_collections)),
         (WebResource, Renderer(render_web_resource, render_web_resources)),
+        (SearchResult, Renderer(render_search_result, render_search_results)),
         (DownloadResult, Renderer(render_download)),
         (ArchiveResult, Renderer(render_archive)),
     )

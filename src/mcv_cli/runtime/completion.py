@@ -130,6 +130,7 @@ def complete_course_group(ctx: Any, incomplete: str) -> list[CompletionItem]:
             "portfolio": "Student portfolio",
             "playlists": "Course video playlists",
             "web-resources": "External course links",
+            "search": "Search cached course content",
         }
         cache = active_cache()
         cached_course_id: int | None = None

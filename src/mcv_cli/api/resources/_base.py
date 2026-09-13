@@ -21,9 +21,23 @@ class SessionProvider(Protocol):
 class ResourceClient:
     """Common authenticated transport access for resource-specific clients."""
 
-    def __init__(self, transport: MCVTransport, http_client: httpx.Client) -> None:
+    def __init__(
+        self,
+        transport: MCVTransport,
+        http_client: httpx.Client,
+        *,
+        cache_sink: Callable[[Any, str], None] | None = None,
+    ) -> None:
         self.transport = transport
         self.http_client = http_client
+        self._cache_sink = cache_sink
+
+    def record_result(self, value: Any, *, detail_level: str = "summary") -> Any:
+        """Send a successful parsed result to the optional local cache."""
+
+        if self._cache_sink is not None:
+            self._cache_sink(value, detail_level)
+        return value
 
     def request(
         self,
