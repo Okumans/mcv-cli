@@ -184,6 +184,18 @@ def test_addressable_models_include_canonical_refs_in_machine_data() -> None:
     assert data["course_no"] == "2110575"
 
 
+def test_nested_addressable_models_include_canonical_refs_in_machine_data() -> None:
+    data = to_jsonable(
+        MeetingCollection(
+            cv_cid=86428,
+            meetings=[OnlineMeeting(itemid=29632, cv_cid=86428, name="Lecture")],
+        )
+    )
+
+    assert data["meetings"][0]["resource_type"] == "meeting"
+    assert data["meetings"][0]["ref"] == "mcv:meeting:86428:29632"
+
+
 def test_meeting_machine_data_includes_preferred_url() -> None:
     data = to_jsonable(
         OnlineMeeting(

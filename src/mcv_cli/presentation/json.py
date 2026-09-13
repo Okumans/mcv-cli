@@ -11,6 +11,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from ..api.core.errors import InvalidReferenceError
+from ..api.core.refs import ResourceRef
 from ..api.core.resource import AddressableResource
 from ..api.resources.materials.models import MaterialFolder
 
@@ -22,12 +23,20 @@ class ShellIdList(list[int | str]):
 
 
 def to_jsonable(value: Any) -> Any:
+    if isinstance(value, ResourceRef):
+        return str(value)
     if isinstance(value, BaseModel):
         data = value.model_dump(mode="json", exclude_none=True)
         if isinstance(value, MaterialFolder):
             data["materials"] = [to_jsonable(item) for item in value.materials]
         else:
-            data = {key: to_jsonable(item) for key, item in data.items()}
+            # ``model_dump`` has already flattened nested models into dicts.
+            # Read matching attributes from the original model so nested
+            # addressable resources can contribute their computed identity.
+            data = {
+                key: to_jsonable(getattr(value, key, item))
+                for key, item in data.items()
+            }
         if isinstance(value, AddressableResource):
             try:
                 identity = {
