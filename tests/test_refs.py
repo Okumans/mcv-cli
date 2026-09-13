@@ -15,11 +15,68 @@ def test_resource_ref_round_trips() -> None:
     assert str(reference) == "mcv:assignment:86428:2160997"
 
 
-def test_legacy_material_ref_is_readable_but_normalized_to_generic_format() -> None:
-    reference = ResourceRef.parse("mcv-material:86428:2160993")
+@pytest.mark.parametrize(
+    ("url", "resource_type", "cv_cid", "item_id"),
+    [
+        (
+            "https://www.mycourseville.com/?q=courseville/worksheet/78748/1889560",
+            ResourceType.ASSIGNMENT,
+            78748,
+            1889560,
+        ),
+        (
+            "https://www.mycourseville.com/?q=courseville%2Fworksheet%2F78748%2F1889560"
+            "&mode=question_set",
+            ResourceType.ASSIGNMENT,
+            78748,
+            1889560,
+        ),
+        (
+            "https://www.mycourseville.com/?q=courseville/course/123/"
+            "view_content_node_9_material",
+            ResourceType.MATERIAL,
+            123,
+            9,
+        ),
+        (
+            "https://www.mycourseville.com/?q=courseville/course/123/"
+            "view_content_node_77",
+            ResourceType.ANNOUNCEMENT,
+            123,
+            77,
+        ),
+        (
+            "https://www.mycourseville.com/?q=courseville/course/123/meeting_view_99",
+            ResourceType.MEETING,
+            123,
+            99,
+        ),
+    ],
+)
+def test_resource_ref_parses_actual_mycourseville_urls(
+    url: str,
+    resource_type: ResourceType,
+    cv_cid: int,
+    item_id: int,
+) -> None:
+    reference = ResourceRef.parse(url)
 
-    assert reference.resource_type is ResourceType.MATERIAL
-    assert str(reference) == "mcv:material:86428:2160993"
+    assert reference.resource_type is resource_type
+    assert reference.cv_cid == cv_cid
+    assert reference.item_id == item_id
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "https://example.com/?q=courseville/worksheet/78748/1889560",
+        "http://www.mycourseville.com/?q=courseville/worksheet/78748/1889560",
+        "https://www.mycourseville.com/?q=courseville/course/123/assignment",
+    ],
+)
+def test_resource_ref_rejects_unsupported_mycourseville_urls(value: str) -> None:
+    with pytest.raises(ValueError):
+        ResourceRef.parse(value)
 
 
 @pytest.mark.parametrize(
@@ -29,6 +86,7 @@ def test_legacy_material_ref_is_readable_but_normalized_to_generic_format() -> N
         "mcv:assignment:86428",
         "mcv:assignment:nope:1",
         "material:86428:1",
+        "mcv-material:86428:2160993",
     ],
 )
 def test_resource_ref_rejects_malformed_or_unsupported_values(value: str) -> None:

@@ -263,6 +263,46 @@ def test_get_renders_multiple_human_resources_with_detail_displays(monkeypatch) 
     assert "\n\n" in result.stdout
 
 
+def test_get_accepts_an_actual_mycourseville_assignment_url(monkeypatch) -> None:
+    class FakeClient:
+        def __init__(self, manager) -> None:
+            self.manager = manager
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+    received: list[tuple[str, int, int]] = []
+    monkeypatch.setattr("mcv_cli.cli._make_manager", lambda: object())
+    monkeypatch.setattr("mcv_cli.cli.MCVClient", FakeClient)
+    monkeypatch.setattr("mcv_cli.cli._cache_update", lambda _ctx, _value: None)
+
+    def fake_get(_client, reference):
+        received.append((reference.resource_type.value, reference.cv_cid, reference.item_id))
+        return Assignment(
+            itemid=reference.item_id,
+            cv_cid=reference.cv_cid,
+            title="Question set",
+        )
+
+    monkeypatch.setattr("mcv_cli.cli._get_one_resource", fake_get)
+
+    result = runner.invoke(
+        app,
+        [
+            "--quiet",
+            "get",
+            "https://www.mycourseville.com/?q=courseville/worksheet/78748/1889560",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert received == [("assignment", 78748, 1889560)]
+    assert "Question set" in result.stdout
+
+
 def test_invalid_jsonl_ref_is_reported_without_authentication() -> None:
     result = runner.invoke(app, ["--jsonl", "get", "mcv:unknown:1:2"])
 

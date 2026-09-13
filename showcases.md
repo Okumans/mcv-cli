@@ -608,7 +608,13 @@ uv run mcv get mcv:assignment:86428:2160997
 uv run mcv get \
   mcv:assignment:86428:2160997 \
   mcv:material:86428:2160993
+uv run mcv get \
+  "https://www.mycourseville.com/?q=courseville/worksheet/78748/1889560"
 ```
+
+`mcv get` also accepts supported HTTPS URLs copied from MyCourseVille. An
+assignment worksheet URL is validated and normalized to the equivalent
+assignment reference before the existing client lookup runs.
 
 In JSONL mode each input is independent, so a failed reference produces an
 error record while other references can still succeed:

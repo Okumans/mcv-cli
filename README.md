@@ -322,12 +322,19 @@ Currently supported resource types are `material`, `assignment`,
 
 ```bash
 mcv get mcv:assignment:86428:2160997
+mcv get "https://www.mycourseville.com/?q=courseville/worksheet/78748/1889560"
 mcv get \
   mcv:assignment:86428:2160997 \
   mcv:material:86428:2160993
 
 mcv assignments list --pending --refs | xargs -r -n 20 mcv get
 ```
+
+`mcv get` also accepts supported HTTPS URLs copied directly from MyCourseVille.
+The URL is validated against the official host and normalized to the same
+canonical resource reference before fetching; it never fetches an arbitrary
+URL. Supported URL forms include assignment worksheets, material content
+nodes, announcement content nodes, and meeting detail pages.
 
 Use `--jsonl` for batch lookup when individual failures should be represented
 alongside successful records:

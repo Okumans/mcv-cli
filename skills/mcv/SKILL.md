@@ -151,10 +151,17 @@ Current individually dereferenceable types are `material`, `assignment`,
 
 ```bash
  mcv get mcv:assignment:86428:2160997
+ mcv get "https://www.mycourseville.com/?q=courseville/worksheet/78748/1889560"
  mcv get \
   mcv:assignment:86428:2160997 \
   mcv:material:86428:2160993
 ```
+
+`mcv get` accepts supported HTTPS URLs copied from MyCourseVille as well as
+canonical refs. The URL is restricted to the official host and normalized
+into the same typed ref before the client fetches the resource; it does not
+fetch arbitrary URLs. Supported URL forms are assignment worksheets, material
+content nodes, announcement content nodes, and meeting detail pages.
 
 For shell composition, use one ref per line and `xargs`:
 

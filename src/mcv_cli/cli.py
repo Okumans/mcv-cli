@@ -1355,7 +1355,7 @@ def get_resources(
     ctx: typer.Context,
     references: list[str] = typer.Argument(
         ...,
-        help="One or more mcv resource references.",
+        help="One or more mcv resource references or MyCourseVille URLs.",
         autocompletion=complete_refs,
     ),
 ) -> None:
