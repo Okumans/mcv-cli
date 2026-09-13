@@ -91,9 +91,10 @@ mcv --semester 2025/2 courses "$MCV_COURSE" assignments list
 
 `--semester` is a global option and must be placed before the command.
 
-Collections use `list`, identifier-bearing resources use `show`, and course
-page collections are direct actions. Cross-course aggregate commands are separate
-from course navigation:
+Collection resources generally use `list`, while identifier-addressable
+resources use `show`. Singleton or course-level views may be direct actions,
+such as `about`, `portfolio`, and `playlists`. Cross-course aggregate commands
+are separate from course navigation:
 
 ```bash
 mcv courses "$MCV_COURSE" assignments show 2160997
@@ -117,7 +118,7 @@ multi-semester, archive, and multi-reference operations show progress on
 stderr in human mode. `--quiet`/`-q` suppresses that display, while JSON and
 JSONL modes disable it automatically.
 
-## 3. Local completion cache
+## 3. Local completion index
 
 Completion candidates are indexed locally after successful commands and can be
 refreshed explicitly. Completion itself never performs a network request:
@@ -133,12 +134,17 @@ uv run mcv --json cache status
 uv run mcv cache clear
 ```
 
-The cache is a compact SQLite index isolated by profile and provider. It holds
-course values, semester values, material-folder names, grouping ids, and
-canonical addressable refs such as `mcv:assignment:86428:2160997`; it does not
-hold credentials, page bodies, signed links, or meeting passwords. If it is
-missing, locked, or corrupt, shell completion returns no dynamic candidates and
-the command being completed is unaffected.
+The `mcv cache` commands manage a compact SQLite completion index isolated by
+profile and provider; this is local metadata storage, not a response or
+resource-body cache. It holds course values, semester values, material-folder
+names, grouping ids, and canonical addressable refs such as
+`mcv:assignment:86428:2160997`. Resource rows contain searchable identity and
+summary metadata only, and collection-status rows record whether optional
+course sections were available. It does not hold credentials, page bodies,
+signed links, or meeting passwords, and API retrieval does not use it as a
+parsed-resource cache. If it is missing, locked, or corrupt, shell
+completion returns no dynamic candidates and the command being completed is
+unaffected.
 
 With a populated cache, these contexts offer dynamic candidates:
 
@@ -153,8 +159,8 @@ mcv get <TAB>
 
 `mcv cache refresh` indexes the current semester by default. Pass multiple
 course numbers, exact titles, or `cv_cid` values to target specific courses;
-use `--all-semesters` for a full semester scope. A failed course scope does
-not replace its previous resource snapshot.
+use `--all-semesters` for a full semester scope. A failed course scope leaves
+its previously indexed completion metadata intact.
 
 ## 4. Output contracts for Unix tools
 
@@ -669,6 +675,13 @@ validated and normalized to the equivalent typed reference before the client
 lookup runs. Supported forms include playlist pages and assignment worksheet,
 material content-node, announcement content-node, and meeting detail URLs.
 
+A domain object is addressable only when it represents a stable, independently
+retrievable CourseVille target and its reference lets `mcv get` deterministically
+reconstruct the corresponding operation. The playlist collection is addressable
+because its course page is such a target; schedule rows, course singleton views,
+and web-resource list entries are not addressable merely because they have a
+model or an upstream id.
+
 In JSONL mode each input is independent, so a failed reference produces an
 error record while other references can still succeed:
 
@@ -744,22 +757,25 @@ Addressable domain models (`Material`, `Assignment`, `Announcement`,
 values to machine records without changing `model_dump()` or the raw upstream
 field names.
 
-The public Python exception contract is based on `MCVError` (an alias of
-`APIError`). Expected failures include `AuthenticationRequired`,
-`AuthenticationError`, `InvalidReferenceError`, `UnsupportedResourceError`,
-`NotFoundError`, `AmbiguousError`, `TransportError`, `ParseError`, and
-`DownloadError`. Callers can inspect `code`, `message`, `resource`,
-`operation`, `retryable`, and optional `details`; exception strings do not need
-to be parsed.
+The public Python exception contract uses `MCVError` as the canonical name for
+its exception hierarchy; `APIError` remains a compatibility alias. Expected
+failures include `AuthenticationRequired`, `AuthenticationError`,
+`InvalidReferenceError`, `UnsupportedResourceError`, `NotFoundError`,
+`AmbiguousError`, `TransportError`, `ParseError`, and `DownloadError`. Callers
+can inspect `code`, `message`, `resource`, `operation`, `retryable`, and
+optional `details`; exception strings do not need to be parsed.
 
 Raw temporal fields remain faithful to CourseVille. Typed convenience
 properties such as `Assignment.due_at`, `Announcement.posted_date`,
 `OnlineMeeting.scheduled_at_datetime`, and `ScheduleEvent.event_datetime`
 return standard `date`, `time`, or timezone-aware `datetime` values. Naive
 values use `Asia/Bangkok`; aware values are converted there; unrecognized and
-sentinel values return `None`.
+sentinel values return `None`. The naming is intentional: raw upstream names
+remain available, typed conveniences use the natural domain name when it is
+free, and occupied or generic raw names receive an explicit suffix or domain
+prefix such as `scheduled_at_datetime` or `event_datetime`.
 
-## 17. Route coverage
+## 18. Route coverage
 
 These are reverse-engineered web routes used by the current implementation.
 They are not an official public API contract.
@@ -787,7 +803,7 @@ They are not an official public API contract.
 No join, attendance, upload, submit, edit, delete, notification, or
 assessment-write route is implemented.
 
-## 18. Data models
+## 19. Data models
 
 The public Pydantic models are:
 
@@ -825,7 +841,7 @@ playlist. `itemid` is intentionally retained as the raw CourseVille spelling;
 Python convenience identity is exposed separately through `ref` and
 `resource_type`.
 
-## 19. Current evaluation
+## 20. Current evaluation
 
 ### Automated checks
 
@@ -896,7 +912,7 @@ uv run mcv --json get mcv:assignment:86428:2160997 | jq '{resource_type, ref, ti
 | Course/material/group edits | State-changing and not implemented |
 | Google login | Requires browser OAuth/client registration |
 
-## 20. Error and safety behavior
+## 21. Error and safety behavior
 
 Current exit-code meanings:
 

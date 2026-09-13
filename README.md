@@ -189,7 +189,7 @@ mcv courses 2110575 materials show \
 mcv courses 2110575 assignments show mcv:assignment:86428:2160997
 ```
 
-## Shell completion and local cache
+## Shell completion and local completion index
 
 Install completion for the current shell:
 
@@ -210,17 +210,19 @@ mcv cache status
 mcv cache clear
 ```
 
-The cache stores only completion metadata such as course numbers, folder names,
-resource titles, canonical refs, semester values, and grouping ids. It does
-not store cookies, passwords, resource bodies, signed URLs, or meeting
-credentials. It is isolated by the active profile and login provider under the
-platform cache directory. A missing or corrupt cache simply produces no
+The `mcv cache` commands manage a local completion index, not a response or
+resource-body cache. It stores only completion metadata such as course numbers,
+folder names, resource titles, canonical refs, semester values, and grouping
+ids. It does not store cookies, passwords, resource bodies, signed URLs, or
+meeting credentials, and API retrieval does not use it as a parsed-resource
+cache. The index is isolated by the active profile and login provider under
+the platform cache directory. A missing or corrupt index simply produces no
 dynamic candidates.
 
 The cache refresh accepts either no course arguments or multiple specific
 course references. `--all-semesters` cannot be combined with specific course
-arguments. Refresh reports per-course failures and leaves the previous
-snapshot for a resource scope that could not be fetched.
+arguments. Refresh reports per-course failures and leaves previously indexed
+completion metadata intact for a resource scope that could not be fetched.
 
 Long-running multi-request commands show a compact progress display on stderr:
 
@@ -359,6 +361,13 @@ canonical resource reference before fetching; it never fetches an arbitrary
 URL. Supported URL forms include course playlist pages, assignment worksheets,
 material content nodes, announcement content nodes, and meeting detail pages.
 
+A domain object is addressable only when it represents a stable, independently
+retrievable CourseVille target and its reference lets `mcv get` deterministically
+reconstruct the corresponding operation. A playlist collection is addressable
+because its course page is such a target; schedule rows, course singleton views,
+and web-resource list entries are not addressable merely because they have a
+model or an upstream id.
+
 Use `--jsonl` for batch lookup when individual failures should be represented
 alongside successful records:
 
@@ -451,8 +460,9 @@ CLI JSON is available to Python callers without parsing output.
 including a supported MyCourseVille HTTPS URL. `api.get_many()` accepts an
 iterable of those values, preserves input order, and stops at the first error.
 
-The public API raises `MCVError` (an alias of `APIError`) subclasses rather
-than requiring callers to parse exception text. Common categories include
+The public API uses `MCVError` as the canonical name for its exception
+hierarchy; `APIError` remains a compatibility alias. Callers never need to
+parse exception text. Common categories include
 `AuthenticationRequired`, `AuthenticationError`, `InvalidReferenceError`,
 `UnsupportedResourceError`, `NotFoundError`, `AmbiguousError`,
 `TransportError`, `ParseError`, and `DownloadError`. Every error exposes
@@ -464,7 +474,10 @@ Typed convenience properties such as `Assignment.due_at`,
 `ScheduleEvent.event_datetime` return standard `date`, `time`, or timezone-aware
 `datetime` values. Naive values are interpreted in `Asia/Bangkok`; aware values
 are converted to that timezone; unrecognized or sentinel values return
-`None`.
+`None`. The naming is intentional: raw upstream names remain available, typed
+conveniences use the natural domain name when it is free, and occupied or
+generic raw names receive an explicit suffix or domain prefix such as
+`scheduled_at_datetime` or `event_datetime`.
 
 ## Credential storage
 

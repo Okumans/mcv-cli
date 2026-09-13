@@ -266,7 +266,7 @@ The archive format is inferred from the output extension first:
 Use `--format zip`, `--format tar`, or `--format tar.gz` to override inference.
 Existing files are not overwritten unless `--force` is supplied.
 
-## Completion cache
+## Completion index
 
 Completion is deliberately cache-only: it does not log in, make network
 requests, or block the shell. Install it once, then populate the cache after
@@ -287,9 +287,9 @@ semesters, grouping ids, and refs; it does not contain cookies, passwords,
 resource bodies, signed URLs, or meeting credentials.
 
 Course-scoped schedule and meeting calls also return typed collections with an
-`available` flag. The cache records those flags so playlist references are
-suggested only for courses whose playlist section was observed as available;
-failed refreshes leave the prior snapshot intact.
+`available` flag. The completion index records those flags so playlist
+references are suggested only for courses whose playlist section was observed
+as available; failed refreshes leave the prior completion metadata intact.
 
 ## Development boundary
 
