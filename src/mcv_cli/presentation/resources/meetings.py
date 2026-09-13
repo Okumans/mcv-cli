@@ -10,15 +10,12 @@ from ..tables import table_for
 
 
 def render_meetings(items: Iterable[OnlineMeeting], *, detail: bool = False) -> RenderableType:
-    del detail
     values = list(items)
     has_course_context = any(item.course_no for item in values)
     columns = (("Course",) if has_course_context else ()) + (
-        "ID",
-        "Scheduled",
-        "Provider",
-        "Meeting",
-        "Link",
+        ("ID", "Ref", "Scheduled", "Provider", "Meeting", "Link")
+        if detail
+        else ("ID", "Scheduled", "Provider", "Meeting", "Link")
     )
     rows = []
     for item in values:
@@ -27,13 +24,22 @@ def render_meetings(items: Iterable[OnlineMeeting], *, detail: bool = False) -> 
             prefix
             + (
                 item.itemid,
+                *((resource_ref(item) or "",) if detail else ()),
                 item.scheduled_at or "",
                 item.provider or "",
                 item.name or "",
                 item.url or "",
             )
         )
-    return table_for(columns, rows, overflow_columns={"Link"})
+    overflow_columns = {"Link"}
+    if detail:
+        overflow_columns.add("Ref")
+    return table_for(
+        columns,
+        rows,
+        overflow_columns=overflow_columns,
+        no_wrap_columns={"Ref"} if detail else None,
+    )
 
 
 def render_meeting_collection(
@@ -43,6 +49,15 @@ def render_meeting_collection(
     if not collection.available:
         return "No meetings are available for this course."
     return render_meetings(collection.meetings)
+
+
+def render_meeting_collection_expanded(
+    collection: MeetingCollection, *, detail: bool = False
+) -> RenderableType:
+    del detail
+    if not collection.available:
+        return "No meetings are available for this course."
+    return render_meetings(collection.meetings, detail=True)
 
 
 def render_meeting(item: OnlineMeeting, *, detail: bool = False) -> RenderableType:

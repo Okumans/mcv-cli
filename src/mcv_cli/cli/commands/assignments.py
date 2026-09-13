@@ -28,6 +28,12 @@ def list_assignments(
         "--refs",
         help="Print canonical assignment references one per line.",
     ),
+    all_fields: bool = typer.Option(
+        False,
+        "--all",
+        "-a",
+        help="Show expanded rows with ids and canonical references.",
+    ),
 ) -> None:
     def action() -> Any:
         with make_api() as api:
@@ -38,4 +44,4 @@ def list_assignments(
             )
             return resource_refs(values) if refs else values
 
-    run(ctx, action)
+    run(ctx, action, display_mode="expanded" if all_fields else "collection")

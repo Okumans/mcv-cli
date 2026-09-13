@@ -87,6 +87,7 @@ different semester is needed.
 ```bash
 # Discover courses and inspect one course
 mcv courses list
+mcv courses list --all
 mcv courses 2110575
 mcv --semester 2025/2 courses list
 
@@ -98,6 +99,7 @@ mcv courses 2110575 materials show 2160993
 
 # Assignments and announcements
 mcv courses 2110575 assignments list
+mcv courses 2110575 assignments list --all
 mcv courses 2110575 assignments show 2160997
 mcv courses 2110575 assignments show --full 2160997
 mcv courses 2110575 announcements list
@@ -105,6 +107,7 @@ mcv courses 2110575 announcements show 2177455
 
 # Meetings, schedule, and course pages
 mcv courses 2110575 meetings list
+mcv courses 2110575 meetings list --all
 mcv courses 2110575 meetings list --include-past
 mcv courses 2110575 schedule list
 mcv courses 2110575 playlists
@@ -117,6 +120,22 @@ mcv courses 2110575 web-resources list
 Course-level pages such as `playlists`, `about`, and `portfolio` are direct
 actions. Other collections generally use `list`, while identifier-bearing
 resources use `show`.
+
+For list and search commands, put `--all`/`-a` after the action to show the
+expanded human table with useful identity columns such as raw ids, canonical
+refs, and available summary fields:
+
+```bash
+mcv courses list --all
+mcv courses 2110575 materials list --all
+mcv courses 2110575 meetings list --all
+mcv search "docker" --all
+```
+
+On `courses list`, `--all` currently expands the columns for the selected or
+current semester. It does not select every semester; a future global option
+may provide that behavior. The existing `mcv cache refresh --all-semesters`
+operation remains the explicit all-semester cache operation.
 
 Assignments, announcements, meeting metadata, and course pages are read-only.
 Assignment details expose the information visible to the student, including
@@ -132,6 +151,7 @@ Use `--ids` only when the receiving command already has a course context. Use
 ```bash
 mcv courses 2110575 materials list --folder "Week 1" --ids
 mcv courses 2110575 materials list --folder "Week 1" --refs
+mcv courses 2110575 materials list --folder "Week 1" --all
 ```
 
 Canonical references have a course-qualified form:
@@ -188,6 +208,10 @@ mcv --jsonl get \
   mcv:material:86428:2160993
 ```
 
+`--all`/`-a` is a human-table display option. It does not change JSON or JSONL
+schemas, search limits, filters, or the one-reference-per-line behavior of
+`--refs` and `--ids`.
+
 The output modes are:
 
 - `--json` emits one JSON document, using an object or array as appropriate.
@@ -237,6 +261,8 @@ Search is local by default and never performs hidden network requests:
 ```bash
 mcv search "docker"
 mcv courses 2110575 search "docker"
+mcv search "docker" --all
+mcv courses 2110575 search "docker" --all
 mcv search "docker" --type material --type assignment --limit 20
 mcv search "docker" --refs
 mcv --json search "docker"

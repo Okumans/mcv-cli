@@ -16,10 +16,16 @@ def list_announcements(
     refs: bool = typer.Option(
         False, "--refs", help="Print canonical announcement references one per line."
     ),
+    all_fields: bool = typer.Option(
+        False,
+        "--all",
+        "-a",
+        help="Show expanded rows with ids and canonical references.",
+    ),
 ) -> None:
     def action() -> Any:
         with make_api() as api:
             values = api.aggregates.announcements.list(semester=selected_semester(ctx))
             return resource_refs(values) if refs else values
 
-    run(ctx, action)
+    run(ctx, action, display_mode="expanded" if all_fields else "collection")

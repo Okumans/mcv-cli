@@ -52,21 +52,19 @@ def register(app: typer.Typer) -> None:
 
 def list_courses(
     ctx: typer.Context,
-    all_semesters: bool = typer.Option(
-        False, "--all", help="List courses from every available semester."
+    all_fields: bool = typer.Option(
+        False,
+        "--all",
+        "-a",
+        help="Show expanded course columns including section and role.",
     ),
 ) -> None:
     def action() -> list[Any]:
         semester = selected_semester(ctx)
-        if all_semesters and semester is not None:
-            raise UsageError("Choose either --semester or --all, not both.")
         with make_api() as api:
-            return api.courses.list(
-                semester=semester,
-                all_semesters=all_semesters,
-            )
+            return api.courses.list(semester=semester)
 
-    run(ctx, action)
+    run(ctx, action, display_mode="expanded" if all_fields else "collection")
 
 
 def show_course(
@@ -103,6 +101,12 @@ def materials_list(
     ),
     refs: bool = typer.Option(
         False, "--refs", help="Print canonical resource references one per line."
+    ),
+    all_fields: bool = typer.Option(
+        False,
+        "--all",
+        "-a",
+        help="Show expanded rows with ids and canonical references.",
     ),
 ) -> None:
     def action() -> Any:
@@ -148,7 +152,7 @@ def materials_list(
                 )
             return materials
 
-    run(ctx, action)
+    run(ctx, action, display_mode="expanded" if all_fields else "collection")
 
 
 def materials_show(
@@ -241,6 +245,12 @@ def assignments_list(
     refs: bool = typer.Option(
         False, "--refs", help="Print canonical assignment references one per line."
     ),
+    all_fields: bool = typer.Option(
+        False,
+        "--all",
+        "-a",
+        help="Show expanded rows with ids and canonical references.",
+    ),
 ) -> None:
     def action() -> Any:
         if ids and refs:
@@ -251,7 +261,7 @@ def assignments_list(
                 return ShellIdList(item.itemid for item in values)
             return resource_refs(values) if refs else values
 
-    run(ctx, action)
+    run(ctx, action, display_mode="expanded" if all_fields else "collection")
 
 
 def assignments_show(
@@ -288,6 +298,12 @@ def announcements_list(
     refs: bool = typer.Option(
         False, "--refs", help="Print canonical announcement references one per line."
     ),
+    all_fields: bool = typer.Option(
+        False,
+        "--all",
+        "-a",
+        help="Show expanded rows with ids and canonical references.",
+    ),
 ) -> None:
     def action() -> Any:
         if ids and refs:
@@ -298,7 +314,7 @@ def announcements_list(
                 return ShellIdList(item.itemid for item in values)
             return resource_refs(values) if refs else values
 
-    run(ctx, action)
+    run(ctx, action, display_mode="expanded" if all_fields else "collection")
 
 
 def announcements_show(
@@ -335,6 +351,12 @@ def meetings_list(
     refs: bool = typer.Option(
         False, "--refs", help="Print canonical meeting references one per line."
     ),
+    all_fields: bool = typer.Option(
+        False,
+        "--all",
+        "-a",
+        help="Show expanded rows with ids and canonical references.",
+    ),
 ) -> None:
     def action() -> Any:
         if ids and refs:
@@ -350,7 +372,7 @@ def meetings_list(
                 return resource_refs(collection.meetings)
             return collection
 
-    run(ctx, action)
+    run(ctx, action, display_mode="expanded" if all_fields else "collection")
 
 
 def meetings_show(

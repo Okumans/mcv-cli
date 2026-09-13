@@ -534,8 +534,98 @@ def test_collection_mode_remains_the_default_for_resource_lists() -> None:
     rendered = console.export_text()
     assert "ID" in rendered
     assert "Title" in rendered
+    assert "Ref" not in rendered
     assert "Homework 1" in rendered
     assert "Homework 2" in rendered
+
+
+def test_expanded_resource_lists_include_canonical_references() -> None:
+    console = Console(record=True, width=200)
+
+    for resource in [
+        Assignment(itemid=2160997, cv_cid=86428, title="Homework"),
+        Announcement(itemid=2177455, cv_cid=86428, title="Welcome"),
+        Material(itemid=2160993, cv_cid=86428, title="Docker Fundamentals"),
+        OnlineMeeting(itemid=29632, cv_cid=86428, name="Lecture"),
+    ]:
+        emit(
+            [resource],
+            json_mode=False,
+            display_mode="expanded",
+            console=console,
+        )
+
+    rendered = console.export_text()
+    assert "mcv:assignment:86428:2160997" in rendered
+    assert "mcv:announcement:86428:2177455" in rendered
+    assert "mcv:material:86428:2160993" in rendered
+    assert "mcv:meeting:86428:29632" in rendered
+
+
+def test_expanded_course_lists_include_section_and_role() -> None:
+    console = Console(record=True)
+
+    emit(
+        [
+            Course(
+                cv_cid=86428,
+                course_no="2110575",
+                title="Container Systems",
+                year="2026",
+                semester="1",
+                section="1",
+                role="student",
+            )
+        ],
+        json_mode=False,
+        display_mode="expanded",
+        console=console,
+    )
+
+    rendered = console.export_text()
+    assert "Section" in rendered
+    assert "Role" in rendered
+    assert "student" in rendered
+
+
+def test_expanded_search_results_include_identity_and_score() -> None:
+    console = Console(record=True, width=200)
+    result = SearchResult(
+        resource_type=ResourceType.ASSIGNMENT,
+        ref="mcv:assignment:86428:2160997",  # type: ignore[arg-type]
+        cv_cid=86428,
+        course_no="2110575",
+        title="Docker Compose Assignment",
+        snippet="Build the Docker service with Compose.",
+        score=7000,
+    )
+    result._query = "docker compose"
+
+    emit([result], json_mode=False, display_mode="expanded", console=console)
+
+    rendered = console.export_text()
+    assert "ID" in rendered
+    assert "Ref" in rendered
+    assert "Score" in rendered
+    assert "2160997" in rendered
+    assert "mcv:assignment:86428:2160997" in rendered
+    assert "Docker Compose Assignment" in rendered
+
+
+def test_expanded_course_meeting_collection_includes_references() -> None:
+    console = Console(record=True)
+
+    emit(
+        MeetingCollection(
+            cv_cid=86428,
+            meetings=[OnlineMeeting(itemid=29632, cv_cid=86428, name="Lecture")],
+        ),
+        json_mode=False,
+        display_mode="expanded",
+        console=console,
+    )
+
+    assert "mcv:meeting:86428:29632" in console.export_text()
 
 
 def test_playlist_detail_renders_nested_folders_and_video_metadata() -> None:

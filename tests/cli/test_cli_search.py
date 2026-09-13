@@ -78,6 +78,18 @@ def test_course_search_uses_only_the_local_course_index(monkeypatch, tmp_path) -
     assert "Docker Fundamentals" in result.stdout
 
 
+def test_search_all_shows_refs_and_scores(monkeypatch, tmp_path) -> None:
+    cache = _cache(tmp_path)
+    monkeypatch.setattr("mcv_cli.cli.commands.search.cache_namespace", lambda: cache)
+
+    result = runner.invoke(app, ["--quiet", "search", "docker", "--all"])
+
+    assert result.exit_code == 0, result.output
+    assert "Ref" in result.stdout
+    assert "Score" in result.stdout
+    assert "mcv:assignment:86428:2160997" in result.stdout
+
+
 def test_course_search_rejects_unknown_course_without_refresh(monkeypatch, tmp_path) -> None:
     cache = _cache(tmp_path)
     monkeypatch.setattr("mcv_cli.cli.commands.search.cache_namespace", lambda: cache)

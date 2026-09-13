@@ -23,7 +23,7 @@ from .json import (
 )
 from .registry import Renderer, renderer_for
 
-DisplayMode = Literal["collection", "detail", "short"]
+DisplayMode = Literal["collection", "detail", "short", "expanded"]
 
 
 def emit(
@@ -115,7 +115,7 @@ def _display_resources(
     display = renderer_for(items[0])
     if display is not None and display.collection is not None:
         if all(renderer_for(item) == display for item in items):
-            console.print(display.collection(items, detail=False))
+            console.print(display.collection(items, detail=display_mode == "expanded"))
             return
     if all(isinstance(item, Mapping) for item in items):
         _display_mapping_list(items, console)
@@ -151,6 +151,8 @@ def _render(renderer: Renderer, value: Any, display_mode: DisplayMode) -> Any:
     if display_mode == "short":
         method = renderer.short or renderer.single
         return method(value, detail=False)
+    if display_mode == "expanded" and renderer.expanded_single is not None:
+        return renderer.expanded_single(value)
     return renderer.single(value, detail=display_mode in ("collection", "detail"))
 
 

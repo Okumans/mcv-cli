@@ -24,15 +24,18 @@ def render_course(course: Course, *, detail: bool = False) -> RenderableType:
 
 
 def render_courses(courses: Iterable[Course], *, detail: bool = False) -> RenderableType:
-    del detail
+    columns = ["ID", "Course", "Title", "Year/Semester"]
+    if detail:
+        columns.extend(("Section", "Role"))
     return table_for(
-        ("ID", "Course", "Title", "Year/Semester"),
+        columns,
         (
             (
                 course.cv_cid,
                 course.course_no or "",
                 course.title or "",
                 year_semester(course.year, course.semester),
+                *((course.section or "", course.role or "") if detail else ()),
             )
             for course in courses
         ),

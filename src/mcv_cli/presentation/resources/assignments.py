@@ -23,10 +23,11 @@ from ..tables import table_for
 def render_assignments(
     assignments: Iterable[Assignment], *, detail: bool = False
 ) -> RenderableType:
-    del detail
     values = list(assignments)
     has_course_context = any(item.course_no for item in values)
-    columns = (("Course",) if has_course_context else ()) + ("ID", "Title", "Due", "Status")
+    columns = (("Course",) if has_course_context else ()) + (
+        ("ID", "Ref", "Title", "Due", "Status") if detail else ("ID", "Title", "Due", "Status")
+    )
     rows = []
     for item in values:
         prefix = (item.course_no or "",) if has_course_context else ()
@@ -34,12 +35,18 @@ def render_assignments(
             prefix
             + (
                 item.itemid,
+                *((resource_ref(item) or "",) if detail else ()),
                 item.title or "",
                 item.duedate or str(item.duetime or ""),
                 item.status or "unknown",
             )
         )
-    return table_for(columns, rows)
+    return table_for(
+        columns,
+        rows,
+        overflow_columns={"Ref"} if detail else None,
+        no_wrap_columns={"Ref"} if detail else None,
+    )
 
 
 def render_assignment(assignment: Assignment, *, detail: bool = False) -> RenderableType:

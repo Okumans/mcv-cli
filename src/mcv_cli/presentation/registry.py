@@ -28,6 +28,7 @@ from .resources.materials import (
 from .resources.meetings import (
     render_meeting,
     render_meeting_collection,
+    render_meeting_collection_expanded,
     render_meetings,
     render_recording,
     render_recordings,
@@ -48,6 +49,7 @@ class Renderer:
     single: Callable[..., RenderableType]
     collection: Callable[..., RenderableType] | None = None
     short: Callable[..., RenderableType] | None = None
+    expanded_single: Callable[..., RenderableType] | None = None
 
 
 def renderer_for(value: Any) -> Renderer | None:
@@ -88,7 +90,13 @@ def renderer_for(value: Any) -> Renderer | None:
         (Announcement, Renderer(render_announcement, render_announcements)),
         (MeetingRecording, Renderer(render_recording, render_recordings)),
         (OnlineMeeting, Renderer(render_meeting, render_meetings)),
-        (MeetingCollection, Renderer(render_meeting_collection)),
+        (
+            MeetingCollection,
+            Renderer(
+                render_meeting_collection,
+                expanded_single=render_meeting_collection_expanded,
+            ),
+        ),
         (ScheduleCollection, Renderer(render_schedule_collection)),
         (ScheduleEvent, Renderer(render_schedule_event, render_schedule_events)),
         (CourseAbout, Renderer(render_about)),

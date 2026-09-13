@@ -25,6 +25,12 @@ def search(
     ),
     limit: int = typer.Option(20, "--limit", min=1, max=100, help="Maximum results to return."),
     refs: bool = typer.Option(False, "--refs", help="Print canonical references one per line."),
+    all_fields: bool = typer.Option(
+        False,
+        "--all",
+        "-a",
+        help="Show expanded rows with ids, references, and scores.",
+    ),
     refresh: bool = typer.Option(
         False,
         "--refresh",
@@ -41,7 +47,7 @@ def search(
         )
         return _refs_or_results(results, refs=refs)
 
-    run(ctx, action)
+    run(ctx, action, display_mode="expanded" if all_fields else "collection")
 
 
 def search_course(
@@ -55,6 +61,12 @@ def search_course(
     ),
     limit: int = typer.Option(20, "--limit", min=1, max=100, help="Maximum results to return."),
     refs: bool = typer.Option(False, "--refs", help="Print canonical references one per line."),
+    all_fields: bool = typer.Option(
+        False,
+        "--all",
+        "-a",
+        help="Show expanded rows with ids, references, and scores.",
+    ),
     refresh: bool = typer.Option(
         False,
         "--refresh",
@@ -75,7 +87,7 @@ def search_course(
         )
         return _refs_or_results(results, refs=refs)
 
-    run(ctx, action)
+    run(ctx, action, display_mode="expanded" if all_fields else "collection")
 
 
 def _local_course_id(cache: CacheStore, reference: str) -> int:

@@ -35,12 +35,15 @@ def render_material(material: Material, *, detail: bool = False) -> RenderableTy
 
 
 def render_materials(materials: Iterable[Material], *, detail: bool = False) -> RenderableType:
-    del detail
+    columns = ["ID", "Folder", "Title", "Changed", "Download"]
+    if detail:
+        columns.insert(1, "Ref")
     return table_for(
-        ("ID", "Folder", "Title", "Changed", "Download"),
+        columns,
         (
             (
                 item.itemid,
+                *((resource_ref(item) or "",) if detail else ()),
                 item.folder_name or "",
                 item.title or "",
                 item.changed or "",
@@ -48,6 +51,8 @@ def render_materials(materials: Iterable[Material], *, detail: bool = False) -> 
             )
             for item in materials
         ),
+        overflow_columns={"Ref"} if detail else None,
+        no_wrap_columns={"Ref"} if detail else None,
     )
 
 

@@ -170,6 +170,8 @@ Search uses only the local search namespace unless `--refresh` is supplied:
 ```bash
 uv run mcv search "docker"
 uv run mcv courses "$MCV_COURSE" search "docker"
+uv run mcv search "docker" --all
+uv run mcv courses "$MCV_COURSE" search "docker" --all
 uv run mcv search "docker" --type material --type assignment --limit 20
 uv run mcv search "docker" --refs
 uv run mcv --json search "docker"
@@ -206,6 +208,11 @@ results use resource-specific tables, detail results use labeled field/value
 summaries, and operation results such as downloads and archives use concise
 status messages. JSON-like model dumps are reserved for `--json` and
 `--jsonl`.
+
+List and search commands accept `--all`/`-a` after the action for an expanded
+human table. The expanded view keeps the normal summary columns and adds
+useful identity data such as raw ids and canonical refs; it does not change
+JSON/JSONL output or the `--refs`/`--ids` pipeline modes.
 
 ### JSON document
 
@@ -349,8 +356,9 @@ Behavior:
 
 - no semester option: use MyCourseVille's current semester selector;
 - `--semester`: global option that selects one semester, or a year prefix;
-- `--all`: query every semester exposed by the authenticated page;
-- `--semester` and `--all` together: usage error.
+- `--all`/`-a`: show the expanded course table, including section and role;
+- `--all` does not change the selected semester. All-semester course listing
+  is deferred to a future global option design.
 
 ### Course overview
 
@@ -409,6 +417,7 @@ Supported list options:
 --select, --fields FIELD[,FIELD...]
 --ids
 --refs
+--all, -a
 ```
 
 `--ids` and `--refs` are mutually exclusive shell selectors. Use `--refs`
@@ -491,6 +500,7 @@ downloaded, the archive is not installed.
 
 ```bash
 uv run mcv courses "$MCV_COURSE" assignments list
+uv run mcv courses "$MCV_COURSE" assignments list --all
 uv run mcv --jsonl courses "$MCV_COURSE" assignments list
 ```
 
@@ -527,6 +537,7 @@ answer, submit, upload, edit, or delete assignment work.
 
 ```bash
 uv run mcv courses "$MCV_COURSE" announcements list
+uv run mcv courses "$MCV_COURSE" announcements list --all
 uv run mcv courses "$MCV_COURSE" announcements show 2177455
 uv run mcv --jsonl courses "$MCV_COURSE" announcements list
 ```
@@ -538,6 +549,7 @@ metadata, and extracted external links.
 
 ```bash
 uv run mcv courses "$MCV_COURSE" meetings list
+uv run mcv courses "$MCV_COURSE" meetings list --all
 uv run mcv courses "$MCV_COURSE" meetings list --include-past
 uv run mcv courses "$MCV_COURSE" meetings show 29632
 ```
@@ -632,14 +644,17 @@ upstream CourseVille primitives:
 
 ```bash
 uv run mcv assignments list
+uv run mcv assignments list --all
 uv run mcv assignments list --pending
 uv run mcv assignments list --due
 uv run mcv assignments list --pending --refs
 
 uv run mcv announcements list
+uv run mcv announcements list --all
 uv run mcv announcements list --refs
 
 uv run mcv meetings list
+uv run mcv meetings list --all
 uv run mcv meetings list --include-past
 uv run mcv meetings list --refs
 ```

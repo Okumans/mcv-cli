@@ -69,6 +69,7 @@ def test_courses_list_accepts_global_semester_selection() -> None:
 
     assert result.exit_code == 0
     assert "--all" in result.stdout
+    assert "-a" in result.stdout
 
 
 def test_yearsem_option_is_removed() -> None:
@@ -111,11 +112,42 @@ def test_cache_commands_expose_refresh_controls() -> None:
     assert "course_references" in result.stdout
 
 
-def test_courses_list_rejects_conflicting_selection_flags() -> None:
-    result = runner.invoke(app, ["--semester", "2026/1", "courses", "list", "--all"])
+def test_courses_list_all_expands_the_selected_semester(monkeypatch) -> None:
+    calls: list[tuple[str | None, bool]] = []
 
-    assert result.exit_code == 2
-    assert "either --semester or --all" in result.output
+    class FakeCourses:
+        def list(self, *, semester=None, all_semesters=False):
+            calls.append((semester, all_semesters))
+            return [
+                Course(
+                    cv_cid=86428,
+                    course_no="2110575",
+                    title="Container Systems",
+                    year="2026",
+                    semester="1",
+                    section="1",
+                    role="student",
+                )
+            ]
+
+    class FakeAPI:
+        courses = FakeCourses()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+    monkeypatch.setattr("mcv_cli.cli.commands.courses.make_api", lambda: FakeAPI())
+
+    result = runner.invoke(app, ["--quiet", "--semester", "2026/1", "courses", "list", "--all"])
+
+    assert result.exit_code == 0, result.output
+    assert calls == [("2026/1", False)]
+    assert "Section" in result.stdout
+    assert "Role" in result.stdout
+    assert "Container Systems" in result.stdout
 
 
 def test_courses_accepts_course_before_resource_action() -> None:
@@ -275,6 +307,8 @@ def test_material_list_exposes_shell_query_options() -> None:
     assert "--select" in result.stdout
     assert "--folder" in result.stdout
     assert "--refs" in result.stdout
+    assert "--all" in result.stdout
+    assert "-a" in result.stdout
     assert "--unique-ids" not in result.stdout
 
 
@@ -295,6 +329,7 @@ def test_cross_course_resource_commands_expose_filters_and_refs() -> None:
     assert "--pending" in result.stdout
     assert "--due" in result.stdout
     assert "--refs" in result.stdout
+    assert "--all" in result.stdout
 
 
 def test_meeting_commands_expose_include_past_filter() -> None:
@@ -305,6 +340,8 @@ def test_meeting_commands_expose_include_past_filter() -> None:
     assert course.exit_code == 0
     assert "--include-past" in aggregate.stdout
     assert "--include-past" in course.stdout
+    assert "--all" in aggregate.stdout
+    assert "--all" in course.stdout
 
 
 def test_get_help_accepts_multiple_references() -> None:
