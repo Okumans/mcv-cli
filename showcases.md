@@ -78,15 +78,26 @@ mcv courses "$MCV_COURSE"
 ```
 
 Course references use the current semester by default. Select a different
-semester globally when the course number or title belongs to an older term:
+semester globally when the course number or title belongs to an older term.
+Repeat `--semester` to combine terms, use a year prefix to select all terms in
+that year, or use `--all` to select every available semester for supported
+semester-wide collections:
 
 ```bash
 mcv --semester 2025/2 courses list
 mcv --semester 2025/2 courses "$MCV_COURSE"
 mcv --semester 2025/2 courses "$MCV_COURSE" assignments list
+mcv --semester 2025/1 --semester 2026/1 courses list
+mcv --semester 2025 courses list
+mcv --all courses list
+mcv --all assignments list
 ```
 
-`--semester` is a global option and must be placed before the command.
+`--semester` and the global `--all` are options and must be placed before the
+command. They are mutually exclusive. Course-scoped commands accept one
+semester selection; repeated semesters and global `--all` apply to
+semester-wide collections such as `courses list` and cross-course aggregate
+lists.
 
 Collection resources generally use `list`, while identifier-addressable
 resources use `show`. Singleton or course-level views may be direct actions,
@@ -178,6 +189,10 @@ uv run mcv --json search "docker"
 uv run mcv --jsonl search "docker"
 uv run mcv search "docker" --refresh
 ```
+
+Top-level local search does not accept global semester scope. A course-scoped
+search accepts one global `--semester` for its refresh target; repeated
+semesters and global `--all` remain reserved for semester-wide collections.
 
 Every v1 result is a dereferenceable summary with a canonical `ref`. Human
 tables highlight matched query terms in the title and match snippet; machine
@@ -349,16 +364,24 @@ mcv --jsonl get \
 ```bash
 uv run mcv courses list
 uv run mcv --semester 2026/1 courses list
+uv run mcv --semester 2025/1 --semester 2026/1 courses list
+uv run mcv --all courses list
 uv run mcv courses list --all
+uv run mcv --all courses list --all
 ```
 
 Behavior:
 
 - no semester option: use MyCourseVille's current semester selector;
-- `--semester`: global option that selects one semester, or a year prefix;
-- `--all`/`-a`: show the expanded course table, including section and role;
-- `--all` does not change the selected semester. All-semester course listing
-  is deferred to a future global option design.
+- repeated global `--semester`: select one or more exact semesters; a year
+  prefix such as `2025` selects every available 2025 term;
+- global `--all`: select every available semester;
+- `--all`/`-a` after `list`: show the expanded course table, including section
+  and role, without changing the semester scope;
+- global `--all` and global `--semester` are mutually exclusive.
+
+The two `--all` positions can be combined: `uv run mcv --all courses list --all`
+lists every semester with the expanded identity columns.
 
 ### Course overview
 
@@ -638,22 +661,28 @@ and `cv_cid`. An empty web-resource page is returned as an empty list.
 ## 15. Cross-course resource APIs
 
 These commands aggregate the current-semester courses by default. Pass the
-global `--semester` option before the command to aggregate a selected term.
+global `--semester` option before the command to aggregate one or more
+selected terms, or pass global `--all` to aggregate every available semester.
+Put the local `--all` after `list` when you want expanded identity columns.
 They are application services over the course-oriented `MCVAPI`, not new
 upstream CourseVille primitives:
 
 ```bash
 uv run mcv assignments list
+uv run mcv --semester 2025/1 --semester 2026/1 assignments list
+uv run mcv --all assignments list
 uv run mcv assignments list --all
 uv run mcv assignments list --pending
 uv run mcv assignments list --due
 uv run mcv assignments list --pending --refs
 
 uv run mcv announcements list
+uv run mcv --all announcements list
 uv run mcv announcements list --all
 uv run mcv announcements list --refs
 
 uv run mcv meetings list
+uv run mcv --all meetings list
 uv run mcv meetings list --all
 uv run mcv meetings list --include-past
 uv run mcv meetings list --refs
@@ -745,6 +774,8 @@ manager = AuthManager(settings=Settings())
 
 with MCVAPI(manager) as api:
     course = api.courses.resolve("2110575")
+    selected_courses = api.courses.list(semesters=("2025/1", "2026/1"))
+    all_courses = api.courses.list(all_semesters=True)
     playlists = api.playlists.list(course.cv_cid)
     schedule = api.schedule.list(course.cv_cid)
     meetings = api.meetings.list(course.cv_cid)
@@ -759,7 +790,7 @@ Resource clients expose domain operations under their resource namespace:
 
 | Client | Operations |
 | --- | --- |
-| `api.courses` | `list`, `get`, `resolve` |
+| `api.courses` | `list` (supports `semester`, `semesters`, `all_semesters`), `get`, `resolve` |
 | `api.playlists` | `list` → `PlaylistCollection` |
 | `api.materials` | `list`, `folders`, `get`, `download`, `archive` |
 | `api.assignments` | `list`, `get` |
@@ -776,6 +807,8 @@ Cross-course operations are grouped under the API facade's aggregate services:
 ```python
 with MCVAPI(manager) as api:
     pending = api.aggregates.assignments.list(pending=True)
+    selected = api.aggregates.assignments.list(semesters=("2025/1", "2026/1"))
+    all_assignments = api.aggregates.assignments.list(all_semesters=True)
     announcements = api.aggregates.announcements.list()
     meetings = api.aggregates.meetings.list()
 ```

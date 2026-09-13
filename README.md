@@ -82,7 +82,9 @@ mcv courses COURSE RESOURCE ACTION [ARGS] [OPTIONS]
 
 `COURSE` may be a CourseVille id, course number, or exact current-semester
 course title. Use the global `--semester` option before the command when a
-different semester is needed.
+different semester is needed; repeat it to combine explicit semesters. The
+global `--all` option selects every available semester for supported
+semester-wide collection commands.
 
 ```bash
 # Discover courses and inspect one course
@@ -90,6 +92,8 @@ mcv courses list
 mcv courses list --all
 mcv courses 2110575
 mcv --semester 2025/2 courses list
+mcv --semester 2025/1 --semester 2026/1 courses list
+mcv --all courses list
 
 # Materials and folders
 mcv courses 2110575 materials list
@@ -115,27 +119,40 @@ mcv courses 2110575 about
 mcv courses 2110575 groups list
 mcv courses 2110575 portfolio
 mcv courses 2110575 web-resources list
+
+# Cross-course collections across every available semester
+mcv --all assignments list
+mcv --all announcements list
+mcv --all meetings list
 ```
 
 Course-level pages such as `playlists`, `about`, and `portfolio` are direct
 actions. Other collections generally use `list`, while identifier-bearing
 resources use `show`.
 
-For list and search commands, put `--all`/`-a` after the action to show the
-expanded human table with useful identity columns such as raw ids, canonical
-refs, and available summary fields:
+There are two intentionally different uses of `--all`:
+
+- put it before the command, as in `mcv --all courses list`, to select every
+  available semester for supported semester-wide collections;
+- put it after the action, as in `mcv courses list --all`, to show the expanded
+  human table with useful identity columns such as raw ids and canonical refs.
+
+The local display option applies to list and search commands:
 
 ```bash
 mcv courses list --all
 mcv courses 2110575 materials list --all
 mcv courses 2110575 meetings list --all
 mcv search "docker" --all
+mcv --all courses list --all
 ```
 
-On `courses list`, `--all` currently expands the columns for the selected or
-current semester. It does not select every semester; a future global option
-may provide that behavior. The existing `mcv cache refresh --all-semesters`
-operation remains the explicit all-semester cache operation.
+Repeatable global semester selection also accepts a year prefix, so
+`--semester 2025` selects every available 2025 term. Use either `--all` or one
+or more `--semester` options, not both. Course-scoped commands accept one
+semester selection; repeated selections and global `--all` are reserved for
+semester-wide collections. The existing `mcv cache refresh --all-semesters`
+operation remains the explicit all-semester cache refresh operation.
 
 Assignments, announcements, meeting metadata, and course pages are read-only.
 Assignment details expose the information visible to the student, including
@@ -208,9 +225,10 @@ mcv --jsonl get \
   mcv:material:86428:2160993
 ```
 
-`--all`/`-a` is a human-table display option. It does not change JSON or JSONL
-schemas, search limits, filters, or the one-reference-per-line behavior of
-`--refs` and `--ids`.
+The local `--all`/`-a` after an action is a human-table display option. The
+global `--all` before a command selects every available semester for supported
+collection commands. Neither changes JSON or JSONL schemas, search limits,
+filters, or the one-reference-per-line behavior of `--refs` and `--ids`.
 
 The output modes are:
 
@@ -268,6 +286,11 @@ mcv search "docker" --refs
 mcv --json search "docker"
 mcv --jsonl search "docker"
 ```
+
+Top-level local search does not accept global semester scope. Use a
+course-scoped search with one global `--semester` when the local search should
+be refreshed for a specific course term; search itself still reads the local
+index.
 
 Use `--refresh` when the relevant course data should be fetched before the
 same local search runs:

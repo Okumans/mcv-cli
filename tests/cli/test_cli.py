@@ -26,6 +26,7 @@ def test_help_lists_command_groups() -> None:
     assert "--envelope" in result.stdout
     assert "--quiet" in result.stdout
     assert "--semester" in result.stdout
+    assert "--all" in result.stdout
     assert "--yearsem" not in result.stdout
 
 
@@ -102,6 +103,172 @@ def test_global_semester_is_passed_to_course_listing(monkeypatch) -> None:
 
     assert result.exit_code == 0, result.output
     assert calls == [("2025/2", False)]
+
+
+def test_global_all_lists_all_semesters(monkeypatch) -> None:
+    calls: list[tuple[object, object, bool]] = []
+
+    class FakeCourses:
+        def list(self, *, semester=None, semesters=None, all_semesters=False):
+            calls.append((semester, semesters, all_semesters))
+            return []
+
+    class FakeAPI:
+        courses = FakeCourses()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+    monkeypatch.setattr("mcv_cli.cli.commands.courses.make_api", lambda: FakeAPI())
+
+    result = runner.invoke(app, ["--quiet", "--all", "courses", "list"])
+
+    assert result.exit_code == 0, result.output
+    assert calls == [(None, None, True)]
+
+
+def test_global_all_can_be_combined_with_expanded_course_output(monkeypatch) -> None:
+    calls: list[bool] = []
+
+    class FakeCourses:
+        def list(self, *, semester=None, semesters=None, all_semesters=False):
+            del semester, semesters
+            calls.append(all_semesters)
+            return [
+                Course(
+                    cv_cid=86428,
+                    course_no="2110575",
+                    title="Container Systems",
+                    year="2026",
+                    semester="1",
+                    section="1",
+                    role="student",
+                )
+            ]
+
+    class FakeAPI:
+        courses = FakeCourses()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+    monkeypatch.setattr("mcv_cli.cli.commands.courses.make_api", lambda: FakeAPI())
+
+    result = runner.invoke(app, ["--quiet", "--all", "courses", "list", "--all"])
+
+    assert result.exit_code == 0, result.output
+    assert calls == [True]
+    assert "Section" in result.stdout
+    assert "Role" in result.stdout
+
+
+def test_repeated_global_semesters_are_passed_to_course_listing(monkeypatch) -> None:
+    calls: list[tuple[object, object, bool]] = []
+
+    class FakeCourses:
+        def list(self, *, semester=None, semesters=None, all_semesters=False):
+            calls.append((semester, semesters, all_semesters))
+            return []
+
+    class FakeAPI:
+        courses = FakeCourses()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+    monkeypatch.setattr("mcv_cli.cli.commands.courses.make_api", lambda: FakeAPI())
+
+    result = runner.invoke(
+        app,
+        [
+            "--quiet",
+            "--semester",
+            "2025/1",
+            "--semester",
+            "2026/1",
+            "courses",
+            "list",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls == [(None, ("2025/1", "2026/1"), False)]
+
+
+def test_repeated_global_semesters_are_passed_to_aggregates(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    class FakeAssignments:
+        def list(self, **kwargs):
+            calls.append(kwargs)
+            return []
+
+    class FakeAPI:
+        aggregates = type("Aggregates", (), {"assignments": FakeAssignments()})()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+    monkeypatch.setattr("mcv_cli.cli.commands.assignments.make_api", lambda: FakeAPI())
+
+    result = runner.invoke(
+        app,
+        [
+            "--quiet",
+            "--semester",
+            "2025/1",
+            "--semester",
+            "2026/1",
+            "assignments",
+            "list",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls == [{"semesters": ("2025/1", "2026/1"), "pending": False, "due": False}]
+
+
+def test_global_all_and_semester_are_mutually_exclusive() -> None:
+    result = runner.invoke(app, ["--all", "--semester", "2026/1", "courses", "list"])
+
+    assert result.exit_code == 2
+    assert "choose either --all or --semester" in result.stderr
+
+
+def test_global_all_is_rejected_for_course_scoped_commands() -> None:
+    result = runner.invoke(app, ["--all", "courses", "2110575"])
+
+    assert result.exit_code == 2
+    assert "only for semester-wide collection commands" in result.stderr
+
+
+def test_repeated_semesters_are_rejected_for_course_scoped_commands() -> None:
+    result = runner.invoke(
+        app,
+        [
+            "--semester",
+            "2025/1",
+            "--semester",
+            "2026/1",
+            "courses",
+            "2110575",
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert "Repeated --semester values" in result.stderr
 
 
 def test_cache_commands_expose_refresh_controls() -> None:

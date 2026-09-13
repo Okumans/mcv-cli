@@ -22,6 +22,7 @@ from ..context import (
     resource_refs,
     run,
     selected_semester,
+    semester_scope_kwargs,
 )
 from ..errors import NotFoundError, UsageError
 from .search import search_course
@@ -60,9 +61,8 @@ def list_courses(
     ),
 ) -> None:
     def action() -> list[Any]:
-        semester = selected_semester(ctx)
         with make_api() as api:
-            return api.courses.list(semester=semester)
+            return api.courses.list(**semester_scope_kwargs(ctx))
 
     run(ctx, action, display_mode="expanded" if all_fields else "collection")
 
@@ -72,8 +72,9 @@ def show_course(
     course: str = typer.Argument(..., autocompletion=complete_courses),
 ) -> None:
     def action() -> Any:
+        semester = selected_semester(ctx)
         with make_api() as api:
-            return api.courses.resolve(course, semester=selected_semester(ctx))
+            return api.courses.resolve(course, semester=semester)
 
     run(ctx, action)
 
@@ -112,8 +113,9 @@ def materials_list(
     def action() -> Any:
         if sum((ids, refs, select_fields is not None)) > 1:
             raise UsageError("Choose only one of --ids, --refs, or --select.")
+        semester = selected_semester(ctx)
         with make_api() as api:
-            cv_cid = course_id(api, course, semester=selected_semester(ctx))
+            cv_cid = course_id(api, course, semester=semester)
             if folder is None:
                 materials = api.materials.list(cv_cid)
             else:
@@ -163,8 +165,9 @@ def materials_show(
     ),
 ) -> None:
     def action() -> Any:
+        semester = selected_semester(ctx)
         with make_api() as api:
-            cv_cid = course_id(api, course, semester=selected_semester(ctx))
+            cv_cid = course_id(api, course, semester=semester)
             values = [
                 api.materials.get(
                     cv_cid,
@@ -183,9 +186,10 @@ def materials_folders(
     ctx: typer.Context, course: str = typer.Argument(..., autocompletion=complete_courses)
 ) -> None:
     def action() -> Any:
+        semester = selected_semester(ctx)
         with make_api() as api:
             return api.materials.folders(
-                course_id(api, course, semester=selected_semester(ctx))
+                course_id(api, course, semester=semester)
             )
 
     run(ctx, action)
@@ -202,9 +206,10 @@ def materials_archive(
     force: bool = typer.Option(False, "--force"),
 ) -> None:
     def action() -> Any:
+        semester = selected_semester(ctx)
         with make_api() as api:
             return api.materials.archive(
-                course_id(api, course, semester=selected_semester(ctx)),
+                course_id(api, course, semester=semester),
                 folder,
                 output,
                 archive_format=archive_format,
@@ -224,8 +229,9 @@ def materials_download(
     force: bool = typer.Option(False, "--force"),
 ) -> None:
     def action() -> Any:
+        semester = selected_semester(ctx)
         with make_api() as api:
-            cv_cid = course_id(api, course, semester=selected_semester(ctx))
+            cv_cid = course_id(api, course, semester=semester)
             return api.materials.download(
                 cv_cid,
                 resource_item_id_for_course(
@@ -255,8 +261,9 @@ def assignments_list(
     def action() -> Any:
         if ids and refs:
             raise UsageError("Choose either --ids or --refs.")
+        semester = selected_semester(ctx)
         with make_api() as api:
-            values = api.assignments.list(course_id(api, course, semester=selected_semester(ctx)))
+            values = api.assignments.list(course_id(api, course, semester=semester))
             if ids:
                 return ShellIdList(item.itemid for item in values)
             return resource_refs(values) if refs else values
@@ -275,8 +282,9 @@ def assignments_show(
     ),
 ) -> None:
     def action() -> Any:
+        semester = selected_semester(ctx)
         with make_api() as api:
-            cv_cid = course_id(api, course, semester=selected_semester(ctx))
+            cv_cid = course_id(api, course, semester=semester)
             values = [
                 api.assignments.get(
                     cv_cid,
@@ -308,8 +316,9 @@ def announcements_list(
     def action() -> Any:
         if ids and refs:
             raise UsageError("Choose either --ids or --refs.")
+        semester = selected_semester(ctx)
         with make_api() as api:
-            values = api.announcements.list(course_id(api, course, semester=selected_semester(ctx)))
+            values = api.announcements.list(course_id(api, course, semester=semester))
             if ids:
                 return ShellIdList(item.itemid for item in values)
             return resource_refs(values) if refs else values
@@ -325,8 +334,9 @@ def announcements_show(
     ),
 ) -> None:
     def action() -> Any:
+        semester = selected_semester(ctx)
         with make_api() as api:
-            cv_cid = course_id(api, course, semester=selected_semester(ctx))
+            cv_cid = course_id(api, course, semester=semester)
             values = [
                 api.announcements.get(
                     cv_cid,
@@ -361,9 +371,10 @@ def meetings_list(
     def action() -> Any:
         if ids and refs:
             raise UsageError("Choose either --ids or --refs.")
+        semester = selected_semester(ctx)
         with make_api() as api:
             collection = api.aggregates.meetings.collection_for_course(
-                course_id(api, course, semester=selected_semester(ctx)),
+                course_id(api, course, semester=semester),
                 include_past=include_past,
             )
             if ids:
@@ -383,8 +394,9 @@ def meetings_show(
     ),
 ) -> None:
     def action() -> Any:
+        semester = selected_semester(ctx)
         with make_api() as api:
-            cv_cid = course_id(api, course, semester=selected_semester(ctx))
+            cv_cid = course_id(api, course, semester=semester)
             values = [
                 api.meetings.get(
                     cv_cid,
@@ -403,8 +415,9 @@ def schedule_list(
     ctx: typer.Context, course: str = typer.Argument(..., autocompletion=complete_courses)
 ) -> None:
     def action() -> Any:
+        semester = selected_semester(ctx)
         with make_api() as api:
-            return api.schedule.list(course_id(api, course, semester=selected_semester(ctx)))
+            return api.schedule.list(course_id(api, course, semester=semester))
 
     run(ctx, action)
 
@@ -413,8 +426,9 @@ def about_show(
     ctx: typer.Context, course: str = typer.Argument(..., autocompletion=complete_courses)
 ) -> None:
     def action() -> Any:
+        semester = selected_semester(ctx)
         with make_api() as api:
-            return api.about.get(course_id(api, course, semester=selected_semester(ctx)))
+            return api.about.get(course_id(api, course, semester=semester))
 
     run(ctx, action)
 
@@ -427,9 +441,10 @@ def groups_list(
     ),
 ) -> None:
     def action() -> Any:
+        semester = selected_semester(ctx)
         with make_api() as api:
             return api.groups.list(
-                course_id(api, course, semester=selected_semester(ctx)), grouping_id=grouping
+                course_id(api, course, semester=semester), grouping_id=grouping
             )
 
     run(ctx, action)
@@ -439,8 +454,9 @@ def portfolio_show(
     ctx: typer.Context, course: str = typer.Argument(..., autocompletion=complete_courses)
 ) -> None:
     def action() -> Any:
+        semester = selected_semester(ctx)
         with make_api() as api:
-            return api.portfolio.get(course_id(api, course, semester=selected_semester(ctx)))
+            return api.portfolio.get(course_id(api, course, semester=semester))
 
     run(ctx, action)
 
@@ -449,8 +465,9 @@ def playlists_show(
     ctx: typer.Context, course: str = typer.Argument(..., autocompletion=complete_courses)
 ) -> None:
     def action() -> Any:
+        semester = selected_semester(ctx)
         with make_api() as api:
-            return api.playlists.list(course_id(api, course, semester=selected_semester(ctx)))
+            return api.playlists.list(course_id(api, course, semester=semester))
 
     run(ctx, action, display_mode="detail")
 
@@ -459,7 +476,8 @@ def web_resources_list(
     ctx: typer.Context, course: str = typer.Argument(..., autocompletion=complete_courses)
 ) -> None:
     def action() -> Any:
+        semester = selected_semester(ctx)
         with make_api() as api:
-            return api.web_resources.list(course_id(api, course, semester=selected_semester(ctx)))
+            return api.web_resources.list(course_id(api, course, semester=semester))
 
     run(ctx, action)

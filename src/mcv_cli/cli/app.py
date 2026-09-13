@@ -134,11 +134,16 @@ def main(
     quiet: bool = typer.Option(
         False, "--quiet", "-q", help="Suppress progress and status output; keep the command result."
     ),
-    semester: str | None = typer.Option(
-        None,
+    semester: list[str] = typer.Option(
+        [],
         "--semester",
-        help="Select the semester for course-related commands.",
+        help="Select a semester; repeat this option to combine semesters.",
         autocompletion=complete_semesters,
+    ),
+    all_semesters: bool = typer.Option(
+        False,
+        "--all",
+        help="Select every available semester for supported collection commands.",
     ),
     version: bool = typer.Option(False, "--version", is_eager=True, help="Show the version."),
 ) -> None:
@@ -149,12 +154,17 @@ def main(
     if envelope and not (json_output or jsonl_output):
         typer.echo("Error: --envelope requires --json or --jsonl.", err=True)
         raise typer.Exit(2)
+    if all_semesters and semester:
+        typer.echo("Error: choose either --all or --semester.", err=True)
+        raise typer.Exit(2)
     ctx.obj.update(
         json=json_output,
         jsonl=jsonl_output,
         envelope=envelope,
         quiet=quiet,
-        semester=semester,
+        semester=semester[0] if len(semester) == 1 else None,
+        semesters=tuple(semester),
+        all_semesters=all_semesters,
     )
     if version:
         typer.echo(__version__)

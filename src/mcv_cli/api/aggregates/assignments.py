@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Collection
 from typing import Any
 
 from ..resources.assignments.models import Assignment
@@ -28,11 +29,22 @@ class AssignmentsAggregate:
         self,
         *,
         semester: str | None = None,
+        semesters: Collection[str] | None = None,
+        all_semesters: bool = False,
         pending: bool = False,
         due: bool = False,
     ) -> list[Assignment]:
         results: list[Assignment] = []
-        courses = sorted(self.api.courses.list(semester=semester), key=_course_sort_key)
+        courses = sorted(
+            self.api.courses.list(
+                **_semester_kwargs(
+                    semester=semester,
+                    semesters=semesters,
+                    all_semesters=all_semesters,
+                )
+            ),
+            key=_course_sort_key,
+        )
         for course in courses:
             for assignment in self.api.assignments.list(course.cv_cid):
                 assignment = _with_course_context(assignment, course)
@@ -66,3 +78,22 @@ def is_pending(assignment: Assignment) -> bool:
 
 
 AssignmentService = AssignmentsAggregate
+
+
+def _semester_kwargs(
+    *,
+    semester: str | None,
+    semesters: Collection[str] | None,
+    all_semesters: bool,
+) -> dict[str, object]:
+    if semester is not None and semesters is not None:
+        raise ValueError("Use either semester or semesters, not both.")
+    if all_semesters and (semester is not None or semesters is not None):
+        raise ValueError("Use either a semester selection or all_semesters, not both.")
+    if all_semesters:
+        return {"all_semesters": True}
+    if semesters is not None:
+        return {"semesters": semesters}
+    if semester is not None:
+        return {"semester": semester}
+    return {}

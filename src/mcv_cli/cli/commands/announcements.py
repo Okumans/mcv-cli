@@ -4,7 +4,7 @@ from typing import Any
 
 import typer
 
-from ..context import make_api, resource_refs, run, selected_semester
+from ..context import make_api, resource_refs, run, semester_scope_kwargs
 
 
 def register(app: typer.Typer) -> None:
@@ -25,7 +25,7 @@ def list_announcements(
 ) -> None:
     def action() -> Any:
         with make_api() as api:
-            values = api.aggregates.announcements.list(semester=selected_semester(ctx))
+            values = api.aggregates.announcements.list(**semester_scope_kwargs(ctx))
             return resource_refs(values) if refs else values
 
     run(ctx, action, display_mode="expanded" if all_fields else "collection")

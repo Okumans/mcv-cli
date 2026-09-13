@@ -46,9 +46,45 @@ def quiet_mode(ctx: typer.Context) -> bool:
     return bool(object_for(ctx).get("quiet", False))
 
 
+def selected_semesters(ctx: typer.Context) -> tuple[str, ...]:
+    value = object_for(ctx).get("semesters")
+    if isinstance(value, (list, tuple)):
+        return tuple(item for item in value if isinstance(item, str) and item)
+    legacy = object_for(ctx).get("semester")
+    return (legacy,) if isinstance(legacy, str) and legacy else ()
+
+
+def all_semester_scope(ctx: typer.Context) -> bool:
+    return bool(object_for(ctx).get("all_semesters", False))
+
+
 def selected_semester(ctx: typer.Context) -> str | None:
-    value = object_for(ctx).get("semester")
-    return value if isinstance(value, str) else None
+    if all_semester_scope(ctx):
+        raise UsageError(
+            "Global --all is supported only for semester-wide collection commands."
+        )
+    values = selected_semesters(ctx)
+    if len(values) > 1:
+        raise UsageError(
+            "Repeated --semester values are supported only for semester-wide collection commands."
+        )
+    return values[0] if values else None
+
+
+def semester_scope_kwargs(ctx: typer.Context) -> dict[str, Any]:
+    if all_semester_scope(ctx):
+        return {"all_semesters": True}
+    values = selected_semesters(ctx)
+    if len(values) > 1:
+        return {"semesters": values}
+    if values:
+        return {"semester": values[0]}
+    return {}
+
+
+def reject_semester_scope(ctx: typer.Context, *, operation: str) -> None:
+    if all_semester_scope(ctx) or selected_semesters(ctx):
+        raise UsageError(f"Semester selection is not supported for {operation}.")
 
 
 def progress_for(ctx: typer.Context) -> ProgressReporter | None:
@@ -223,6 +259,10 @@ __all__ = [
     "quiet_mode",
     "resource_item_id_for_course",
     "resource_refs",
+    "all_semester_scope",
+    "reject_semester_scope",
     "run",
     "selected_semester",
+    "selected_semesters",
+    "semester_scope_kwargs",
 ]

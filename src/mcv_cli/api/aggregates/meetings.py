@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Collection
 from datetime import datetime
 from typing import Any
 
 from ..core.dates import COURSEVILLE_TIMEZONE
 from ..resources.meetings.models import MeetingCollection, OnlineMeeting
-from .assignments import _course_sort_key, _with_course_context
+from .assignments import _course_sort_key, _semester_kwargs, _with_course_context
 
 
 class MeetingsAggregate:
@@ -47,11 +48,22 @@ class MeetingsAggregate:
         self,
         *,
         semester: str | None = None,
+        semesters: Collection[str] | None = None,
+        all_semesters: bool = False,
         include_past: bool = False,
         now: datetime | None = None,
     ) -> list[OnlineMeeting]:
         results: list[OnlineMeeting] = []
-        courses = sorted(self.api.courses.list(semester=semester), key=_course_sort_key)
+        courses = sorted(
+            self.api.courses.list(
+                **_semester_kwargs(
+                    semester=semester,
+                    semesters=semesters,
+                    all_semesters=all_semesters,
+                )
+            ),
+            key=_course_sort_key,
+        )
         for course in courses:
             results.extend(
                 _with_course_context(item, course)

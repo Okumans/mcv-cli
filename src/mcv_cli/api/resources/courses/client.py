@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Collection
+
 from ...core.errors import AmbiguousError, NotFoundError
 from ...core.parsing import html_from_response
 from .._base import ResourceClient
@@ -13,20 +15,23 @@ class CourseClient(ResourceClient):
         self,
         semester: str | None = None,
         *,
+        semesters: Collection[str] | None = None,
         all_semesters: bool = False,
     ) -> list[Course]:
-        semesters, current_semester = self._get_semester_options()
+        if semester is not None and semesters is not None:
+            raise ValueError("Use either semester or semesters, not both.")
+        if all_semesters and (semester is not None or semesters is not None):
+            raise ValueError("Use either a semester selection or all_semesters, not both.")
+        available_semesters, current_semester = self._get_semester_options()
         if all_semesters:
-            selected_semesters = semesters
+            selected_semesters = available_semesters
+        elif semesters is not None:
+            selected_semesters = _match_semesters(available_semesters, semesters)
         elif semester is None:
             selected_semesters = [current_semester]
         else:
-            selected_semesters = [
-                available
-                for available in semesters
-                if available == semester or available.split("/", 1)[0] == semester
-            ]
-        if semester is not None and not selected_semesters:
+            selected_semesters = _match_semesters(available_semesters, (semester,))
+        if (semester is not None or semesters is not None) and not selected_semesters:
             return []
 
         courses: list[Course] = []
@@ -121,3 +126,16 @@ class CourseClient(ResourceClient):
     def _get_semester_options(self) -> tuple[list[str], str]:
         response = self.request("GET", course_home_url())
         return semester_options(html_from_response(response))
+
+
+def _match_semesters(available: list[str], requested: Collection[str]) -> list[str]:
+    selected = {
+        item.strip()
+        for item in requested
+        if isinstance(item, str) and item.strip()
+    }
+    return [
+        value
+        for value in available
+        if value in selected or value.split("/", 1)[0] in selected
+    ]

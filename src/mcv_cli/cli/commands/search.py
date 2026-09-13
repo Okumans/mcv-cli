@@ -7,7 +7,7 @@ from ...api.search import SearchClient
 from ...api.search.models import SearchResult
 from ...presentation.json import ShellIdList
 from ...runtime.cache import CacheStore
-from ..context import cache_namespace, run
+from ..context import cache_namespace, reject_semester_scope, run, selected_semester
 from .cache import refresh_course_for_search, refresh_for_search
 
 
@@ -38,6 +38,7 @@ def search(
     ),
 ) -> None:
     def action() -> list[SearchResult] | ShellIdList:
+        reject_semester_scope(ctx, operation="local search")
         if refresh:
             refresh_for_search(ctx)
         results = SearchClient(cache_namespace()).search(
@@ -74,6 +75,7 @@ def search_course(
     ),
 ) -> None:
     def action() -> list[SearchResult] | ShellIdList:
+        selected_semester(ctx)
         cache = cache_namespace()
         if refresh:
             refresh_course_for_search(ctx, course)

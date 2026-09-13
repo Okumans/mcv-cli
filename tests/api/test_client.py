@@ -796,6 +796,48 @@ def test_client_can_list_all_semesters() -> None:
     assert requested_semesters == ["2026/2", "2026/1"]
 
 
+def test_client_can_list_selected_semesters() -> None:
+    requested_semesters: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params.get("q") == "courseville":
+            return httpx.Response(200, text=CURRENT_COURSE_HOME_HTML, request=request)
+        payload = dict(parse_qsl(request.content.decode()))
+        requested_semesters.append(payload["yearsem"])
+        return httpx.Response(200, json={"status": True, "data": []}, request=request)
+
+    with httpx.Client(
+        base_url=BASE_URL,
+        transport=httpx.MockTransport(handler),
+        follow_redirects=False,
+    ) as http_client:
+        client = MCVAPI(FakeAuth(), http_client=http_client)
+        assert client.courses.list(semesters=("2026/1", "2026/2")) == []
+
+    assert requested_semesters == ["2026/2", "2026/1"]
+
+
+def test_client_can_select_all_terms_in_a_year() -> None:
+    requested_semesters: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params.get("q") == "courseville":
+            return httpx.Response(200, text=CURRENT_COURSE_HOME_HTML, request=request)
+        payload = dict(parse_qsl(request.content.decode()))
+        requested_semesters.append(payload["yearsem"])
+        return httpx.Response(200, json={"status": True, "data": []}, request=request)
+
+    with httpx.Client(
+        base_url=BASE_URL,
+        transport=httpx.MockTransport(handler),
+        follow_redirects=False,
+    ) as http_client:
+        client = MCVAPI(FakeAuth(), http_client=http_client)
+        assert client.courses.list(semesters=("2026",)) == []
+
+    assert requested_semesters == ["2026/2", "2026/1"]
+
+
 def test_client_sends_session_cookie() -> None:
     seen_cookie: list[str | None] = []
 

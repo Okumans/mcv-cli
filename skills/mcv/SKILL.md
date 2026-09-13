@@ -64,13 +64,17 @@ mcv courses COURSE RESOURCE ACTION [ARGS] [OPTIONS]
 `COURSE` may be a `cv_cid`, course number, or exact current-semester course
 title. The current semester is the default for course resolution. To resolve
 a course from another semester, pass the global `--semester` option before the
-command:
+command. Repeat it to combine exact semesters, use a year prefix to select all
+terms in that year, or use global `--all` for every available semester on
+semester-wide collection commands:
 
 ```bash
  mcv --semester 2025/2 courses list
  mcv --semester 2025/2 courses 2110575
  mcv --semester 2025/2 courses 2110575 assignments list
  mcv --semester 2025/2 courses 2110575 materials list
+ mcv --semester 2025/1 --semester 2026/1 courses list
+ mcv --all courses list
 ```
 
 Most course resources use an explicit action such as `list` or `show`. Course
@@ -82,7 +86,9 @@ Useful commands:
 ```bash
  mcv courses list
  mcv --semester 2026/1 courses list
+ mcv --all courses list
  mcv courses list --all
+ mcv --all courses list --all
  mcv courses 2110575
 
  mcv courses 2110575 playlists

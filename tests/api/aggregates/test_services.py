@@ -12,8 +12,14 @@ from mcv_cli.api.resources.meetings.models import MeetingCollection, OnlineMeeti
 
 
 class FakeCourses:
-    def list(self, *, semester: str | None = None) -> list[Course]:
-        del semester
+    def list(
+        self,
+        *,
+        semester: str | None = None,
+        semesters: tuple[str, ...] | None = None,
+        all_semesters: bool = False,
+    ) -> list[Course]:
+        del semester, semesters, all_semesters
         return [
             Course(cv_cid=86428, course_no="2110575", title="IoT"),
             Course(cv_cid=86429, course_no="2110521", title="Networks"),
@@ -111,3 +117,26 @@ def test_meeting_service_hides_past_meetings_by_default() -> None:
 
     assert [meeting.itemid for meeting in upcoming] == [29631, 29632]
     assert [meeting.itemid for meeting in all_meetings] == [29630, 29631, 29632]
+
+
+def test_aggregate_services_forward_semester_scope() -> None:
+    calls: list[dict[str, object]] = []
+
+    class ScopedCourses:
+        def list(self, **kwargs: object) -> list[Course]:
+            calls.append(kwargs)
+            return []
+
+    class ScopedAPI:
+        courses = ScopedCourses()
+        assignments = FakeAssignments()
+
+    service = AssignmentService(cast(object, ScopedAPI()))
+
+    service.list(semesters=("2025/1", "2026/1"))
+    service.list(all_semesters=True)
+
+    assert calls == [
+        {"semesters": ("2025/1", "2026/1")},
+        {"all_semesters": True},
+    ]
