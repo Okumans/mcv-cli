@@ -177,9 +177,6 @@ when a compact table is preferred. `--json` and `--jsonl` retain their machine
 output contracts: an array for multiple resources in JSON mode, and one raw
 resource per line in JSONL mode.
 
-`--unique-ids` is a deprecated material-list alias for `--refs`; use
-`--refs` in new commands.
-
 ## Human and machine output
 
 Default output is for humans. Each resource type has a dedicated display:

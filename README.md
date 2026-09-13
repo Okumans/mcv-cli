@@ -52,7 +52,6 @@ uv run mcv auth login --type platform
 uv run mcv auth login --platform --email
 ```
 
-`--type mcv` is retained as a compatibility alias for `--type platform`.
 `--username` or `MCV_USERNAME` can provide the non-secret username without a
 prompt. The password is intentionally not accepted as a command-line option
 because it would be exposed in shell history and process listings.
@@ -177,9 +176,6 @@ mcv courses 2110575 materials show \
 
 mcv courses 2110575 assignments show mcv:assignment:86428:2160997
 ```
-
-`--unique-ids` remains accepted only as a deprecated material-list alias for
-`--refs`. New scripts should use `--refs`.
 
 ## Shell completion and local cache
 
@@ -374,6 +370,30 @@ mcv courses 2110575 assignments list
 
 Machine output is unchanged: `--json` returns one JSON value (an array for
 multiple references), and `--jsonl` returns one resource per line.
+
+## Python API and package boundaries
+
+The reusable client is `mcv_cli.api.MCVAPI`. Resource models, parsers,
+endpoints, and transport live under `mcv_cli.api`; it does not import Typer,
+Rich, CLI options, completion, cache, or terminal progress. Human rendering
+and JSON serialization live under `mcv_cli.presentation`, command wiring under
+`mcv_cli.cli`, and authentication, storage, cache, completion, and progress
+under `mcv_cli.runtime`.
+
+```python
+from mcv_cli.api import MCVAPI
+from mcv_cli.runtime.auth import AuthManager
+from mcv_cli.runtime.config import Settings
+
+manager = AuthManager(settings=Settings())
+with MCVAPI(manager) as api:
+    course = api.courses.resolve("2110575")
+    materials = api.materials.list(course.cv_cid)
+    assignment = api.get("mcv:assignment:86428:2160997")
+```
+
+Cross-course queries are exposed by `mcv_cli.api.aggregates`; presentation
+and CLI concerns are not part of the API model or client contracts.
 
 ## Credential storage
 

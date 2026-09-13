@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from mcv_cli.config import Settings
-from mcv_cli.models import AuthProvider, StoredProfile
-from mcv_cli.storage import CredentialStore
+from mcv_cli.runtime.config import Settings
+from mcv_cli.runtime.models import AuthProvider, StoredProfile
+from mcv_cli.runtime.storage import CredentialStore
 
 
 @pytest.fixture

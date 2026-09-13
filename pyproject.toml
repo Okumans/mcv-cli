@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.scripts]
-mcv = "mcv_cli.cli:app"
+mcv = "mcv_cli.cli.app:app"
 
 [dependency-groups]
 dev = [

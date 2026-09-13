@@ -348,8 +348,10 @@ Supported list options:
 --select, --fields FIELD[,FIELD...]
 --ids
 --refs
---unique-ids, --unique-id  (deprecated aliases for --refs)
 ```
+
+`--ids` and `--refs` are mutually exclusive shell selectors. Use `--refs`
+when the result must retain its course namespace.
 
 Each material can expose:
 
@@ -378,8 +380,8 @@ uv run mcv courses "$MCV_COURSE" materials show mcv:material:86428:2160993
 ```
 
 The course-scoped form accepts raw item ids or canonical resource refs. The
-reference must belong to the selected course. The legacy
-`mcv-material:<cv_cid>:<item_id>` form is still readable but is never emitted.
+reference must belong to the selected course. Legacy reference spellings are
+rejected; use the canonical `mcv:material:<cv_cid>:<item_id>` form.
 
 ### Download one material
 
@@ -554,7 +556,7 @@ and `cv_cid`. An empty web-resource page is returned as an empty list.
 
 These commands aggregate the current-semester courses by default. Pass the
 global `--semester` option before the command to aggregate a selected term.
-They are application services over the course-oriented `MCVClient`, not new
+They are application services over the course-oriented `MCVAPI`, not new
 upstream CourseVille primitives:
 
 ```bash
@@ -629,71 +631,52 @@ For this batch command, success and error records are both written to stdout
 in input order; a nonzero exit status still signals that at least one lookup
 failed. Other command errors continue to use stderr.
 
-## 17. Python client API
+## 17. Python API
 
-The CLI is a thin command layer over `MCVClient`. The authenticated client
-can be used directly:
+The CLI is a thin orchestration layer over the pure `MCVAPI`. Runtime
+authentication and storage are supplied by the caller; the API itself has no
+Typer, Rich, cache, completion, or terminal-output dependency:
 
 ```python
-from mcv_cli.auth import AuthManager
-from mcv_cli.client import MCVClient
-from mcv_cli.config import Settings
+from mcv_cli.api import MCVAPI
+from mcv_cli.api.core.refs import ResourceRef
+from mcv_cli.runtime.auth import AuthManager
+from mcv_cli.runtime.config import Settings
 
 manager = AuthManager(settings=Settings())
 
-with MCVClient(manager) as client:
-    course = client.resolve_course("2110575")
-    materials = client.list_materials(course.cv_cid)
-    assignments = client.list_assignments(course.cv_cid)
+with MCVAPI(manager) as api:
+    course = api.courses.resolve("2110575")
+    materials = api.materials.list(course.cv_cid)
+    assignment = api.get(ResourceRef.parse("mcv:assignment:86428:2160997"))
 ```
 
-### Public `MCVClient` methods
+Resource clients expose domain operations under their resource namespace:
 
-| Method | Return value | Purpose |
-| --- | --- | --- |
-| `list_courses(semester=None, all_semesters=False)` | `list[Course]` | List enrolled courses |
-| `get_course(cv_cid)` | `Course` | Resolve one enrolled internal course id |
-| `resolve_course(reference)` | `Course` | Resolve cv id, course number, or exact title |
-| `list_materials(cv_cid)` | `list[Material]` | Parse course-home materials |
-| `list_material_folders(cv_cid)` | `list[MaterialFolder]` | Group materials by folder |
-| `get_material(cv_cid, item_id)` | `Material` | Load one material and detail page when needed |
-| `list_assignments(cv_cid)` | `list[Assignment]` | Parse one course's assignment page |
-| `get_assignment(cv_cid, item_id)` | `Assignment` | Load assignment detail and read-only status |
-| `list_announcements(cv_cid)` | `list[Announcement]` | Parse course announcements |
-| `get_announcement(cv_cid, item_id)` | `Announcement` | Load announcement body and links |
-| `list_meetings(cv_cid)` | `list[OnlineMeeting]` | Parse online meeting list |
-| `get_meeting(cv_cid, item_id)` | `OnlineMeeting` | Load meeting metadata and recordings |
-| `list_schedule(cv_cid)` | `list[ScheduleEvent]` | Parse course schedule |
-| `get_about(cv_cid)` | `CourseAbout` | Parse official course information |
-| `list_groups(cv_cid, grouping_id=None)` | `list[StudentGroup]` | Load read-only student groups |
-| `get_portfolio(cv_cid)` | `Portfolio` | Parse the exposed portfolio summary |
-| `list_web_resources(cv_cid)` | `list[WebResource]` | Parse external web resources |
-| `download_material(cv_cid, item_id, output, force=False)` | `DownloadResult` | Download one HTTPS material |
-| `download_material_folder(cv_cid, folder, output, archive_format=None, force=False)` | `ArchiveResult` | Download folder files into inferred ZIP/TAR/TAR.GZ |
-| `close()` | `None` | Close an internally-owned HTTP client |
+| Client | Operations |
+| --- | --- |
+| `api.courses` | `list`, `get`, `resolve` |
+| `api.materials` | `list`, `list_folders`, `get`, `download`, `archive` |
+| `api.assignments` | `list`, `get` |
+| `api.announcements` | `list`, `get` |
+| `api.meetings` | `list`, `get` |
+| `api.schedule` | `list` |
+| `api.about` | `get` |
+| `api.groups` | `list` |
+| `api.portfolio` | `get` |
+| `api.web_resources` | `list` |
 
-`MCVClient` is also a context manager, as shown above. The client obtains
-session cookies from `AuthManager`; it does not perform browser automation.
-
-### Application services
-
-Cross-course aggregation lives above `MCVClient`:
+Cross-course operations are separate aggregate services:
 
 ```python
-from mcv_cli.services import AssignmentService
+from mcv_cli.api.aggregates.assignments import AssignmentsAggregate
 
-with MCVClient(manager) as client:
-    pending = AssignmentService(client).list_across_courses(pending=True)
+with MCVAPI(manager) as api:
+    pending = AssignmentsAggregate(api).list(pending=True)
 ```
 
-Available service operations are:
-
-| Service | Method | Purpose |
-| --- | --- | --- |
-| `AssignmentService` | `list_across_courses(semester=None, pending=False, due=False)` | Aggregate assignments across the selected course semester |
-| `AnnouncementService` | `list_across_courses(semester=None)` | Aggregate announcements across the selected course semester |
-| `MeetingService` | `list_for_course(cv_cid, include_past=False)` / `list_across_courses(semester=None, include_past=False)` | Filter and aggregate meetings across the selected course semester |
-| dispatcher | `get_resource(client, ResourceRef)` | Dereference material, assignment, announcement, or meeting |
+`ResourceRef.parse` accepts canonical references and supported HTTPS
+MyCourseVille URLs, normalizing both forms to one typed address.
 
 ## 17. Route coverage
 
@@ -768,7 +751,7 @@ UV_CACHE_DIR=/tmp/mcv-uv-cache uv run pyright
 The current local evaluation recorded while writing this document is:
 
 ```text
-63 passed
+121 passed
 Ruff: all checks passed
 Pyright: 0 errors, 0 warnings
 ```
