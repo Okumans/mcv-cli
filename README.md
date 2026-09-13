@@ -26,30 +26,45 @@ That coupling is intentional for this unofficial read-only client. When the
 site changes, check authentication first, then the affected route/parser and
 the authenticated smoke checks documented in [showcases.md](showcases.md).
 
-## Quick start
+## Installation
 
-The project requires Python 3.11 or newer and uses [`uv`](https://docs.astral.sh/uv/)
-for its environment and locked dependencies.
+The project requires Python 3.11 or newer. Install the CLI as an isolated
+[`uv`](https://docs.astral.sh/uv/) tool from a checkout:
 
 ```bash
-uv sync
-uv run mcv --help
+git clone https://github.com/Okumans/mcv-cli.git
+cd mcv-cli
+uv tool install .
+mcv --version
+```
+
+For local development, use an editable tool installation so source changes are
+available immediately:
+
+```bash
+uv tool install --editable .
 ```
 
 The command is `mcv`; the Python distribution is `mcv-cli`.
+
+## Quick start
+
+```bash
+mcv --help
+```
 
 ## Authentication
 
 Log in with a Chula account:
 
 ```bash
-uv run mcv auth login --type chula
+mcv auth login --type chula
 ```
 
 For a MyCourseVille platform account:
 
 ```bash
-uv run mcv auth login --type platform --email
+mcv auth login --type platform --email
 ```
 
 The login command prompts for the password. Passwords are not accepted as
@@ -59,8 +74,8 @@ can provide the non-secret username without a prompt.
 Check or remove the stored session:
 
 ```bash
-uv run mcv auth status
-uv run mcv auth logout
+mcv auth status
+mcv auth logout
 ```
 
 Session cookies are stored in the OS keyring when available. If no keyring
