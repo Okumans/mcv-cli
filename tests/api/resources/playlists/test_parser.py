@@ -7,7 +7,7 @@ import pytest
 
 from mcv_cli.api.core.errors import ParseError
 from mcv_cli.api.resources.playlists.models import PlaylistFolder, PlaylistVideo
-from mcv_cli.api.resources.playlists.parser import parse_playlist
+from mcv_cli.api.resources.playlists.parser import parse_playlist, playlist_ids
 
 FIXTURE_ROOT = Path(__file__).parents[3] / "fixtures" / "playlists"
 
@@ -157,6 +157,28 @@ def test_parse_playlist_accepts_alpha_playlist_links_with_thumbnail_ids() -> Non
     assert playlist.nodes[0].source_url == (
         "https://www.mycourseville.com/course/78748/playlists/alpha-video-42"
     )
+
+
+def test_parse_playlist_supports_cvdlit_loaded_playlist_fragments() -> None:
+    html = (FIXTURE_ROOT / "cvdlit_detail.html").read_text()
+
+    playlist = parse_playlist(html, 78748)
+
+    assert playlist.title == "Computer Networks I Lecture"
+    assert playlist_ids(html) == ["7662"]
+    assert len(playlist.nodes) == 2
+    first = playlist.nodes[0]
+    assert isinstance(first, PlaylistVideo)
+    assert first.video_id == "dQuuUJJxFis"
+    assert first.title == "Introduction to computer networks"
+    assert first.provider == "youtube"
+    assert first.watched_percent == 37
+    assert first.source_url == (
+        "https://www.mycourseville.com/?q=cvdlit/theatre/youtube/list/7662/0"
+    )
+    second = playlist.nodes[1]
+    assert isinstance(second, PlaylistVideo)
+    assert second.watched_percent == 0
 
 
 def test_parse_playlist_allows_a_valid_empty_playlist() -> None:

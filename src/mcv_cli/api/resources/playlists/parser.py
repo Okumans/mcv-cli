@@ -14,6 +14,7 @@ from ...core.parsing import absolute_url, text
 from .models import Playlist, PlaylistFolder, PlaylistNode, PlaylistVideo
 
 _FOLDER_ATTRIBUTE_NAMES = (
+    "data-plid",
     "data-playlist-folder",
     "data-playlist-folder-id",
     "data-playlist-folder-name",
@@ -29,6 +30,7 @@ _VIDEO_ATTRIBUTE_NAMES = (
     "data-kaltura-entryid",
     "data-entry-id",
     "data-entryid",
+    "video-id",
     "data-video-id",
     "data-videoid",
     "data-vdo-id",
@@ -56,6 +58,7 @@ _FOLDER_CLASS_MARKERS = (
     "cvplaylist-section",
 )
 _VIDEO_CLASS_MARKERS = (
+    "cvdlit-item",
     "playlist-video",
     "playlist-item",
     "cvplaylist-video",
@@ -124,6 +127,20 @@ def parse_playlist(
         source_url=source,
         nodes=nodes,
     )
+
+
+def playlist_ids(html_doc: str) -> list[str]:
+    """Return deferred MyCourseVille playlist ids in display order."""
+
+    soup = BeautifulSoup(html_doc, "html.parser")
+    values: list[str] = []
+    for element in soup.select(
+        "li.cvdlit-cv-playlist[data-plid], .cvdlit-ytplaylist-to-load[data-playlistid]"
+    ):
+        value = element.get("data-plid") or element.get("data-playlistid")
+        if isinstance(value, str) and value.strip() and value not in values:
+            values.append(value)
+    return values
 
 
 def _embedded_payloads(soup: BeautifulSoup) -> Iterator[Any]:
@@ -222,6 +239,7 @@ def _find_playlist_root(soup: BeautifulSoup) -> Tag | None:
     selectors = (
         "#courseville-playlist",
         "#courseville-playlist-list",
+        "#cvdlit-cv-playlist-list",
         "#cvpage-playlist",
         "#cvplaylist-cvpage-playlist",
         "#cvplaylist-cvpage-playlistlist",
@@ -334,6 +352,9 @@ def _top_level_candidates(elements: list[Tag]) -> list[Tag]:
 def _is_folder(element: Tag) -> bool:
     if any(name in element.attrs for name in _FOLDER_ATTRIBUTE_NAMES):
         return True
+    classes = element.get("class")
+    if isinstance(classes, list) and "cvdlit-cv-playlist" in classes:
+        return True
     identity = _identity(element)
     return any(marker in identity for marker in _FOLDER_CLASS_MARKERS) or (
         "playlist" in identity
@@ -346,7 +367,8 @@ def _is_video(element: Tag) -> bool:
         return True
     identity = _identity(element)
     if any(marker in identity for marker in _VIDEO_CLASS_MARKERS):
-        return True
+        if "cvdlit-item" not in identity or element.name == "li":
+            return True
     if "playlist" in identity and any(
         marker in identity for marker in ("video", "vdo", "item", "entry", "media")
     ):
@@ -361,6 +383,8 @@ def _is_video(element: Tag) -> bool:
         value = element.get("href")
         return _is_playlist_video_link(value) or _has_ancestor_with_identity(element, "playlist")
     if element.name in {"article", "figure", "li", "div"} and not _is_folder(element):
+        if element.name != "li" and element.select_one("li.cvdlit-item") is not None:
+            return False
         return _has_descendant_video_url(element)
     return False
 
@@ -386,7 +410,10 @@ def _video_from_element(element: Tag, position: int) -> PlaylistVideo:
         embed_url=embed_url,
         thumbnail_url=thumbnail_url,
         duration=_element_text(element, ("[data-part='duration']", ".duration", "time")),
-        watched_percent=_percent(_element_value(element, _WATCHED_ATTRIBUTE_NAMES)),
+        watched_percent=_percent(
+            _element_value(element, _WATCHED_ATTRIBUTE_NAMES)
+            or _element_text(element, ("[data-info='percent']",))
+        ),
         position=position,
     )
 
@@ -395,6 +422,7 @@ def _folder_id(element: Tag) -> str | None:
     return _own_element_value(
         element,
         (
+            "data-plid",
             "data-playlist-folder-id",
             "data-folder-id",
             "data-folder",
@@ -418,6 +446,8 @@ def _folder_name(element: Tag) -> str:
         element,
         (
             ":scope > [data-part='title']",
+            ":scope > [data-info='playlist-title']",
+            "[data-info='playlist-title']",
             ":scope > .playlist-folder-title",
             ":scope > .playlist-section-title",
             ":scope > .folder-title",
@@ -444,6 +474,7 @@ def _video_title(element: Tag) -> str | None:
         element,
         (
             "[data-part='title']",
+            "[data-info='clip-title']",
             ".playlist-video-title",
             ".playlist-item-title",
             ".video-title",
@@ -461,7 +492,17 @@ def _playlist_title(soup: BeautifulSoup, root: Tag) -> str | None:
     if meta is not None and isinstance(meta.get("content"), str):
         content = meta.get("content")
         return _clean(content) if isinstance(content, str) else None
-    return _element_text(root, ("[data-part='title']", ".playlist-title", "h1", "h2"))
+    return _element_text(
+        root,
+        (
+            "[data-part='title']",
+            "[data-info='playlist-title']",
+            ".playlist-title",
+            "h1",
+            "h2",
+            "h3",
+        ),
+    )
 
 
 def _playlist_description(soup: BeautifulSoup, root: Tag) -> str | None:
@@ -581,6 +622,8 @@ def _provider_and_id(value: str | None) -> tuple[str | None, str | None]:
             return "youtube", None
         return "youtube", path_parts[index + 1] if len(path_parts) > index + 1 else None
     if "youtube" in host or host in {"youtu.be", "www.youtu.be"}:
+        if path_parts and path_parts[0] in {"c", "channel", "playlist", "user"}:
+            return None, None
         video_id = query.get("v", [None])[0] if query.get("v") else None
         if video_id is None:
             for marker in ("embed", "shorts", "live", "vi"):
