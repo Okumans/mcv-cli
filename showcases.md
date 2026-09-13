@@ -948,34 +948,31 @@ UV_CACHE_DIR=/tmp/mcv-uv-cache uv run pyright
 The current local evaluation recorded while writing this document is:
 
 ```text
-171 passed
+209 passed, 2 skipped
 Ruff: all checks passed
 Pyright: 0 errors, 0 warnings
 ```
 
-### Authenticated live smoke evaluation
+### Authenticated host calibration and CI live gate
 
-The following was checked against the stored authenticated session on
-2026-09-12. Counts are observations, not fixtures:
+No authenticated live result is asserted in this showcase. Account-specific
+course ids and content are selected by the two-pass host calibration described
+in [docs/live-e2e.md](docs/live-e2e.md). To run it after authenticating:
 
-| API | Observation |
-| --- | --- |
-| Current course resolution | course `2110575` resolved to `cv_cid 86428` |
-| Course list | current-semester and all-semester queries returned data |
-| Course overview | passed |
-| Materials | 6 materials and 3 folders observed |
-| Material folder pipeline | `IoT Hardware` produced 3 ids and 3 canonical refs |
-| ZIP/TAR/TAR.GZ archive | covered by unit tests; implementation performs read-only remote downloads |
-| Assignments | 5 assignments; detail `2160997` passed |
-| Announcements | 5 announcements; detail parsing passed |
-| Online meetings | 1 meeting; detail and recordings parsing passed without joining |
-| Schedule | empty for the example course; populated schedule parsing also tested |
-| About | passed |
-| Student groups | 49 groups observed for the default grouping |
-| Portfolio | read-only summary parsing passed |
-| Web resources | empty page handled as an empty list |
+```bash
+MCV_LIVE_E2E=1 \
+MCV_E2E_DISCOVER_FIXTURES=1 \
+MCV_E2E_FIXTURE_REPORT=/tmp/mcv-e2e-fixtures.json \
+uv run pytest -m live -q
+```
 
-To repeat a compact smoke check:
+The configured CI job reruns the same semantic CLI/API matrix using protected
+fixture variables. It checks dynamic list/detail identity, canonical and
+official-URL dereferencing, valid optional empty/unavailable collections,
+search output, cache namespace isolation, and only explicitly configured
+downloads/archives. It does not store exact counts or raw responses.
+
+For a manually selected account, a compact read-only smoke check remains:
 
 ```bash
 uv run mcv --json courses "$MCV_COURSE" materials list | jq 'length'

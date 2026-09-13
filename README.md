@@ -68,6 +68,12 @@ backend is available, `mcv` uses an AES-GCM encrypted local file; set
 `MCV_STORAGE_PASSPHRASE` for non-interactive use of that fallback. Treat the
 stored session as a bearer-like credential.
 
+For isolated automation, `MCV_CONFIG_DIR` selects the credential-file
+directory, `MCV_CACHE_DIR` selects the SQLite cache root, and
+`MCV_PREFER_KEYRING=false` disables keyring use. These settings are useful for
+ephemeral CI jobs and live checks; do not point them at a shared credential
+directory when rotating accounts.
+
 This credential-based MVP does not implement Google login or require a
 MyCourseVille OAuth client. Browser OAuth and the public mobile API are outside
 the current authentication boundary.
@@ -421,4 +427,10 @@ uv run pyright
 
 For the complete command showcase, Python API contract, route coverage, data
 models, and evaluation notes, see [showcases.md](showcases.md). Agent-facing
-CLI guidance is in [skills/mcv/SKILL.md](skills/mcv/SKILL.md).
+CLI guidance is in [skills/mcv/SKILL.md](skills/mcv/SKILL.md). Authenticated
+release checks are documented in [docs/live-e2e.md](docs/live-e2e.md), with
+CI setup in [docs/ci.md](docs/ci.md).
+
+Original project code is licensed under the [MIT License](LICENSE). The
+MyCourseVille integration is unofficial, and upstream content and service
+terms remain outside this license.
