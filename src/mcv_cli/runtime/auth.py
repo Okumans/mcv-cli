@@ -10,6 +10,7 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 
+from .. import __version__
 from ..api.core.constants import (
     BASE_URL,
     CHULA_LOGIN_URL,
@@ -185,7 +186,10 @@ class AuthManager:
         with httpx.Client(
             timeout=self.settings.timeout,
             follow_redirects=False,
-            headers={"Accept": "text/html, application/json", "User-Agent": "mcv-cli/0.1"},
+            headers={
+                "Accept": "text/html, application/json",
+                "User-Agent": f"mcv-cli/{__version__}",
+            },
         ) as client:
             form = self._load_login_form(client, selected)
             form_data = dict(form.hidden_fields)
@@ -234,7 +238,7 @@ class AuthManager:
             with httpx.Client(
                 timeout=self.settings.timeout,
                 follow_redirects=False,
-                headers={"Accept": "text/html", "User-Agent": "mcv-cli/0.1"},
+                headers={"Accept": "text/html", "User-Agent": f"mcv-cli/{__version__}"},
                 cookies=cookies,
             ) as client:
                 self._verify_session(client)

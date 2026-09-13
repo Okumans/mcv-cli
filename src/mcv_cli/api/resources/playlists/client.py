@@ -13,7 +13,7 @@ from .parser import parse_playlist, playlist_ids
 class PlaylistClient(ResourceClient):
     """Read the playlist page belonging to one enrolled course."""
 
-    def get(self, cv_cid: int) -> PlaylistCollection:
+    def list(self, cv_cid: int) -> PlaylistCollection:
         url = detail_url(cv_cid)
         response = self.request("GET", url)
         page_html = html_from_response(response)
@@ -33,7 +33,7 @@ class PlaylistClient(ResourceClient):
                     f"MyCourseVille could not load playlist {playlist_id}.",
                     details={"cv_cid": cv_cid, "playlist_id": playlist_id},
                     resource="playlist",
-                    operation="get",
+                    operation="list",
                 )
             detail_html = self.html_payload(payload)
             if not detail_html:
@@ -41,7 +41,7 @@ class PlaylistClient(ResourceClient):
                     f"MyCourseVille returned no details for playlist {playlist_id}.",
                     details={"cv_cid": cv_cid, "playlist_id": playlist_id},
                     resource="playlist",
-                    operation="get",
+                    operation="list",
                 )
             detail = parse_playlist(detail_html, cv_cid, source_url=url)
             if not detail.playlists:
@@ -49,7 +49,7 @@ class PlaylistClient(ResourceClient):
                     f"MyCourseVille returned no details for playlist {playlist_id}.",
                     details={"cv_cid": cv_cid, "playlist_id": playlist_id},
                     resource="playlist",
-                    operation="get",
+                    operation="list",
                 )
             loaded[playlist_id] = detail.playlists[0]
 

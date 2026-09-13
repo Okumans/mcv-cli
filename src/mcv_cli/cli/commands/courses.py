@@ -44,7 +44,7 @@ def register(app: typer.Typer) -> None:
     app.command("about_show", hidden=True)(about_show)
     app.command("groups_list", hidden=True)(groups_list)
     app.command("portfolio_show", hidden=True)(portfolio_show)
-    app.command("playlist_show", hidden=True)(playlist_show)
+    app.command("playlists_show", hidden=True)(playlists_show)
     app.command("web_resources_list", hidden=True)(web_resources_list)
 
 
@@ -114,7 +114,7 @@ def materials_list(
                 selected = next(
                     (
                         item
-                        for item in api.materials.list_folders(cv_cid)
+                        for item in api.materials.folders(cv_cid)
                         if item.folder_id.casefold() == folder.casefold()
                         or item.name.casefold() == folder.casefold()
                     ),
@@ -178,7 +178,7 @@ def materials_folders(
 ) -> None:
     def action() -> Any:
         with make_api() as api:
-            return api.materials.list_folders(
+            return api.materials.folders(
                 course_id(api, course, semester=selected_semester(ctx))
             )
 
@@ -338,9 +338,7 @@ def meetings_list(
         if ids and refs:
             raise UsageError("Choose either --ids or --refs.")
         with make_api() as api:
-            from ...api.aggregates.meetings import MeetingsAggregate
-
-            collection = MeetingsAggregate(api).collection_for_course(
+            collection = api.aggregates.meetings.collection_for_course(
                 course_id(api, course, semester=selected_semester(ctx)),
                 include_past=include_past,
             )
@@ -423,12 +421,12 @@ def portfolio_show(
     run(ctx, action)
 
 
-def playlist_show(
+def playlists_show(
     ctx: typer.Context, course: str = typer.Argument(..., autocompletion=complete_courses)
 ) -> None:
     def action() -> Any:
         with make_api() as api:
-            return api.playlists.get(course_id(api, course, semester=selected_semester(ctx)))
+            return api.playlists.list(course_id(api, course, semester=selected_semester(ctx)))
 
     run(ctx, action, display_mode="detail")
 

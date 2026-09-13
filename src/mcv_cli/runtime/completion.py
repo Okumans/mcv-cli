@@ -128,7 +128,7 @@ def complete_course_group(ctx: Any, incomplete: str) -> list[CompletionItem]:
             "about": "Course information",
             "groups": "Student groups",
             "portfolio": "Student portfolio",
-            "playlist": "Course video playlist",
+            "playlists": "Course video playlists",
             "web-resources": "External course links",
         }
         cache = active_cache()
@@ -141,7 +141,7 @@ def complete_course_group(ctx: Any, incomplete: str) -> list[CompletionItem]:
         if cached_course_id is None and course.isdigit():
             cached_course_id = int(course)
         optional_collections = {
-            "playlist": "playlist",
+            "playlists": "playlist",
             "schedule": "schedule",
             "meetings": "meeting",
         }

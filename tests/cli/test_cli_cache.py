@@ -32,7 +32,7 @@ class FakeCacheClient:
 
 
 class FakeMaterials:
-    def list_folders(self, _cv_cid: int):
+    def folders(self, _cv_cid: int):
         return [
             MaterialFolder(
                 folder_id="folder-1",
@@ -66,7 +66,7 @@ class FakeSchedule:
 
 
 class FakePlaylists:
-    def get(self, _cv_cid: int):
+    def list(self, _cv_cid: int):
         return PlaylistCollection(cv_cid=86428, title="IoT playlist")
 
 

@@ -46,7 +46,7 @@ def test_playlist_client_fetches_the_course_playlist_route() -> None:
         follow_redirects=False,
     ) as http_client:
         with MCVAPI(FakeAuth(), http_client=http_client) as api:
-            playlist = api.playlists.get(78748)
+            playlist = api.playlists.list(78748)
 
     assert isinstance(playlist, PlaylistCollection)
     assert requests == ["courseville/course/78748/playlist"]
@@ -74,7 +74,7 @@ def test_playlist_client_hydrates_cvdlit_deferred_clips() -> None:
         follow_redirects=False,
     ) as http_client:
         with MCVAPI(FakeAuth(), http_client=http_client) as api:
-            playlist = api.playlists.get(78748)
+            playlist = api.playlists.list(78748)
 
     assert requests == [
         ("GET", "courseville/course/78748/playlist", {}),

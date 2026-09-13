@@ -61,4 +61,4 @@ def test_completion_hides_known_unavailable_optional_collections(tmp_path, monke
         for item in complete_course_group(SimpleNamespace(args=["2110575"]), "")
     ]
 
-    assert "playlist" not in resources
+    assert "playlists" not in resources

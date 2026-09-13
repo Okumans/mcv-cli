@@ -73,7 +73,7 @@ def test_json_output_can_opt_into_the_versioned_envelope(capsys) -> None:
     emit({"itemid": 2160993}, json_mode=True, envelope=True)
 
     assert capsys.readouterr().out == (
-        '{\n  "schema_version": 1,\n  "data": {\n    "itemid": 2160993\n  }\n}\n'
+        '{\n  "schema_version": 1,\n  "ok": true,\n  "data": {\n    "itemid": 2160993\n  }\n}\n'
     )
 
 
@@ -95,8 +95,8 @@ def test_jsonl_output_can_opt_into_one_versioned_envelope_per_line(capsys) -> No
     )
 
     assert capsys.readouterr().out.splitlines() == [
-        '{"schema_version":1,"data":{"itemid":2160993}}',
-        '{"schema_version":1,"data":{"itemid":2152316}}',
+        '{"schema_version":1,"ok":true,"data":{"itemid":2160993}}',
+        '{"schema_version":1,"ok":true,"data":{"itemid":2152316}}',
     ]
 
 
@@ -131,7 +131,7 @@ def test_machine_error_can_opt_into_the_versioned_envelope(capsys) -> None:
     )
 
     assert capsys.readouterr().err == (
-        '{"schema_version":1,"error":{"code":"not_found",'
+        '{"schema_version":1,"ok":false,"error":{"code":"not_found",'
         '"message":"Assignment 123 was not found.","resource":"assignment",'
         '"operation":"get","retryable":false}}\n'
     )

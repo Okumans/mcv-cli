@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
+from .errors import InvalidReferenceError
+
 
 class ResourceType(StrEnum):
     MATERIAL = "material"
@@ -36,14 +38,16 @@ class ResourceRef(BaseModel):
         if raw.startswith(("http://", "https://")):
             from .urls import parse_mcv_url
 
-            return parse_mcv_url(raw)
+            try:
+                return parse_mcv_url(raw)
+            except (TypeError, ValueError) as exc:
+                raise InvalidReferenceError(str(exc), reference=value) from exc
         parts = raw.split(":")
         is_playlist = len(parts) == 3 and parts[0] == "mcv" and parts[1] == "playlist"
         if not is_playlist and (len(parts) != 4 or parts[0] != "mcv"):
-            raise ValueError(
-                f'Invalid resource reference "{value}". Expected '
-                "mcv:<resource-type>:<cv_cid>:<item_id>, or "
-                "mcv:playlist:<cv_cid>."
+            raise InvalidReferenceError(
+                _invalid_reference_message(value),
+                reference=value,
             )
         try:
             return cls(
@@ -52,11 +56,7 @@ class ResourceRef(BaseModel):
                 item_id=None if is_playlist else int(parts[3]),
             )
         except (TypeError, ValueError) as exc:
-            raise ValueError(
-                f'Invalid resource reference "{value}". Expected '
-                "mcv:<resource-type>:<cv_cid>:<item_id>, or "
-                "mcv:playlist:<cv_cid>."
-            ) from exc
+            raise InvalidReferenceError(_invalid_reference_message(value), reference=value) from exc
 
     def __str__(self) -> str:
         if self.item_id is None:
@@ -67,35 +67,16 @@ class ResourceRef(BaseModel):
 def ref_for_resource(resource: Any) -> ResourceRef:
     """Create a canonical ref without importing resource modules at import time."""
 
-    from ..resources.announcements.models import Announcement
-    from ..resources.assignments.models import Assignment
-    from ..resources.materials.models import Material
-    from ..resources.meetings.models import OnlineMeeting
-    from ..resources.playlists.models import PlaylistCollection
+    from .resource import AddressableResource
 
-    if isinstance(resource, Material):
-        resource_type = ResourceType.MATERIAL
-    elif isinstance(resource, Assignment):
-        resource_type = ResourceType.ASSIGNMENT
-    elif isinstance(resource, Announcement):
-        resource_type = ResourceType.ANNOUNCEMENT
-    elif isinstance(resource, OnlineMeeting):
-        resource_type = ResourceType.MEETING
-    elif isinstance(resource, PlaylistCollection):
-        resource_type = ResourceType.PLAYLIST
-    else:
+    if not isinstance(resource, AddressableResource):
         raise TypeError(f"Unsupported resource model: {type(resource).__name__}")
+    return resource.ref
 
-    cv_cid = getattr(resource, "cv_cid", None)
-    if not isinstance(cv_cid, int):
-        raise ValueError(f"{resource_type.value} has no cv_cid")
-    if resource_type is ResourceType.PLAYLIST:
-        return ResourceRef(resource_type=resource_type, cv_cid=cv_cid)
-    item_id = getattr(resource, "itemid", None)
-    if not isinstance(item_id, int):
-        raise ValueError(f"{resource_type.value} has no item id")
-    return ResourceRef(
-        resource_type=resource_type,
-        cv_cid=cv_cid,
-        item_id=item_id,
+
+def _invalid_reference_message(value: str) -> str:
+    return (
+        f'Invalid resource reference "{value}". Expected '
+        "mcv:<resource-type>:<cv_cid>:<item_id>, or "
+        "mcv:playlist:<cv_cid>."
     )

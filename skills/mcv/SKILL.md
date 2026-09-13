@@ -82,7 +82,7 @@ Useful commands:
  mcv courses list --all
  mcv courses 2110575
 
- mcv courses 2110575 playlist
+ mcv courses 2110575 playlists
 
  mcv courses 2110575 materials list
  mcv courses 2110575 materials folders
@@ -175,7 +175,7 @@ include video titles, providers, ids, thumbnails, durations, watch percentages,
 and source/embed URLs; it does not play, download, or mutate video progress.
 
 The playlist page is a course-level collection: one course can contain several
-playlists. `mcv courses COURSE playlist`, `mcv get mcv:playlist:COURSE_ID`, and
+playlists. `mcv courses COURSE playlists`, `mcv get mcv:playlist:COURSE_ID`, and
 the equivalent MyCourseVille URL all expose a `PlaylistCollection`. Its JSON
 has `available` and `playlists`; human output displays the contained playlists
 and videos directly. A missing optional playlist section is
@@ -195,7 +195,10 @@ In human mode, every reference is rendered using its resource-specific detail
 display and separated by a blank line. Use the course-scoped `list` commands
 when a compact table is preferred. `--json` and `--jsonl` retain their machine
 output contracts: an array for multiple resources in JSON mode, and one raw
-resource per line in JSONL mode.
+resource per line in JSONL mode. `mcv --jsonl get` is a batch protocol: success
+and error records are both written to stdout in input order, while the command
+returns nonzero if any lookup fails. Add `--envelope` for explicit
+`{"ok": true, "data": ...}` and `{"ok": false, "error": ...}` discriminants.
 
 ## Human and machine output
 

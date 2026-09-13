@@ -245,4 +245,4 @@ def test_parse_playlist_rejects_an_unrecognized_authenticated_page() -> None:
         parse_playlist("<main><h1>Course</h1></main>", 78748)
 
     assert raised.value.resource == "playlist"
-    assert raised.value.operation == "get"
+    assert raised.value.operation == "list"

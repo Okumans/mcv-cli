@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import Field, computed_field
 
-from ...core.resource import Resource
+from ...core.dates import parse_courseville_datetime
+from ...core.refs import ResourceType
+from ...core.resource import ItemAddressableResource, Resource
 
 
 class MeetingRecording(Resource):
@@ -15,9 +18,13 @@ class MeetingRecording(Resource):
     play_url: str | None = None
     download_url: str | None = None
 
+    @property
+    def started_at_datetime(self) -> datetime | None:
+        return parse_courseville_datetime(self.started_at)
 
-class OnlineMeeting(Resource):
-    itemid: int = Field(gt=0)
+
+class OnlineMeeting(ItemAddressableResource):
+    resource_kind = ResourceType.MEETING
     cv_cid: int = Field(gt=0)
     course_no: str | None = None
     name: str | None = None
@@ -34,6 +41,10 @@ class OnlineMeeting(Resource):
     @property
     def url(self) -> str | None:
         return self.join_url or self.detail_url
+
+    @property
+    def scheduled_at_datetime(self) -> datetime | None:
+        return parse_courseville_datetime(self.scheduled_at)
 
 
 class MeetingCollection(Resource):

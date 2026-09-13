@@ -35,7 +35,7 @@ class MaterialsClient(ResourceClient):
     def list(self, cv_cid: int) -> list[Material]:
         return parse_materials(self.course_home_html(cv_cid), cv_cid)
 
-    def list_folders(self, cv_cid: int) -> list[MaterialFolder]:
+    def folders(self, cv_cid: int) -> list[MaterialFolder]:
         folders: dict[str, MaterialFolder] = {}
         for material in self.list(cv_cid):
             folder_id = material.folder_id or "ungrouped"
@@ -120,7 +120,7 @@ class MaterialsClient(ResourceClient):
         selected = next(
             (
                 item
-                for item in self.list_folders(cv_cid)
+                for item in self.folders(cv_cid)
                 if item.folder_id.casefold() == folder.casefold()
                 or item.name.casefold() == folder.casefold()
             ),

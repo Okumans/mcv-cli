@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from .errors import AuthenticationRequired, UpstreamError
+from .errors import AuthenticationRequired, TransportError, UpstreamError
 
 _REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 _RETRYABLE_STATUSES = {408, 429, 500, 502, 503, 504}
@@ -48,7 +48,7 @@ class MCVTransport:
                     continue
                 target = self._request_target(url)
                 reason = _redact(str(exc).strip() or type(exc).__name__)
-                raise UpstreamError(
+                raise TransportError(
                     f"MyCourseVille request failed after retries for {method.upper()} "
                     f"{target}: {reason}.",
                     details={
@@ -83,7 +83,7 @@ class MCVTransport:
             return response
 
         target = self._request_target(url)
-        raise UpstreamError(
+        raise TransportError(
             f"MyCourseVille request failed after retries for {method.upper()} {target}.",
             details={"method": method.upper(), "target": target, "attempts": 3},
             resource="mycourseville",

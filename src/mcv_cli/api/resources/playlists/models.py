@@ -4,7 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ...core.resource import Resource
+from ...core.refs import ResourceType
+from ...core.resource import CourseAddressableResource
 
 
 class PlaylistVideo(BaseModel):
@@ -55,10 +56,10 @@ class Playlist(BaseModel):
     nodes: list[PlaylistNode] = Field(default_factory=list)
 
 
-class PlaylistCollection(Resource):
+class PlaylistCollection(CourseAddressableResource):
     """The complete playlist collection exposed by one course page."""
 
-    cv_cid: int = Field(gt=0)
+    resource_kind = ResourceType.PLAYLIST
     collection_type: Literal["playlist"] = "playlist"
     title: str | None = None
     description: str | None = None

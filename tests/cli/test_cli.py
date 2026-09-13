@@ -33,7 +33,7 @@ def test_version() -> None:
     result = runner.invoke(app, ["--version"])
 
     assert result.exit_code == 0
-    assert result.stdout.strip() == "0.1.0"
+    assert result.stdout.strip() == "0.2.0"
 
 
 def test_login_aliases_cannot_be_combined() -> None:
@@ -127,7 +127,7 @@ def test_courses_accepts_course_before_resource_action() -> None:
     assert "{item_ids}" in result.stdout
 
 
-def test_courses_accepts_playlist_after_course(monkeypatch) -> None:
+def test_courses_accepts_playlists_after_course(monkeypatch) -> None:
     calls: list[int] = []
 
     class FakeCourses:
@@ -137,7 +137,7 @@ def test_courses_accepts_playlist_after_course(monkeypatch) -> None:
             return Course(cv_cid=78748, course_no="2110575", title="Computer Networks")
 
     class FakePlaylists:
-        def get(self, cv_cid):
+        def list(self, cv_cid):
             calls.append(cv_cid)
             return PlaylistCollection(
                 cv_cid=cv_cid,
@@ -157,19 +157,25 @@ def test_courses_accepts_playlist_after_course(monkeypatch) -> None:
 
     monkeypatch.setattr("mcv_cli.cli.commands.courses.make_api", lambda: FakeAPI())
 
-    result = runner.invoke(app, ["--quiet", "courses", "2110575", "playlist"])
+    result = runner.invoke(app, ["--quiet", "courses", "2110575", "playlists"])
 
     assert result.exit_code == 0, result.output
     assert calls == [78748]
     assert "Course playlist" in result.stdout
 
 
-def test_course_playlist_help_uses_the_course_aware_route() -> None:
-    result = runner.invoke(app, ["courses", "2110575", "playlist", "--help"])
+def test_course_playlists_help_uses_the_course_aware_route() -> None:
+    result = runner.invoke(app, ["courses", "2110575", "playlists", "--help"])
 
     assert result.exit_code == 0
     assert "{course}" in result.stdout
-    assert "playlist_show" not in result.stdout
+    assert "playlists_show" not in result.stdout
+
+
+def test_legacy_singular_playlist_route_is_rejected() -> None:
+    result = runner.invoke(app, ["courses", "2110575", "playlist"])
+
+    assert result.exit_code == 2
 
 
 def test_course_resource_help_uses_public_routes() -> None:
@@ -257,7 +263,7 @@ def test_courses_help_documents_the_public_course_route() -> None:
 
     assert result.exit_code == 0
     assert "mcv courses COURSE RESOURCE ACTION" in result.stdout
-    assert "playlist" in result.stdout
+    assert "playlists" in result.stdout
     assert "playlist_show" not in result.stdout
 
 

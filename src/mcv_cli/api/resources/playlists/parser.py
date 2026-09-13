@@ -120,7 +120,7 @@ def parse_playlist(
         raise ParseError(
             "MyCourseVille returned a playlist page without recognizable playlist content.",
             resource="playlist",
-            operation="get",
+            operation="list",
         )
 
     playlists = _dom_playlists(soup, root, source)

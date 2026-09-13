@@ -5,33 +5,56 @@ or runtime storage.
 """
 
 from .aggregates import AggregateClients
+from .core.dates import (
+    COURSEVILLE_TIMEZONE,
+    combine_courseville_datetime,
+    parse_courseville_date,
+    parse_courseville_datetime,
+    parse_courseville_time,
+)
 from .core.errors import (
     AmbiguousError,
     APIError,
     AuthenticationError,
     AuthenticationRequired,
     DownloadError,
+    InvalidReferenceError,
+    MCVError,
     NotFoundError,
     ParseError,
+    TransportError,
+    UnsupportedResourceError,
     UpstreamError,
+    ValidationError,
 )
 from .core.refs import ResourceRef, ResourceType, ref_for_resource
-from .core.resource import Resource
+from .core.resource import AddressableResource, Resource
 from .facade import MCVAPI
 
 __all__ = [
     "AmbiguousError",
+    "AddressableResource",
     "AggregateClients",
     "APIError",
     "AuthenticationError",
     "AuthenticationRequired",
+    "COURSEVILLE_TIMEZONE",
+    "combine_courseville_datetime",
     "DownloadError",
+    "InvalidReferenceError",
     "MCVAPI",
+    "MCVError",
     "NotFoundError",
     "ParseError",
     "Resource",
     "ResourceRef",
     "ResourceType",
+    "TransportError",
+    "UnsupportedResourceError",
     "UpstreamError",
+    "ValidationError",
+    "parse_courseville_date",
+    "parse_courseville_datetime",
+    "parse_courseville_time",
     "ref_for_resource",
 ]

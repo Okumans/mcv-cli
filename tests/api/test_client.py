@@ -13,7 +13,9 @@ from mcv_cli.api.core.constants import BASE_URL
 from mcv_cli.api.core.errors import (
     AmbiguousError,
     AuthenticationRequired,
+    InvalidReferenceError,
     NotFoundError,
+    TransportError,
     UpstreamError,
 )
 from mcv_cli.api.facade import MCVAPI
@@ -353,7 +355,7 @@ def test_client_parses_student_resources() -> None:
     ) as http_client:
         client = MCVAPI(FakeAuth(), http_client=http_client)
         materials = client.materials.list(123)
-        folders = client.materials.list_folders(123)
+        folders = client.materials.folders(123)
         assignments = client.assignments.list(123)
         announcements = client.announcements.list(123)
         meetings = client.meetings.list(123)
@@ -631,12 +633,13 @@ def test_client_reports_transport_error_details() -> None:
         follow_redirects=False,
     ) as http_client:
         client = MCVAPI(FakeAuth(), http_client=http_client, sleeper=lambda _delay: None)
-        with pytest.raises(UpstreamError) as raised:
+        with pytest.raises(TransportError) as raised:
             client.courses.list()
 
     error = raised.value
     assert "GET" in error.message
     assert "DNS unavailable" in error.message
+    assert error.code == "transport_error"
     assert error.details == {
         "method": "GET",
         "target": "/",
@@ -864,6 +867,35 @@ def test_get_material_raises_for_unknown_item() -> None:
             assert "999" in error.message
         else:
             raise AssertionError("expected NotFoundError")
+
+
+def test_get_many_preserves_input_order_and_fails_fast(monkeypatch) -> None:
+    assignment = Assignment(itemid=1, cv_cid=86428, title="Homework")
+    calls: list[str] = []
+
+    def fake_get(self, reference):
+        calls.append(str(reference))
+        if len(calls) == 2:
+            raise NotFoundError("missing")
+        return assignment
+
+    monkeypatch.setattr(MCVAPI, "get", fake_get)
+    client = MCVAPI.__new__(MCVAPI)
+
+    with pytest.raises(NotFoundError):
+        client.get_many(["mcv:assignment:86428:1", "mcv:assignment:86428:2"])
+
+    assert calls == ["mcv:assignment:86428:1", "mcv:assignment:86428:2"]
+
+
+def test_get_rejects_invalid_reference_with_public_error() -> None:
+    client = MCVAPI.__new__(MCVAPI)
+
+    with pytest.raises(InvalidReferenceError) as raised:
+        client.get("mcv:unknown:86428:1")
+
+    assert raised.value.code == "invalid_ref"
+    assert raised.value.details == {"reference": "mcv:unknown:86428:1"}
 
 
 def test_resolve_course_rejects_unknown_numeric_reference() -> None:

@@ -67,7 +67,7 @@ mcv courses "$MCV_COURSE" materials list
 mcv courses "$MCV_COURSE" materials show 2160993
 mcv courses "$MCV_COURSE" assignments list
 mcv courses "$MCV_COURSE" assignments show 2160997
-mcv courses "$MCV_COURSE" playlist
+mcv courses "$MCV_COURSE" playlists
 mcv courses "$MCV_COURSE" about
 mcv courses "$MCV_COURSE" portfolio
 ```
@@ -91,8 +91,8 @@ mcv --semester 2025/2 courses "$MCV_COURSE" assignments list
 
 `--semester` is a global option and must be placed before the command.
 
-Collections use `list`, identifier-bearing resources use `show`, and singular
-course pages are direct actions. Cross-course aggregate commands are separate
+Collections use `list`, identifier-bearing resources use `show`, and course
+page collections are direct actions. Cross-course aggregate commands are separate
 from course navigation:
 
 ```bash
@@ -146,7 +146,7 @@ With a populated cache, these contexts offer dynamic candidates:
 mcv courses <TAB>
 mcv courses 2110575 <TAB>
 mcv courses 2110575 materials list --folder <TAB>
-mcv courses 2110575 playlist
+mcv courses 2110575 playlists
 mcv courses 2110575 assignments show <TAB>
 mcv get <TAB>
 ```
@@ -168,10 +168,12 @@ The CLI has five useful output styles:
 | Shell ids | `... materials list --ids` | One raw material id per line |
 | Shell refs | `... materials list --refs` | One canonical resource reference per line |
 
-Errors are written to stderr. `--json` and `--jsonl` also make errors JSON so
-they can be handled separately from stdout. Use `--envelope` with either
-machine mode when a versioned protocol wrapper is useful; it is not included by
-default.
+Errors are written to stderr for ordinary commands. `--json` and `--jsonl` make
+those diagnostics JSON. The one deliberate exception is `--jsonl get`: its
+success and error records share stdout in input order so a batch consumer can
+correlate every input; the process still exits nonzero when any lookup fails.
+Use `--envelope` with either machine mode when a versioned protocol wrapper is
+useful; it is not included by default.
 
 Human mode has a dedicated display for every resource model. Collection
 results use resource-specific tables, detail results use labeled field/value
@@ -199,7 +201,7 @@ To request the optional versioned wrapper:
 mcv --json --envelope courses "$MCV_COURSE" assignments list
 ```
 
-That form returns `{"schema_version": 1, "data": [...]}`.
+That form returns `{"schema_version": 1, "ok": true, "data": [...]}`.
 
 ### JSON Lines
 
@@ -219,6 +221,11 @@ mcv --jsonl courses "$MCV_COURSE" announcements list \
 
 With `--jsonl --envelope`, address fields below the wrapper instead:
 `jq -s 'map(.data)'` or `jq '.data.title'`.
+
+The versioned envelope is also the explicit discriminator for mixed JSONL
+batch records: successful lines have `{"ok": true, "data": ...}` and failed
+lines have `{"ok": false, "error": ...}`. Bare JSON and JSONL keep their
+convenient resource/error shapes for compatibility.
 
 ### Field projection
 
@@ -335,11 +342,11 @@ current semester. Unknown numeric ids are errors rather than being treated as
 arbitrary course ids, and multiple matches return `code: "ambiguous"` with
 candidate courses in the machine-readable `details.matches` field.
 
-### Course playlist
+### Course playlists
 
 ```bash
-uv run mcv courses "$MCV_COURSE" playlist
-uv run mcv --json courses "$MCV_COURSE" playlist
+uv run mcv courses "$MCV_COURSE" playlists
+uv run mcv --json courses "$MCV_COURSE" playlists
 uv run mcv get mcv:playlist:78748
 uv run mcv get \
   "https://www.mycourseville.com/?q=courseville/course/78748/playlist"
@@ -352,7 +359,7 @@ embed URL. The client does not resolve playback streams, download videos, or
 change progress.
 
 The playlist page is a collection resource: a course can expose multiple
-named playlists. `api.playlists.get()` and `mcv get mcv:playlist:CV_CID`
+named playlists. `api.playlists.list()` and `mcv get mcv:playlist:CV_CID`
 return a `PlaylistCollection` with `available` and `playlists`; human output
 shows the contained playlists and videos directly, while JSON keeps the
 collection wrapper. A valid course without this optional page returns
@@ -683,7 +690,6 @@ Typer, Rich, cache, completion, or terminal-output dependency:
 
 ```python
 from mcv_cli.api import MCVAPI
-from mcv_cli.api.core.refs import ResourceRef
 from mcv_cli.runtime.auth import AuthManager
 from mcv_cli.runtime.config import Settings
 
@@ -691,11 +697,14 @@ manager = AuthManager(settings=Settings())
 
 with MCVAPI(manager) as api:
     course = api.courses.resolve("2110575")
-    playlist = api.playlists.get(course.cv_cid)
+    playlists = api.playlists.list(course.cv_cid)
     schedule = api.schedule.list(course.cv_cid)
     meetings = api.meetings.list(course.cv_cid)
     materials = api.materials.list(course.cv_cid)
-    assignment = api.get(ResourceRef.parse("mcv:assignment:86428:2160997"))
+    assignment = api.get("mcv:assignment:86428:2160997")
+    assignments = api.get_many(
+        ["mcv:assignment:86428:2160997", "mcv:assignment:86428:2160998"]
+    )
 ```
 
 Resource clients expose domain operations under their resource namespace:
@@ -703,8 +712,8 @@ Resource clients expose domain operations under their resource namespace:
 | Client | Operations |
 | --- | --- |
 | `api.courses` | `list`, `get`, `resolve` |
-| `api.playlists` | `get` → `PlaylistCollection` |
-| `api.materials` | `list`, `list_folders`, `get`, `download`, `archive` |
+| `api.playlists` | `list` → `PlaylistCollection` |
+| `api.materials` | `list`, `folders`, `get`, `download`, `archive` |
 | `api.assignments` | `list`, `get` |
 | `api.announcements` | `list`, `get` |
 | `api.meetings` | `list` → `MeetingCollection`, `get` |
@@ -714,17 +723,41 @@ Resource clients expose domain operations under their resource namespace:
 | `api.portfolio` | `get` |
 | `api.web_resources` | `list` |
 
-Cross-course operations are separate aggregate services:
+Cross-course operations are grouped under the API facade's aggregate services:
 
 ```python
-from mcv_cli.api.aggregates.assignments import AssignmentsAggregate
-
 with MCVAPI(manager) as api:
-    pending = AssignmentsAggregate(api).list(pending=True)
+    pending = api.aggregates.assignments.list(pending=True)
+    announcements = api.aggregates.announcements.list()
+    meetings = api.aggregates.meetings.list()
 ```
 
 `ResourceRef.parse` accepts canonical references and supported HTTPS
-MyCourseVille URLs, normalizing both forms to one typed address.
+MyCourseVille URLs, normalizing both forms to one typed address. It is useful
+when callers need to inspect or store a ref explicitly, but `api.get()` also
+accepts either form directly. `api.get_many()` accepts an iterable of strings
+or `ResourceRef` values, preserves order, and fails fast on the first error.
+
+Addressable domain models (`Material`, `Assignment`, `Announcement`,
+`OnlineMeeting`, and `PlaylistCollection`) expose non-serialized
+`resource_type` and typed `ref` properties. JSON presentation adds those same
+values to machine records without changing `model_dump()` or the raw upstream
+field names.
+
+The public Python exception contract is based on `MCVError` (an alias of
+`APIError`). Expected failures include `AuthenticationRequired`,
+`AuthenticationError`, `InvalidReferenceError`, `UnsupportedResourceError`,
+`NotFoundError`, `AmbiguousError`, `TransportError`, `ParseError`, and
+`DownloadError`. Callers can inspect `code`, `message`, `resource`,
+`operation`, `retryable`, and optional `details`; exception strings do not need
+to be parsed.
+
+Raw temporal fields remain faithful to CourseVille. Typed convenience
+properties such as `Assignment.due_at`, `Announcement.posted_date`,
+`OnlineMeeting.scheduled_at_datetime`, and `ScheduleEvent.event_datetime`
+return standard `date`, `time`, or timezone-aware `datetime` values. Naive
+values use `Asia/Bangkok`; aware values are converted there; unrecognized and
+sentinel values return `None`.
 
 ## 17. Route coverage
 
@@ -761,18 +794,18 @@ The public Pydantic models are:
 | Model | Main fields |
 | --- | --- |
 | `Course` | `cv_cid`, `course_no`, `title`, `year`, `semester`, `section`, `role` |
-| `PlaylistCollection` | `cv_cid`, title/description/source URL, `available`, ordered playlists |
+| `PlaylistCollection` | `cv_cid`, title/description/source URL, `available`, ordered playlists; non-serialized `resource_type`/`ref` |
 | `Playlist` | optional playlist id/title/description/source URL, ordered nested nodes |
 | `PlaylistFolder` | optional folder id, name, position, child folders/videos |
 | `PlaylistVideo` | provider/id, title, source/embed/thumbnail URLs, duration, watch percentage |
-| `Material` | `itemid`, `cv_cid`, `title`, folder fields, URLs, metadata |
+| `Material` | `itemid`, `cv_cid`, `title`, folder fields, URLs, metadata; non-serialized `resource_type`/`ref` |
 | `MaterialFolder` | `folder_id`, `name`, `materials` |
-| `Assignment` | `itemid`, `cv_cid`, optional `course_no`, title, due dates, status, feedback, links, `question_set_submission` |
+| `Assignment` | `itemid`, `cv_cid`, optional `course_no`, title, due dates, status, feedback, links, `question_set_submission`; non-serialized `resource_type`/`ref` |
 | `QuestionSetSubmission` | visible action/title, optional link, status, latest submission timestamp, questions |
 | `QuestionSetQuestion` | question id/number, type, prompt, answer, choices, points, status |
 | `QuestionSetChoice` | label, upstream value, selected state, optional correctness |
-| `Announcement` | `itemid`, `cv_cid`, optional `course_no`, title, body, posted/modified dates, links |
-| `OnlineMeeting` | `itemid`, `cv_cid`, optional `course_no`, provider, schedule, preferred `url`, join/detail URLs, recordings |
+| `Announcement` | `itemid`, `cv_cid`, optional `course_no`, title, body, posted/modified dates, links; non-serialized `resource_type`/`ref` |
+| `OnlineMeeting` | `itemid`, `cv_cid`, optional `course_no`, provider, schedule, preferred `url`, join/detail URLs, recordings; non-serialized `resource_type`/`ref` |
 | `MeetingCollection` | `cv_cid`, source URL, `available`, ordered meetings |
 | `MeetingRecording` | recording type, play/download URL, timing, password |
 | `ScheduleEvent` | index, `cv_cid`, date, time, title, comment |
@@ -788,8 +821,9 @@ The public Pydantic models are:
 Material, assignment, announcement, and meeting `itemid` values are treated
 as course-scoped. Use `mcv:<resource-type>:<cv_cid>:<item_id>` when a reference
 must be unambiguous across courses; use `mcv:playlist:<cv_cid>` for a course
-playlist. The machine-output adapter adds `resource_type` and `ref` to
-addressable records without changing their Python model fields.
+playlist. `itemid` is intentionally retained as the raw CourseVille spelling;
+Python convenience identity is exposed separately through `ref` and
+`resource_type`.
 
 ## 19. Current evaluation
 
@@ -806,7 +840,7 @@ UV_CACHE_DIR=/tmp/mcv-uv-cache uv run pyright
 The current local evaluation recorded while writing this document is:
 
 ```text
-163 passed
+171 passed
 Ruff: all checks passed
 Pyright: 0 errors, 0 warnings
 ```

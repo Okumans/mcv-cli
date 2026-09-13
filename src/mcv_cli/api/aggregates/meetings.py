@@ -2,22 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
-from zoneinfo import ZoneInfo
 
+from ..core.dates import COURSEVILLE_TIMEZONE
 from ..resources.meetings.models import MeetingCollection, OnlineMeeting
 from .assignments import _course_sort_key, _with_course_context
-
-_BANGKOK_TZ = ZoneInfo("Asia/Bangkok")
-_MEETING_DATETIME_FORMATS = (
-    "%b %d %Y %H:%M",
-    "%b %d %Y %H:%M:%S",
-    "%d %b %Y %H:%M",
-    "%d %b %Y %H:%M:%S",
-    "%B %d %Y %H:%M",
-    "%B %d %Y %H:%M:%S",
-    "%d %B %Y %H:%M",
-    "%d %B %Y %H:%M:%S",
-)
 
 
 class MeetingsAggregate:
@@ -89,45 +77,23 @@ class MeetingsAggregate:
 
 def _meeting_now(now: datetime | None) -> datetime:
     if now is None:
-        return datetime.now(_BANGKOK_TZ)
+        return datetime.now(COURSEVILLE_TIMEZONE)
     if now.tzinfo is None:
-        return now.replace(tzinfo=_BANGKOK_TZ)
-    return now.astimezone(_BANGKOK_TZ)
-
-
-def _meeting_datetime(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    normalized = " ".join(value.replace(",", " ").split())
-    try:
-        parsed = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
-    except ValueError:
-        parsed = None
-    if parsed is not None:
-        return (
-            parsed.replace(tzinfo=_BANGKOK_TZ)
-            if parsed.tzinfo is None
-            else parsed.astimezone(_BANGKOK_TZ)
-        )
-    for date_format in _MEETING_DATETIME_FORMATS:
-        try:
-            return datetime.strptime(normalized, date_format).replace(tzinfo=_BANGKOK_TZ)
-        except ValueError:
-            continue
-    return None
+        return now.replace(tzinfo=COURSEVILLE_TIMEZONE)
+    return now.astimezone(COURSEVILLE_TIMEZONE)
 
 
 def _meeting_is_past(meeting: OnlineMeeting, now: datetime) -> bool:
-    scheduled = _meeting_datetime(meeting.scheduled_at)
+    scheduled = meeting.scheduled_at_datetime
     return scheduled is not None and scheduled < now
 
 
 def _meeting_sort_key(meeting: OnlineMeeting) -> tuple[str, bool, datetime, int]:
-    scheduled = _meeting_datetime(meeting.scheduled_at)
+    scheduled = meeting.scheduled_at_datetime
     return (
         meeting.course_no or "",
         scheduled is None,
-        scheduled or datetime.max.replace(tzinfo=_BANGKOK_TZ),
+        scheduled or datetime.max.replace(tzinfo=COURSEVILLE_TIMEZONE),
         meeting.itemid,
     )
 

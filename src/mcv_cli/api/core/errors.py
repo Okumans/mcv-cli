@@ -44,6 +44,80 @@ class APIError(Exception):
         return value
 
 
+class ValidationError(APIError):
+    """The caller supplied a value that cannot be used by the API."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "validation_error",
+        details: Any | None = None,
+        resource: str | None = None,
+        operation: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=code,
+            details=details,
+            resource=resource,
+            operation=operation,
+            retryable=False,
+        )
+
+
+class InvalidReferenceError(ValidationError):
+    """A canonical resource reference or supported URL is malformed."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        reference: str | None = None,
+        operation: str = "parse_ref",
+    ) -> None:
+        super().__init__(
+            message,
+            code="invalid_ref",
+            details={"reference": reference} if reference is not None else None,
+            operation=operation,
+        )
+
+
+class UnsupportedResourceError(ValidationError):
+    """A known reference type has no generic lookup implementation."""
+
+    def __init__(self, resource_type: str) -> None:
+        super().__init__(
+            f'Resource type "{resource_type}" is not dereferenceable.',
+            code="unsupported_resource_type",
+            details={"resource_type": resource_type},
+            operation="get",
+        )
+
+
+class TransportError(APIError):
+    """The HTTP transport failed before a usable upstream response arrived."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        details: Any | None = None,
+        resource: str | None = "mycourseville",
+        operation: str | None = "request",
+        retryable: bool | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code="transport_error",
+            details=details,
+            resource=resource,
+            operation=operation,
+            retryable=retryable,
+        )
+
+
 class AuthenticationRequired(APIError):
     def __init__(
         self,
@@ -171,3 +245,6 @@ class DownloadError(APIError):
             operation=operation,
             retryable=False,
         )
+
+
+MCVError = APIError

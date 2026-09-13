@@ -4,7 +4,6 @@ from typing import Any
 
 import typer
 
-from ...api.aggregates.meetings import MeetingsAggregate
 from ..context import make_api, resource_refs, run, selected_semester
 
 
@@ -23,7 +22,7 @@ def list_meetings(
 ) -> None:
     def action() -> Any:
         with make_api() as api:
-            values = MeetingsAggregate(api).list(
+            values = api.aggregates.meetings.list(
                 semester=selected_semester(ctx),
                 include_past=include_past,
             )

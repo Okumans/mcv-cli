@@ -6,13 +6,17 @@ from ..api.core.errors import (
     AuthenticationError,
     AuthenticationRequired,
     DownloadError,
+    InvalidReferenceError,
     NotFoundError,
     ParseError,
+    UnsupportedResourceError,
     UpstreamError,
+    ValidationError,
 )
 from ..runtime.errors import CacheError, ConfigurationError, StorageError
 
 MCVError = APIError
+InvalidRefError = InvalidReferenceError
 
 EXIT_CODES = {
     "usage": 2,
@@ -38,7 +42,11 @@ def exit_code_for(error: APIError) -> int:
         return EXIT_CODES["download"]
     if isinstance(
         error,
-        (InvalidRefError, UnsupportedResourceError, ReferenceCourseMismatchError, AmbiguousError),
+        (
+            ValidationError,
+            ReferenceCourseMismatchError,
+            AmbiguousError,
+        ),
     ):
         return EXIT_CODES["validation"]
     return EXIT_CODES["upstream"]
@@ -49,29 +57,7 @@ class UsageError(APIError):
         super().__init__(message, code="usage", retryable=False)
 
 
-class InvalidRefError(APIError):
-    def __init__(self, message: str, *, reference: str | None = None) -> None:
-        super().__init__(
-            message,
-            code="invalid_ref",
-            details={"reference": reference} if reference is not None else None,
-            operation="get",
-            retryable=False,
-        )
-
-
-class UnsupportedResourceError(APIError):
-    def __init__(self, resource_type: str) -> None:
-        super().__init__(
-            f'Resource type "{resource_type}" is not dereferenceable.',
-            code="unsupported_resource_type",
-            details={"resource_type": resource_type},
-            operation="get",
-            retryable=False,
-        )
-
-
-class ReferenceCourseMismatchError(APIError):
+class ReferenceCourseMismatchError(ValidationError):
     def __init__(self, reference: str, expected_course: int, actual_course: int) -> None:
         super().__init__(
             f"Resource reference {reference} belongs to course {actual_course}, "
@@ -84,7 +70,6 @@ class ReferenceCourseMismatchError(APIError):
             },
             resource="course",
             operation="resolve_reference",
-            retryable=False,
         )
 
 

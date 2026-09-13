@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from mcv_cli.api.core.errors import InvalidReferenceError
 from mcv_cli.api.core.refs import ResourceRef, ResourceType, ref_for_resource
 from mcv_cli.api.resources.assignments.models import Assignment
 from mcv_cli.api.resources.materials.models import Material
@@ -92,7 +93,7 @@ def test_resource_ref_parses_a_course_playlist_url() -> None:
     ],
 )
 def test_resource_ref_rejects_unsupported_mycourseville_urls(value: str) -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(InvalidReferenceError):
         ResourceRef.parse(value)
 
 
@@ -108,7 +109,7 @@ def test_resource_ref_rejects_unsupported_mycourseville_urls(value: str) -> None
     ],
 )
 def test_resource_ref_rejects_malformed_or_unsupported_values(value: str) -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(InvalidReferenceError):
         ResourceRef.parse(value)
 
 
@@ -120,3 +121,17 @@ def test_resource_ref_can_be_created_from_addressable_models() -> None:
     assert str(ref_for_resource(assignment)) == "mcv:assignment:86428:2160997"
     assert str(ref_for_resource(material)) == "mcv:material:86428:2160993"
     assert str(ref_for_resource(playlist)) == "mcv:playlist:86428"
+
+
+def test_addressable_models_expose_identity_without_serializing_it() -> None:
+    assignment = Assignment(itemid=2160997, cv_cid=86428, title="Homework")
+    playlist = PlaylistCollection(cv_cid=86428, title="Videos")
+
+    assert assignment.resource_type is ResourceType.ASSIGNMENT
+    assert assignment.ref == ResourceRef.parse("mcv:assignment:86428:2160997")
+    assert playlist.resource_type is ResourceType.PLAYLIST
+    assert playlist.ref == ResourceRef.parse("mcv:playlist:86428")
+    assert "resource_type" not in assignment.model_dump()
+    assert "ref" not in assignment.model_dump()
+    assert "resource_type" not in playlist.model_dump()
+    assert "ref" not in playlist.model_dump()

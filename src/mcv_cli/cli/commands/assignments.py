@@ -4,7 +4,6 @@ from typing import Any
 
 import typer
 
-from ...api.aggregates.assignments import AssignmentsAggregate
 from ..context import make_api, resource_refs, run, selected_semester
 
 
@@ -32,7 +31,7 @@ def list_assignments(
 ) -> None:
     def action() -> Any:
         with make_api() as api:
-            values = AssignmentsAggregate(api).list(
+            values = api.aggregates.assignments.list(
                 semester=selected_semester(ctx),
                 pending=pending,
                 due=due,

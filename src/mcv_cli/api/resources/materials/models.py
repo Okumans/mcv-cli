@@ -5,11 +5,13 @@ from typing import Literal
 
 from pydantic import AliasChoices, Field
 
-from ...core.resource import Resource
+from ...core.dates import parse_courseville_datetime
+from ...core.refs import ResourceType
+from ...core.resource import ItemAddressableResource, Resource
 
 
-class Material(Resource):
-    itemid: int = Field(gt=0)
+class Material(ItemAddressableResource):
+    resource_kind = ResourceType.MATERIAL
     title: str | None = None
     status: int | str | None = None
     created: datetime | int | str | None = None
@@ -24,6 +26,14 @@ class Material(Resource):
         default=None,
         validation_alias=AliasChoices("filepath", "file_path", "url"),
     )
+
+    @property
+    def created_datetime(self) -> datetime | None:
+        return parse_courseville_datetime(self.created)
+
+    @property
+    def changed_datetime(self) -> datetime | None:
+        return parse_courseville_datetime(self.changed)
 
 
 class MaterialFolder(Resource):

@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+from datetime import date, datetime, time
 from typing import Literal
 
 from pydantic import Field
 
-from ...core.resource import Resource
+from ...core.dates import (
+    combine_courseville_datetime,
+    parse_courseville_date,
+    parse_courseville_datetime,
+    parse_courseville_time,
+)
+from ...core.refs import ResourceType
+from ...core.resource import ItemAddressableResource, Resource
 
 
 class QuestionSetChoice(Resource):
@@ -42,9 +50,13 @@ class QuestionSetSubmission(Resource):
     submitted_at: str | None = None
     questions: list[QuestionSetQuestion] = Field(default_factory=list)
 
+    @property
+    def submitted_at_datetime(self) -> datetime | None:
+        return parse_courseville_datetime(self.submitted_at)
 
-class Assignment(Resource):
-    itemid: int = Field(gt=0)
+
+class Assignment(ItemAddressableResource):
+    resource_kind = ResourceType.ASSIGNMENT
     course_no: str | None = None
     title: str | None = None
     status: int | str | None = None
@@ -62,3 +74,34 @@ class Assignment(Resource):
     outdate: str | None = None
     duedate: str | None = None
     duetime: int | str | None = None
+
+    @property
+    def created_datetime(self) -> datetime | None:
+        return parse_courseville_datetime(self.created)
+
+    @property
+    def changed_datetime(self) -> datetime | None:
+        return parse_courseville_datetime(self.changed)
+
+    @property
+    def outdate_date(self) -> date | None:
+        return parse_courseville_date(self.outdate)
+
+    @property
+    def due_date(self) -> date | None:
+        return parse_courseville_date(self.duedate)
+
+    @property
+    def due_time(self) -> time | None:
+        return parse_courseville_time(self.duetime) or parse_courseville_time(self.duedate)
+
+    @property
+    def due_at(self) -> datetime | None:
+        direct = parse_courseville_datetime(self.duedate)
+        if direct is not None:
+            return direct
+        return combine_courseville_datetime(self.due_date, self.due_time)
+
+    @property
+    def submitted_at_datetime(self) -> datetime | None:
+        return parse_courseville_datetime(self.submitted_at)

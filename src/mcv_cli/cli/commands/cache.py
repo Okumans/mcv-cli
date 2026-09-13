@@ -103,13 +103,13 @@ def refresh(
             refreshed: list[dict[str, Any]] = []
             for course in courses:
                 try:
-                    folders = api.materials.list_folders(course.cv_cid)
+                    folders = api.materials.folders(course.cv_cid)
                     materials = [material for folder in folders for material in folder.materials]
                     assignments = api.assignments.list(course.cv_cid)
                     announcements = api.announcements.list(course.cv_cid)
                     meetings = api.meetings.list(course.cv_cid)
                     schedule = api.schedule.list(course.cv_cid)
-                    playlists = api.playlists.get(course.cv_cid)
+                    playlists = api.playlists.list(course.cv_cid)
                     groups = api.groups.list(course.cv_cid)
                     cache.replace_folders(folders, cv_cid=course.cv_cid)
                     cache.replace_resources(ResourceType.MATERIAL, course.cv_cid, materials)

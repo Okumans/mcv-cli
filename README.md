@@ -79,8 +79,8 @@ mcv --semester 2026/1 courses list
 mcv courses list --all
 mcv courses 2110575
 
-# Course video playlist
-mcv courses 2110575 playlist
+# Course video playlists
+mcv courses 2110575 playlists
 
 # Materials and folders
 mcv courses 2110575 materials list
@@ -120,14 +120,14 @@ The supported grammar is `mcv courses COURSE RESOURCE ACTION [ARGS] [OPTIONS]`,
 similar to a Docker Compose command scope. The course may be a CourseVille id
 or course number. Command-specific options follow the action, for example
 `courses 2110575 materials list --folder "Week 1"` and
-`courses 2110575 materials archive "Week 1" --format tar`. Singular course
-pages are direct actions: use `courses 2110575 playlist`,
+`courses 2110575 materials archive "Week 1" --format tar`. Course-level
+collection pages are direct actions: use `courses 2110575 playlists`,
 `courses 2110575 about`, and `courses 2110575 portfolio`. Playlist results
 preserve nested folders and expose read-only video metadata such as titles,
 providers, ids, thumbnails, durations, watch percentages, and source URLs.
 They do not download or play videos.
 
-`playlist` is a course-level collection even though it is a direct action: one
+`playlists` is a course-level collection even though it is a direct action: one
 course page may contain several named playlists. The API returns a
 `PlaylistCollection` with an `available` flag and a `playlists` list, and
 `mcv get mcv:playlist:CV_CID` returns that same wrapper. Human output flattens
@@ -267,10 +267,11 @@ mcv --json --envelope courses 2110575 assignments list
 mcv --jsonl --envelope courses 2110575 assignments list
 ```
 
-The envelope has the shape `{"schema_version": 1, "data": ...}` (or one such
-object per JSONL line). Existing v1 fields are not renamed or removed; new
-fields may be added. Machine errors are flat JSON by default and use the same
-versioned `error` wrapper only with `--envelope`.
+The envelope has the shape `{"schema_version": 1, "ok": true, "data": ...}`
+(or one such object per JSONL line). Existing bare v1 fields are not renamed
+or removed; new fields may be added. Machine errors are flat JSON by default
+and use `{"schema_version": 1, "ok": false, "error": ...}` only with
+`--envelope`.
 
 Without `--json` or `--jsonl`, each resource uses a human-oriented display:
 lists are tables, detail results are labeled summaries, meetings include their
@@ -368,8 +369,10 @@ mcv --jsonl get \
 ```
 
 `mcv get --jsonl` writes success and error records to stdout in input order and
-returns nonzero if any lookup fails. Other machine-mode errors are written to
-stderr.
+returns nonzero if any lookup fails. This is an intentional batch protocol:
+bare records are either a resource or an error object, while
+`--envelope` makes the discriminator explicit with `ok: true` or `ok: false`.
+Other machine-mode errors are written to stderr.
 
 Assignment detail output keeps the worksheet detail page separate from an
 optional submission page. Rich-text instruction links are normalized to
@@ -394,8 +397,9 @@ mcv get \
 mcv courses 2110575 assignments list
 ```
 
-Machine output is unchanged: `--json` returns one JSON value (an array for
-multiple references), and `--jsonl` returns one resource per line.
+Machine output keeps the convenience/batch distinction: `--json` returns one
+JSON value (an array for multiple references), and `--jsonl` returns one
+resource per line.
 
 ## Python API and package boundaries
 
@@ -414,20 +418,53 @@ from mcv_cli.runtime.config import Settings
 manager = AuthManager(settings=Settings())
 with MCVAPI(manager) as api:
     course = api.courses.resolve("2110575")
-    playlist = api.playlists.get(course.cv_cid)
+    playlists = api.playlists.list(course.cv_cid)
     schedule = api.schedule.list(course.cv_cid)
     meetings = api.meetings.list(course.cv_cid)
     materials = api.materials.list(course.cv_cid)
     assignment = api.get("mcv:assignment:86428:2160997")
+    other_assignments = api.get_many(
+        ["mcv:assignment:86428:2160997", "mcv:assignment:86428:2160998"]
+    )
 ```
 
-`playlist`, `schedule`, and `meetings` are typed course collections. A
+`playlists`, `schedule`, and `meetings` are typed course collections. A
 collection with `available=False` means that MyCourseVille omitted that
 optional feature for the course; `available=True` with an empty child list
 means the feature exists but currently has no entries.
 
-Cross-course queries are exposed by `mcv_cli.api.aggregates`; presentation
-and CLI concerns are not part of the API model or client contracts.
+Cross-course queries are exposed by `api.aggregates`:
+
+```python
+with MCVAPI(manager) as api:
+    pending = api.aggregates.assignments.list(pending=True)
+    announcements = api.aggregates.announcements.list()
+    meetings = api.aggregates.meetings.list()
+```
+
+Addressable models (`Material`, `Assignment`, `Announcement`, `OnlineMeeting`,
+and `PlaylistCollection`) expose non-serialized `resource_type` and `ref`
+properties. Their `ref` is a typed `ResourceRef`, so the same identity used by
+CLI JSON is available to Python callers without parsing output.
+
+`api.get()` accepts either a `ResourceRef` or a canonical reference string,
+including a supported MyCourseVille HTTPS URL. `api.get_many()` accepts an
+iterable of those values, preserves input order, and stops at the first error.
+
+The public API raises `MCVError` (an alias of `APIError`) subclasses rather
+than requiring callers to parse exception text. Common categories include
+`AuthenticationRequired`, `AuthenticationError`, `InvalidReferenceError`,
+`UnsupportedResourceError`, `NotFoundError`, `AmbiguousError`,
+`TransportError`, `ParseError`, and `DownloadError`. Every error exposes
+`code`, `message`, `resource`, `operation`, `retryable`, and optional `details`.
+
+Raw CourseVille temporal fields remain unchanged for faithful upstream access.
+Typed convenience properties such as `Assignment.due_at`,
+`Announcement.posted_date`, `OnlineMeeting.scheduled_at_datetime`, and
+`ScheduleEvent.event_datetime` return standard `date`, `time`, or timezone-aware
+`datetime` values. Naive values are interpreted in `Asia/Bangkok`; aware values
+are converted to that timezone; unrecognized or sentinel values return
+`None`.
 
 ## Credential storage
 

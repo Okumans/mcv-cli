@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 
 import httpx
 
 from .aggregates import AggregateClients
+from .core.errors import InvalidReferenceError, UnsupportedResourceError
 from .core.refs import ResourceRef, ResourceType
 from .core.resource import Resource
 from .resources._base import SessionProvider, make_download_client, make_transport
@@ -76,9 +77,13 @@ class MCVAPI:
     def get(self, reference: str | ResourceRef) -> Resource:
         ref = ResourceRef.parse(reference) if isinstance(reference, str) else reference
         if ref.resource_type is ResourceType.PLAYLIST:
-            return self.playlists.get(ref.cv_cid)
+            return self.playlists.list(ref.cv_cid)
         if ref.item_id is None:
-            raise ValueError(f"{ref.resource_type.value} references require an item id")
+            raise InvalidReferenceError(
+                f"{ref.resource_type.value} references require an item id.",
+                reference=str(ref),
+                operation="get",
+            )
         match ref.resource_type.value:
             case "material":
                 return self.materials.get(ref.cv_cid, ref.item_id)
@@ -88,4 +93,9 @@ class MCVAPI:
                 return self.announcements.get(ref.cv_cid, ref.item_id)
             case "meeting":
                 return self.meetings.get(ref.cv_cid, ref.item_id)
-        raise ValueError(f"Unsupported resource type: {ref.resource_type.value}")
+        raise UnsupportedResourceError(ref.resource_type.value)
+
+    def get_many(self, references: Iterable[str | ResourceRef]) -> list[Resource]:
+        """Resolve references sequentially in input order, failing fast."""
+
+        return [self.get(reference) for reference in references]

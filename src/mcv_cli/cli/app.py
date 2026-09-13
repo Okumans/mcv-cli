@@ -23,7 +23,7 @@ _COURSE_RESOURCE_ACTIONS = {
     "about": {"show": "about_show", "": "about_show"},
     "groups": {"list": "groups_list"},
     "portfolio": {"show": "portfolio_show", "": "portfolio_show"},
-    "playlist": {"": "playlist_show"},
+    "playlists": {"": "playlists_show"},
     "web-resources": {"list": "web_resources_list"},
 }
 
@@ -61,7 +61,7 @@ class CourseAwareGroup(TyperGroup):
             resource, *resource_args = remaining
             action = resource_args[0] if resource_args else None
             target = _COURSE_RESOURCE_ACTIONS.get(resource, {}).get(action or "")
-            if target is None and resource in {"about", "portfolio", "playlist"} and action in {
+            if target is None and resource in {"about", "portfolio", "playlists"} and action in {
                 "--help",
                 "-h",
             }:
@@ -96,7 +96,7 @@ courses_app = typer.Typer(
         "Inspect enrolled courses.\n\n"
         "Course overview: mcv courses COURSE\n"
         "Course resources: mcv courses COURSE RESOURCE ACTION [ARGS] [OPTIONS]\n"
-        "Direct course pages: playlist, about, portfolio."
+        "Direct course pages: playlists, about, portfolio."
     ),
     no_args_is_help=True,
 )
