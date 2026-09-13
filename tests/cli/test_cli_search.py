@@ -10,7 +10,7 @@ from mcv_cli.api.resources.materials.models import Material
 from mcv_cli.cli.app import app
 from mcv_cli.runtime.cache import CacheStore
 
-runner = CliRunner()
+runner = CliRunner(env={"NO_COLOR": "1", "FORCE_COLOR": None})
 
 
 def _cache(tmp_path) -> CacheStore:

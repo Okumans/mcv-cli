@@ -14,7 +14,7 @@ from mcv_cli.api.resources.playlists.models import PlaylistCollection
 from mcv_cli.api.resources.schedule.models import ScheduleCollection
 from mcv_cli.cli.app import app
 
-runner = CliRunner()
+runner = CliRunner(env={"NO_COLOR": "1", "FORCE_COLOR": None})
 
 
 class FakeCacheClient:

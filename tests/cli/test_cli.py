@@ -7,7 +7,10 @@ from mcv_cli.api.resources.courses.models import Course
 from mcv_cli.api.resources.playlists.models import Playlist, PlaylistCollection, PlaylistVideo
 from mcv_cli.cli.app import app
 
-runner = CliRunner()
+# Help and error assertions intentionally inspect plain text.  Remove any
+# inherited FORCE_COLOR setting so CI terminal preferences cannot split option
+# names with ANSI sequences.
+runner = CliRunner(env={"NO_COLOR": "1", "FORCE_COLOR": None})
 
 
 def test_help_lists_command_groups() -> None:
