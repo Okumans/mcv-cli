@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import sqlite3
 import stat
 from pathlib import Path
+
+import pytest
 
 from mcv_cli.api.core.refs import ResourceType
 from mcv_cli.api.resources.assignments.models import Assignment
@@ -10,6 +13,132 @@ from mcv_cli.api.resources.materials.models import Material, MaterialFolder
 from mcv_cli.api.resources.playlists.models import PlaylistCollection
 from mcv_cli.runtime.cache import CacheStore
 from mcv_cli.runtime.completion import completion_items
+from mcv_cli.runtime.errors import CacheSchemaError
+
+
+def _write_legacy_cache(cache: CacheStore, version: int) -> None:
+    cache.path.parent.mkdir(parents=True)
+    with sqlite3.connect(cache.path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            CREATE TABLE semesters (
+                value TEXT PRIMARY KEY,
+                is_current INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE courses (
+                cv_cid INTEGER NOT NULL,
+                course_no TEXT NOT NULL,
+                title TEXT NOT NULL,
+                year TEXT NOT NULL,
+                semester TEXT NOT NULL,
+                section TEXT NOT NULL,
+                role TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (cv_cid, year, semester, section)
+            );
+            CREATE TABLE folders (
+                cv_cid INTEGER NOT NULL,
+                folder_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (cv_cid, folder_id)
+            );
+            CREATE TABLE resources (
+                resource_type TEXT NOT NULL,
+                cv_cid INTEGER NOT NULL,
+                item_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                folder_id TEXT NOT NULL,
+                scheduled_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (resource_type, cv_cid, item_id)
+            );
+            CREATE TABLE groupings (
+                cv_cid INTEGER NOT NULL,
+                grouping_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (cv_cid, grouping_id)
+            );
+            INSERT INTO metadata(key, value) VALUES('schema_version', '1');
+            """
+        )
+        if version >= 2:
+            connection.execute(
+                """
+                CREATE TABLE collection_status (
+                    collection_type TEXT NOT NULL,
+                    cv_cid INTEGER NOT NULL,
+                    available INTEGER NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (collection_type, cv_cid)
+                )
+                """
+            )
+            connection.execute(
+                "UPDATE metadata SET value = '2' WHERE key = 'schema_version'"
+            )
+    connection.close()
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_known_cache_versions_migrate_to_current_without_losing_courses(
+    tmp_path: Path,
+    version: int,
+) -> None:
+    cache = CacheStore(profile_name="default", provider="chula", root=tmp_path)
+    _write_legacy_cache(cache, version)
+    with sqlite3.connect(cache.path) as connection:
+        connection.execute(
+            """
+            INSERT INTO courses(
+                cv_cid, course_no, title, year, semester, section, role, updated_at
+            ) VALUES(86428, '2110575', 'Containers', '2024', '2', '1', 'student', 'now')
+            """
+        )
+    connection.close()
+
+    cache.upsert_courses([Course(cv_cid=86428, course_no="2110575", title="Containers")])
+
+    status = cache.status()
+    assert status["schema_version"] == 3
+    assert cache.candidates("courses")[0]["value"] == "2110575"
+    with sqlite3.connect(cache.path) as connection:
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type IN ('table', 'virtual table')"
+            )
+        }
+    connection.close()
+    assert {"collection_status", "resource_cache", "search_documents", "search_scopes"} <= tables
+
+
+def test_future_cache_schema_is_rejected_without_overwriting_it(tmp_path: Path) -> None:
+    cache = CacheStore(profile_name="default", provider="chula", root=tmp_path)
+    cache.path.parent.mkdir(parents=True)
+    with sqlite3.connect(cache.path) as connection:
+        connection.execute("CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        connection.execute(
+            "INSERT INTO metadata(key, value) VALUES('schema_version', '999')"
+        )
+    connection.close()
+
+    with pytest.raises(CacheSchemaError):
+        cache.status()
+    with pytest.raises(CacheSchemaError):
+        cache.upsert_courses([Course(cv_cid=86428, course_no="2110575", title="Containers")])
+    with pytest.raises(CacheSchemaError):
+        cache.clear("all")
+
+    with sqlite3.connect(cache.path) as connection:
+        assert cache.path.exists()
+        assert connection.execute(
+            "SELECT value FROM metadata WHERE key = 'schema_version'"
+        ).fetchone() == ("999",)
+    connection.close()
 
 
 def test_cache_isolated_by_profile_and_provider(tmp_path: Path) -> None:

@@ -33,12 +33,15 @@ class CredentialStore:
         profile_name: str = DEFAULT_PROFILE,
         settings: Settings | None = None,
         file_path: Path | None = None,
-        prefer_keyring: bool = True,
+        prefer_keyring: bool | None = None,
     ) -> None:
         self.profile_name = profile_name
         self.settings = settings or Settings()
-        self.file_path = file_path or Path(user_config_dir("mcv")) / "credentials.enc"
-        self.prefer_keyring = prefer_keyring
+        config_root = self.settings.config_dir or Path(user_config_dir("mcv"))
+        self.file_path = file_path or config_root / "credentials.enc"
+        self.prefer_keyring = (
+            self.settings.prefer_keyring if prefer_keyring is None else prefer_keyring
+        )
         self._passphrase: str | None = self.settings.storage_passphrase
 
     def load(self) -> StoredProfile | None:

@@ -4,7 +4,9 @@ import stat
 
 import pytest
 
+from mcv_cli.runtime.config import Settings
 from mcv_cli.runtime.errors import StorageError
+from mcv_cli.runtime.storage import CredentialStore
 
 
 def test_encrypted_file_round_trip_does_not_expose_secrets(file_store, profile) -> None:
@@ -96,3 +98,19 @@ def test_keyring_is_preferred(monkeypatch, tmp_path, profile) -> None:
 
     assert not store.file_path.exists()
     assert store.load() == profile
+
+
+def test_settings_select_ephemeral_credential_and_cache_roots(monkeypatch, tmp_path) -> None:
+    config_root = tmp_path / "config"
+    cache_root = tmp_path / "cache"
+    monkeypatch.setenv("MCV_CONFIG_DIR", str(config_root))
+    monkeypatch.setenv("MCV_CACHE_DIR", str(cache_root))
+    monkeypatch.setenv("MCV_PREFER_KEYRING", "false")
+
+    settings = Settings()
+    store = CredentialStore(settings=settings)
+
+    assert settings.config_dir == config_root
+    assert settings.cache_dir == cache_root
+    assert settings.prefer_keyring is False
+    assert store.file_path == config_root / "credentials.enc"

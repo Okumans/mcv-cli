@@ -48,3 +48,7 @@ class CacheError(RuntimeError):
             operation=operation,
             retryable=False,
         )
+
+
+class CacheSchemaError(CacheError):
+    """The local SQLite cache is missing, invalid, or newer than this client."""

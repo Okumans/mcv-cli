@@ -25,6 +25,7 @@ def active_cache() -> CacheStore | None:
     return CacheStore(
         profile_name=manager.store.profile_name,
         provider=profile.provider,
+        root=Settings().cache_dir,
     )
 
 

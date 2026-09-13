@@ -23,6 +23,7 @@ from ..api.resources.schedule.models import ScheduleCollection
 from ..api.search.documents import searchable_document, snapshot_for_resource
 from ..api.search.models import SearchCandidate, SearchDocument
 from .config import DEFAULT_PROFILE
+from .errors import CacheSchemaError
 from .models import AuthProvider
 
 _CACHE_SCHEMA_VERSION = 3
@@ -64,6 +65,154 @@ def _resource_type_values(
     return sorted({item.value for item in resource_types})
 
 
+def _ignore_search_schema_error(error: CacheSchemaError) -> bool:
+    """Keep corrupt/old local search empty, but never hide a future schema."""
+
+    return not isinstance(error.details, Mapping) or error.details.get("reason") != "future"
+
+
+def _table_exists(connection: sqlite3.Connection, table: str) -> bool:
+    row = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type IN ('table', 'view') AND name = ?",
+        (table,),
+    ).fetchone()
+    return row is not None
+
+
+def _create_schema_v1(connection: sqlite3.Connection) -> None:
+    """Create the schema shipped by the first cache-aware release."""
+
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS semesters (
+            value TEXT PRIMARY KEY,
+            is_current INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS courses (
+            cv_cid INTEGER NOT NULL,
+            course_no TEXT NOT NULL,
+            title TEXT NOT NULL,
+            year TEXT NOT NULL,
+            semester TEXT NOT NULL,
+            section TEXT NOT NULL,
+            role TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (cv_cid, year, semester, section)
+        );
+        CREATE TABLE IF NOT EXISTS folders (
+            cv_cid INTEGER NOT NULL,
+            folder_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (cv_cid, folder_id)
+        );
+        CREATE TABLE IF NOT EXISTS resources (
+            resource_type TEXT NOT NULL,
+            cv_cid INTEGER NOT NULL,
+            item_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            folder_id TEXT NOT NULL,
+            scheduled_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (resource_type, cv_cid, item_id)
+        );
+        CREATE TABLE IF NOT EXISTS groupings (
+            cv_cid INTEGER NOT NULL,
+            grouping_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (cv_cid, grouping_id)
+        );
+        CREATE INDEX IF NOT EXISTS resources_by_course
+            ON resources (cv_cid, resource_type);
+        """
+    )
+
+
+def _migrate_schema_1_to_2(connection: sqlite3.Connection) -> None:
+    """Add typed availability for optional course collections."""
+
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS collection_status (
+            collection_type TEXT NOT NULL,
+            cv_cid INTEGER NOT NULL,
+            available INTEGER NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (collection_type, cv_cid)
+        )
+        """
+    )
+
+
+def _migrate_schema_2_to_3(connection: sqlite3.Connection) -> None:
+    """Add allow-listed resource snapshots and the local search namespace."""
+
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS resource_cache (
+            ref TEXT PRIMARY KEY,
+            resource_type TEXT NOT NULL,
+            cv_cid INTEGER NOT NULL,
+            item_id INTEGER,
+            course_no TEXT,
+            title TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            detail_level TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS resource_cache_by_scope
+            ON resource_cache (cv_cid, resource_type);
+        CREATE TABLE IF NOT EXISTS search_documents (
+            id INTEGER PRIMARY KEY,
+            ref TEXT NOT NULL UNIQUE,
+            resource_type TEXT NOT NULL,
+            cv_cid INTEGER NOT NULL,
+            course_no TEXT,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS search_documents_by_scope
+            ON search_documents (cv_cid, resource_type);
+        CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
+            title,
+            content,
+            content='search_documents',
+            content_rowid='id'
+        );
+        CREATE TRIGGER IF NOT EXISTS search_documents_ai
+        AFTER INSERT ON search_documents BEGIN
+            INSERT INTO search_fts(rowid, title, content)
+            VALUES (new.id, new.title, new.content);
+        END;
+        CREATE TRIGGER IF NOT EXISTS search_documents_ad
+        AFTER DELETE ON search_documents BEGIN
+            INSERT INTO search_fts(search_fts, rowid, title, content)
+            VALUES ('delete', old.id, old.title, old.content);
+        END;
+        CREATE TRIGGER IF NOT EXISTS search_documents_au
+        AFTER UPDATE ON search_documents BEGIN
+            INSERT INTO search_fts(search_fts, rowid, title, content)
+            VALUES ('delete', old.id, old.title, old.content);
+            INSERT INTO search_fts(rowid, title, content)
+            VALUES (new.id, new.title, new.content);
+        END;
+        CREATE TABLE IF NOT EXISTS search_scopes (
+            cv_cid INTEGER NOT NULL,
+            resource_type TEXT NOT NULL,
+            available INTEGER NOT NULL,
+            detail_level TEXT NOT NULL,
+            refreshed_at TEXT NOT NULL,
+            PRIMARY KEY (cv_cid, resource_type)
+        );
+        CREATE INDEX IF NOT EXISTS search_scopes_by_type
+            ON search_scopes (resource_type, cv_cid);
+        """
+    )
+
+
 class CacheStore:
     """One protected SQLite local store with separate logical namespaces.
 
@@ -101,6 +250,12 @@ class CacheStore:
             connection = sqlite3.connect(self.path, timeout=5.0)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA busy_timeout = 1000")
+        if read_only:
+            try:
+                self._assert_supported_schema(connection)
+            except Exception:
+                connection.close()
+                raise
         return connection
 
     def _ensure_parent(self) -> None:
@@ -120,131 +275,145 @@ class CacheStore:
                 pass
 
     def _initialize(self, connection: sqlite3.Connection) -> None:
-        connection.executescript(
-            """
-            PRAGMA journal_mode = DELETE;
-            CREATE TABLE IF NOT EXISTS metadata (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS semesters (
-                value TEXT PRIMARY KEY,
-                is_current INTEGER NOT NULL DEFAULT 0,
-                updated_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS courses (
-                cv_cid INTEGER NOT NULL,
-                course_no TEXT NOT NULL,
-                title TEXT NOT NULL,
-                year TEXT NOT NULL,
-                semester TEXT NOT NULL,
-                section TEXT NOT NULL,
-                role TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                PRIMARY KEY (cv_cid, year, semester, section)
-            );
-            CREATE TABLE IF NOT EXISTS folders (
-                cv_cid INTEGER NOT NULL,
-                folder_id TEXT NOT NULL,
-                name TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                PRIMARY KEY (cv_cid, folder_id)
-            );
-            CREATE TABLE IF NOT EXISTS resources (
-                resource_type TEXT NOT NULL,
-                cv_cid INTEGER NOT NULL,
-                item_id INTEGER NOT NULL,
-                title TEXT NOT NULL,
-                folder_id TEXT NOT NULL,
-                scheduled_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                PRIMARY KEY (resource_type, cv_cid, item_id)
-            );
-            CREATE TABLE IF NOT EXISTS groupings (
-                cv_cid INTEGER NOT NULL,
-                grouping_id INTEGER NOT NULL,
-                name TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                PRIMARY KEY (cv_cid, grouping_id)
-            );
-            CREATE TABLE IF NOT EXISTS collection_status (
-                collection_type TEXT NOT NULL,
-                cv_cid INTEGER NOT NULL,
-                available INTEGER NOT NULL,
-                updated_at TEXT NOT NULL,
-                PRIMARY KEY (collection_type, cv_cid)
-            );
-            CREATE INDEX IF NOT EXISTS resources_by_course
-                ON resources (cv_cid, resource_type);
-            CREATE TABLE IF NOT EXISTS resource_cache (
-                ref TEXT PRIMARY KEY,
-                resource_type TEXT NOT NULL,
-                cv_cid INTEGER NOT NULL,
-                item_id INTEGER,
-                course_no TEXT,
-                title TEXT NOT NULL,
-                payload_json TEXT NOT NULL,
-                detail_level TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS resource_cache_by_scope
-                ON resource_cache (cv_cid, resource_type);
-            CREATE TABLE IF NOT EXISTS search_documents (
-                id INTEGER PRIMARY KEY,
-                ref TEXT NOT NULL UNIQUE,
-                resource_type TEXT NOT NULL,
-                cv_cid INTEGER NOT NULL,
-                course_no TEXT,
-                title TEXT NOT NULL,
-                content TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS search_documents_by_scope
-                ON search_documents (cv_cid, resource_type);
-            CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
-                title,
-                content,
-                content='search_documents',
-                content_rowid='id'
-            );
-            CREATE TRIGGER IF NOT EXISTS search_documents_ai
-            AFTER INSERT ON search_documents BEGIN
-                INSERT INTO search_fts(rowid, title, content)
-                VALUES (new.id, new.title, new.content);
-            END;
-            CREATE TRIGGER IF NOT EXISTS search_documents_ad
-            AFTER DELETE ON search_documents BEGIN
-                INSERT INTO search_fts(search_fts, rowid, title, content)
-                VALUES ('delete', old.id, old.title, old.content);
-            END;
-            CREATE TRIGGER IF NOT EXISTS search_documents_au
-            AFTER UPDATE ON search_documents BEGIN
-                INSERT INTO search_fts(search_fts, rowid, title, content)
-                VALUES ('delete', old.id, old.title, old.content);
-                INSERT INTO search_fts(rowid, title, content)
-                VALUES (new.id, new.title, new.content);
-            END;
-            CREATE TABLE IF NOT EXISTS search_scopes (
-                cv_cid INTEGER NOT NULL,
-                resource_type TEXT NOT NULL,
-                available INTEGER NOT NULL,
-                detail_level TEXT NOT NULL,
-                refreshed_at TEXT NOT NULL,
-                PRIMARY KEY (cv_cid, resource_type)
-            );
-            CREATE INDEX IF NOT EXISTS search_scopes_by_type
-                ON search_scopes (resource_type, cv_cid);
-            """
-        )
-        connection.execute(
-            "INSERT INTO metadata(key, value) VALUES('schema_version', ?) "
-            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            (str(_CACHE_SCHEMA_VERSION),),
-        )
+        """Create a new store or migrate a known store one version at a time."""
+
+        metadata_exists = _table_exists(connection, "metadata")
+        if metadata_exists:
+            version = self._read_schema_version(connection, infer_legacy=True)
+        elif _table_exists(connection, "courses"):
+            # Very early cache files had the completion tables but no metadata
+            # row.  Treat those files as the first version and add the marker
+            # only after checking that no future schema is present.
+            version = 1
+        else:
+            version = 0
+        if version > _CACHE_SCHEMA_VERSION:
+            raise CacheSchemaError(
+                "The local cache was created by a newer mcv version; refusing to modify it.",
+                operation="open",
+                details={
+                    "reason": "future",
+                    "schema_version": version,
+                    "supported_version": _CACHE_SCHEMA_VERSION,
+                },
+            )
+
+        connection.execute("PRAGMA journal_mode = DELETE")
+        if not metadata_exists:
+            connection.execute(
+                "CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+            )
+            connection.commit()
+        if version < 1:
+            self._migrate(connection, 0, 1, _create_schema_v1)
+            version = 1
+        migrations = {
+            1: _migrate_schema_1_to_2,
+            2: _migrate_schema_2_to_3,
+        }
+        while version < _CACHE_SCHEMA_VERSION:
+            migration = migrations.get(version)
+            if migration is None:
+                raise CacheSchemaError(
+                    f"The local cache schema version {version} is not supported.",
+                    operation="migrate",
+                    details={"schema_version": version},
+                )
+            next_version = version + 1
+            self._migrate(connection, version, next_version, migration)
+            version = next_version
+
+    @staticmethod
+    def _read_schema_version(
+        connection: sqlite3.Connection,
+        *,
+        infer_legacy: bool = False,
+    ) -> int:
+        try:
+            row = connection.execute(
+                "SELECT value FROM metadata WHERE key = 'schema_version'"
+            ).fetchone()
+        except sqlite3.DatabaseError as error:
+            if infer_legacy:
+                try:
+                    if not _table_exists(connection, "metadata") and _table_exists(
+                        connection, "courses"
+                    ):
+                        return 1
+                except sqlite3.DatabaseError:
+                    pass
+            raise CacheSchemaError(
+                "The local cache metadata is unreadable.",
+                operation="inspect",
+                details={"reason": "corrupt"},
+            ) from error
+        if row is None:
+            if infer_legacy and _table_exists(connection, "courses"):
+                return 1
+            return 0
+        try:
+            version = int(row[0])
+        except (TypeError, ValueError) as error:
+            raise CacheSchemaError(
+                "The local cache schema version is invalid.",
+                operation="inspect",
+                details={"reason": "invalid"},
+            ) from error
+        if version < 1:
+            raise CacheSchemaError(
+                "The local cache schema version is invalid.",
+                operation="inspect",
+                details={"reason": "invalid", "schema_version": version},
+            )
+        return version
+
+    @staticmethod
+    def _assert_supported_schema(connection: sqlite3.Connection) -> None:
+        version = CacheStore._read_schema_version(connection, infer_legacy=True)
+        if version == 0:
+            raise CacheSchemaError(
+                "The local cache has no recognized schema; refusing to read it.",
+                operation="inspect",
+                details={"reason": "invalid"},
+            )
+        if version > _CACHE_SCHEMA_VERSION:
+            raise CacheSchemaError(
+                "The local cache was created by a newer mcv version; refusing to read it.",
+                operation="inspect",
+                details={
+                    "reason": "future",
+                    "schema_version": version,
+                    "supported_version": _CACHE_SCHEMA_VERSION,
+                },
+            )
+
+    @staticmethod
+    def _migrate(
+        connection: sqlite3.Connection,
+        current_version: int,
+        next_version: int,
+        migration: Any,
+    ) -> None:
+        try:
+            connection.execute("BEGIN")
+            migration(connection)
+            connection.execute(
+                "INSERT INTO metadata(key, value) VALUES('schema_version', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (str(next_version),),
+            )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
 
     def _open(self) -> sqlite3.Connection:
         connection = self._connect()
-        self._initialize(connection)
+        try:
+            self._initialize(connection)
+        except Exception:
+            connection.close()
+            raise
         if self.path.exists():
             try:
                 os.chmod(self.path, 0o600)
@@ -277,6 +446,7 @@ class CacheStore:
                 "profile": self.profile_name,
                 "provider": self.provider,
                 "exists": False,
+                "schema_version": None,
                 "last_refresh": None,
                 "counts": empty_completion_counts,
                 "completion": {
@@ -290,6 +460,7 @@ class CacheStore:
             }
         connection = self._connect(read_only=True)
         try:
+            schema_version = self._read_schema_version(connection, infer_legacy=True)
             counts = {
                 "courses": self._count(connection, "courses"),
                 "folders": self._count(connection, "folders"),
@@ -321,6 +492,7 @@ class CacheStore:
                 "profile": self.profile_name,
                 "provider": self.provider,
                 "exists": True,
+                "schema_version": schema_version,
                 "last_refresh": last_refresh,
                 "counts": counts,
                 "completion": {"last_refresh": last_refresh, "counts": counts},
@@ -372,6 +544,8 @@ class CacheStore:
         if not self.path.exists():
             return False
         if target == "all":
+            connection = self._connect(read_only=True)
+            connection.close()
             self.path.unlink()
             return True
 
@@ -917,6 +1091,10 @@ class CacheStore:
             return []
         try:
             connection = self._connect(read_only=True)
+        except CacheSchemaError as error:
+            if not _ignore_search_schema_error(error):
+                raise
+            return []
         except sqlite3.Error:
             return []
         try:
@@ -975,6 +1153,10 @@ class CacheStore:
             return []
         try:
             connection = self._connect(read_only=True)
+        except CacheSchemaError as error:
+            if not _ignore_search_schema_error(error):
+                raise
+            return []
         except sqlite3.Error:
             return []
         try:
@@ -1002,6 +1184,10 @@ class CacheStore:
             return []
         try:
             connection = self._connect(read_only=True)
+        except CacheSchemaError as error:
+            if not _ignore_search_schema_error(error):
+                raise
+            return []
         except sqlite3.Error:
             return []
         try:
@@ -1042,6 +1228,10 @@ class CacheStore:
             return []
         try:
             connection = self._connect(read_only=True)
+        except CacheSchemaError as error:
+            if not _ignore_search_schema_error(error):
+                raise
+            return []
         except sqlite3.Error:
             return []
         try:

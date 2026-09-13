@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -13,3 +15,6 @@ class Settings(BaseSettings):
     username: str | None = None
     storage_passphrase: str | None = Field(default=None, repr=False)
     timeout: float = 20.0
+    cache_dir: Path | None = None
+    config_dir: Path | None = None
+    prefer_keyring: bool = True

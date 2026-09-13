@@ -116,7 +116,11 @@ def cache_namespace(manager: AuthManager | None = None) -> CacheStore:
     except APIError:
         profile = None
     provider = profile.provider if profile is not None else None
-    return CacheStore(profile_name=manager.store.profile_name, provider=provider)
+    return CacheStore(
+        profile_name=manager.store.profile_name,
+        provider=provider,
+        root=manager.settings.cache_dir,
+    )
 
 
 def cache_update(ctx: typer.Context, value: Any) -> None:
