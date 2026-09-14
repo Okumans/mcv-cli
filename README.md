@@ -1,5 +1,10 @@
 # mcv
 
+Ever have a hard time with MyCourseVille, downloading materials one file at a
+time, wrestling with its interface, or simply wishing you could use a
+terminal? Introducing `mcv-cli`, a command-line tool that helps you read and
+organize MyCourseVille course content without opening a web browser.
+
 `mcv` is a small, unofficial command-line client for reading MyCourseVille
 course content from Unix systems.
 
@@ -13,6 +18,27 @@ The client is read-only against MyCourseVille. It can download files and create
 local archives, but it does not submit, upload, edit, delete, join meetings,
 control attendance, or mutate CourseVille data. The upstream web behavior is
 reverse-engineered and may change without notice.
+
+## Current support
+
+- [x] Authenticate with MyCourseVille and manage the local session.
+- [x] Discover courses and select semesters.
+- [x] Read course information, materials, folders, assignments, and
+      announcements.
+- [x] Read assignment details, including question-set and submission metadata
+      when available.
+- [x] Read meeting metadata, schedules, groups, portfolios, playlists, and web
+      resources.
+- [x] Download material files and archive material folders locally.
+- [x] Retrieve resources through canonical references or supported official
+      MyCourseVille URLs.
+- [x] Cache course content locally and search it from the terminal.
+- [x] Use human-readable tables, JSON, and JSONL output modes.
+
+## TODO
+
+- [ ] Upload files to assignment submissions.
+- [ ] Investigate answering and submitting question-set assignments.
 
 ## Upstream coupling
 
