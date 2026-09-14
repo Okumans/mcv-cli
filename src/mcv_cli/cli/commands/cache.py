@@ -8,8 +8,8 @@ import typer
 from ...api.core.errors import APIError, NotFoundError
 from ...api.core.refs import ResourceType
 from ...runtime.cache_access import active_cache
+from ...runtime.completion import complete_courses
 from ...runtime.errors import CacheError
-from ...runtime.fast_completion import complete_courses
 from ..context import (
     cache_namespace,
     course_semester,

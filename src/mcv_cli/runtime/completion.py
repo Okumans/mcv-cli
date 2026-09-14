@@ -1,4 +1,4 @@
-"""Typer callbacks backed only by the completion marker and SQLite index."""
+"""Completion callbacks backed only by the completion marker and SQLite index."""
 
 from __future__ import annotations
 
@@ -8,8 +8,6 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from typer._click.shell_completion import CompletionItem
-
 from .completion_index import CompletionIndex, CompletionRecord
 from .completion_state import active_cache_path
 
@@ -18,6 +16,12 @@ _COMPLETION_SEPARATOR = re.compile(r"[^\w]+", flags=re.UNICODE)
 _FUZZY_TOKEN_MIN_LENGTH = 3
 _FUZZY_TOKEN_THRESHOLD = 75.0
 _NO_MATCHING_COURSE = -1
+
+
+@dataclass(frozen=True)
+class CompletionCandidate:
+    value: str
+    help: str | None = None
 
 
 @dataclass(frozen=True)
@@ -196,7 +200,7 @@ def completion_items(
     resource_type: str | object | None = None,
     semesters: Collection[str] | None = None,
     all_semesters: bool = False,
-) -> list[CompletionItem]:
+) -> list[CompletionCandidate]:
     index = index or _active_index()
     if index is None:
         return []
@@ -211,7 +215,7 @@ def completion_items(
         return []
     query = _normalize_completion_text(incomplete)
     return [
-        CompletionItem(record.value, help=record.help)
+        CompletionCandidate(record.value, help=record.help)
         for record in records
         if _matches_resource_type(record, resource_type)
         if _matches_completion_query(query, record)
@@ -375,17 +379,17 @@ def complete_static(
     ctx: Any,
     args: list[str],
     incomplete: str,
-) -> list[CompletionItem]:
+) -> list[CompletionCandidate]:
     del ctx, args
     prefix = incomplete.casefold()
     return [
-        CompletionItem(value, help=help_text)
+        CompletionCandidate(value, help=help_text)
         for value, help_text in values.items()
         if value.casefold().startswith(prefix)
     ]
 
 
-def complete_course_group(ctx: Any, incomplete: str) -> list[CompletionItem]:
+def complete_course_group(ctx: Any, incomplete: str) -> list[CompletionCandidate]:
     raw_args = [
         *list(getattr(ctx, "_protected_args", [])),
         *list(getattr(ctx, "args", [])),
@@ -439,7 +443,7 @@ def complete_course_group(ctx: Any, incomplete: str) -> list[CompletionItem]:
                     unavailable_optional.add(resource)
         prefix = incomplete.casefold()
         return [
-            CompletionItem(value, help=help_text)
+            CompletionCandidate(value, help=help_text)
             for value, help_text in resources.items()
             if value not in unavailable_optional
             if value.casefold().startswith(prefix)
@@ -535,6 +539,7 @@ def complete_course_group(ctx: Any, incomplete: str) -> list[CompletionItem]:
 
 
 __all__ = [
+    "CompletionCandidate",
     "complete_course_filters",
     "complete_course_group",
     "complete_courses",

@@ -89,6 +89,21 @@ def test_chula_login_posts_credentials_and_persists_session(file_store) -> None:
 
 
 @respx.mock
+def test_session_check_repairs_completion_marker_for_existing_profile(file_store, profile) -> None:
+    file_store.save(profile)
+    respx.get(BASE_URL).mock(return_value=httpx.Response(200, text="logout"))
+
+    manager = AuthManager(store=file_store, settings=file_store.settings)
+    manager.check_session()
+
+    state = read_state(file_store.settings.config_dir)
+    assert state is not None
+    assert state.enabled is True
+    assert state.profile == file_store.profile_name
+    assert state.provider == "chula"
+
+
+@respx.mock
 def test_platform_login_can_use_email_field(file_store) -> None:
     respx.get(PUBLIC_AUTHORIZATION_URL).mock(
         return_value=httpx.Response(302, headers={"location": PLATFORM_LOGIN_URL})

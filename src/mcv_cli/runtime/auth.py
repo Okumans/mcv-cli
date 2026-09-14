@@ -231,16 +231,7 @@ class AuthManager:
             )
         profile = StoredProfile(provider=selected, cookies=cookies)
         self.store.save(profile)
-        try:
-            activate(
-                profile_name=self.store.profile_name,
-                provider=profile.provider.value,
-                config_dir=self.settings.config_dir,
-            )
-        except OSError:
-            # Authentication remains successful if the optional completion
-            # marker cannot be written.
-            pass
+        self._activate_completion(profile)
         return profile
 
     def check_session(self) -> None:
@@ -255,6 +246,9 @@ class AuthManager:
                 self._verify_session(client)
         except httpx.HTTPError as exc:
             raise AuthenticationError("The MyCourseVille session check failed.") from exc
+        profile = self.store.load()
+        if profile is not None:
+            self._activate_completion(profile)
 
     def get_session_cookies(self) -> dict[str, str]:
         profile = self.store.load()
@@ -269,6 +263,18 @@ class AuthManager:
         try:
             deactivate(self.settings.config_dir)
         except OSError:
+            pass
+
+    def _activate_completion(self, profile: StoredProfile) -> None:
+        try:
+            activate(
+                profile_name=self.store.profile_name,
+                provider=profile.provider.value,
+                config_dir=self.settings.config_dir,
+            )
+        except OSError:
+            # Authentication remains successful if the optional completion
+            # marker cannot be written.
             pass
 
     def _load_login_form(self, client: httpx.Client, provider: AuthProvider) -> LoginForm:

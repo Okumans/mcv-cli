@@ -12,8 +12,8 @@ from mcv_cli.api.resources.courses.models import Course
 from mcv_cli.api.resources.materials.models import Material, MaterialFolder
 from mcv_cli.api.resources.playlists.models import PlaylistCollection
 from mcv_cli.runtime.cache import CacheStore
+from mcv_cli.runtime.completion import completion_items
 from mcv_cli.runtime.errors import CacheSchemaError
-from mcv_cli.runtime.fast_completion import completion_items
 
 
 @pytest.mark.parametrize("version", [1, 2])
@@ -207,7 +207,7 @@ def test_resource_snapshot_replaces_only_the_requested_course_and_type(tmp_path:
 
 def test_completion_returns_empty_for_missing_or_corrupt_cache(tmp_path: Path, monkeypatch) -> None:
     missing = CacheStore(profile_name="default", provider="chula", root=tmp_path)
-    monkeypatch.setattr("mcv_cli.runtime.fast_completion.active_cache_path", lambda: missing.path)
+    monkeypatch.setattr("mcv_cli.runtime.completion.active_cache_path", lambda: missing.path)
     assert completion_items("courses", "") == []
 
     missing.path.parent.mkdir(parents=True)

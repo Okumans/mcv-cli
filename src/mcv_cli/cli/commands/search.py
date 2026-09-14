@@ -10,7 +10,7 @@ from ...api.search import SearchClient
 from ...api.search.models import SearchResult
 from ...presentation.json import ShellIdList
 from ...runtime.cache import CacheStore
-from ...runtime.fast_completion import complete_course_filters, complete_courses
+from ...runtime.completion import complete_course_filters, complete_courses
 from ..context import cache_namespace, reject_semester_scope, run, selected_semester
 from ..errors import UsageError
 from ..fuzzy import select_search_result

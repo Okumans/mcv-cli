@@ -6,7 +6,7 @@ import typer
 from typer.core import TyperGroup
 
 from .. import __version__
-from ..runtime.fast_completion import complete_course_group, complete_semesters
+from ..runtime.completion import complete_course_group, complete_semesters
 from .help import install_minimal_rich_help
 
 install_minimal_rich_help()

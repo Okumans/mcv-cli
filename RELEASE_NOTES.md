@@ -1,5 +1,18 @@
 # Release notes
 
+## 0.5.0
+
+This release makes shell completion independent of the normal Typer command
+tree and keeps the completion process lightweight.
+
+- Replaced the Typer completion client with the stdlib-only `completion_cli`
+  protocol dispatcher.
+- Kept dynamic course, resource, semester, folder, grouping, and reference
+  completion backed by the current SQLite cache.
+- Repaired completion-state activation for existing authenticated profiles and
+  ordered root commands before global options.
+- Renamed the completion runtime modules to `completion` and `completion_cli`.
+
 ## 0.4.0
 
 This release improves the interactive CLI workflow and keeps cached content

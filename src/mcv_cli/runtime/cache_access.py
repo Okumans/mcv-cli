@@ -5,6 +5,7 @@ from __future__ import annotations
 from ..api.core.errors import APIError
 from .auth import AuthManager
 from .cache import CacheStore
+from .completion_state import activate
 from .config import Settings
 
 
@@ -21,6 +22,16 @@ def active_cache() -> CacheStore | None:
         return None
     if profile is None or not profile.cookies:
         return None
+    try:
+        activate(
+            profile_name=manager.store.profile_name,
+            provider=profile.provider.value,
+            config_dir=settings.config_dir,
+        )
+    except OSError:
+        # Cache access remains usable if the optional completion marker cannot
+        # be written.
+        pass
     return CacheStore(
         profile_name=manager.store.profile_name,
         provider=profile.provider,

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from mcv_cli.api.resources.courses.models import Course
 from mcv_cli.runtime.cache import CacheStore
+from mcv_cli.runtime.completion_cli import complete_arguments
 from mcv_cli.runtime.completion_state import activate
 
 
@@ -70,7 +71,15 @@ def _make_active_cache(tmp_path: Path) -> tuple[Path, Path]:
     return config_dir, cache_dir
 
 
-def test_typer_fast_client_preserves_all_shell_completion_protocols(tmp_path: Path) -> None:
+def test_root_completion_lists_commands_before_options() -> None:
+    values = [item.value for item in complete_arguments([], "")]
+
+    assert values[:4] == ["auth", "courses", "assignments", "announcements"]
+    assert values.index("courses") < values.index("--all")
+    assert values.index("assignments") < values.index("-q")
+
+
+def test_completion_client_preserves_all_shell_completion_protocols(tmp_path: Path) -> None:
     config_dir, cache_dir = _make_active_cache(tmp_path)
 
     bash = _completion_process(
@@ -135,7 +144,7 @@ def test_fish_is_args_and_missing_marker_fail_closed(tmp_path: Path) -> None:
     assert inactive.stdout == ""
 
 
-def test_completion_does_not_import_normal_app_or_rich(tmp_path: Path) -> None:
+def test_completion_does_not_import_normal_app_typer_or_rich(tmp_path: Path) -> None:
     config_dir = tmp_path / "config"
     cache_dir = tmp_path / "cache"
     environment = os.environ.copy()
@@ -161,13 +170,18 @@ import sys
 
 class RejectRich(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
-        if fullname == "rich" or fullname.startswith("rich."):
-            raise RuntimeError("Rich import attempted: " + fullname)
+        if (
+            fullname == "rich"
+            or fullname.startswith("rich.")
+            or fullname == "typer"
+            or fullname.startswith("typer.")
+        ):
+            raise RuntimeError("heavy completion import attempted: " + fullname)
         return None
 
 
-if "rich" in sys.modules:
-    raise RuntimeError("Rich was already imported before completion")
+if "rich" in sys.modules or "typer" in sys.modules:
+    raise RuntimeError("a heavy completion module was already imported")
 sys.meta_path.insert(0, RejectRich())
 sys.argv[0] = "mcv"
 from mcv_cli.entrypoint import main
@@ -176,10 +190,11 @@ try:
         main()
 except SystemExit:
     pass
-if "rich" in sys.modules:
-    raise RuntimeError("Rich imported during completion")
+if "rich" in sys.modules or "typer" in sys.modules:
+    raise RuntimeError("a heavy completion module was imported")
 print("normal_app=" + str("mcv_cli.cli.app" in sys.modules))
 print("rich=" + str("rich" in sys.modules))
+print("typer=" + str("typer" in sys.modules))
 """,
         ],
         capture_output=True,
@@ -189,4 +204,8 @@ print("rich=" + str("rich" in sys.modules))
     )
 
     assert result.returncode == 0
-    assert result.stdout.splitlines() == ["normal_app=False", "rich=False"]
+    assert result.stdout.splitlines() == [
+        "normal_app=False",
+        "rich=False",
+        "typer=False",
+    ]
