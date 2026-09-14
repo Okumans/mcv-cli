@@ -446,6 +446,15 @@ def test_course_scoped_archive_keeps_command_options_after_verb() -> None:
     assert "--format" in result.stdout
     assert "tar.gz" in result.stdout
     assert "--output" in result.stdout
+    assert "folder name" in result.stdout
+
+
+def test_course_scoped_download_output_is_optional() -> None:
+    result = runner.invoke(app, ["courses", "2110575", "materials", "download", "--help"])
+
+    assert result.exit_code == 0
+    assert "--output" in result.stdout
+    assert "remote filename" in result.stdout
 
 
 def test_course_scoped_resource_actions_are_consistent() -> None:

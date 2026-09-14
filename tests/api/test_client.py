@@ -896,6 +896,62 @@ def test_download_does_not_send_bearer_to_external_host(tmp_path: Path) -> None:
     assert result.sha256 == hashlib.sha256(b"pdf-content").hexdigest()
 
 
+def test_download_uses_remote_filename_by_default(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params.get("q") == "courseville/ajax/course":
+            return httpx.Response(200, text=MATERIALS_HTML, request=request)
+        return httpx.Response(200, content=b"pdf-content", request=request)
+
+    transport = httpx.MockTransport(handler)
+    with httpx.Client(
+        base_url=BASE_URL,
+        transport=transport,
+        follow_redirects=False,
+    ) as http_client, httpx.Client(
+        transport=transport,
+        follow_redirects=False,
+    ) as download_client:
+        client = MCVAPI(
+            FakeAuth(),
+            http_client=http_client,
+            download_client=download_client,
+        )
+        result = client.materials.download(123, 9)
+
+    output = tmp_path / "lecture-1.pdf"
+    assert output.read_bytes() == b"pdf-content"
+    assert result.path == "lecture-1.pdf"
+
+
+def test_archive_uses_remote_folder_name_by_default(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    transport = httpx.MockTransport(resource_response_for)
+    with httpx.Client(
+        base_url=BASE_URL,
+        transport=transport,
+        follow_redirects=False,
+    ) as http_client, httpx.Client(
+        transport=transport,
+        follow_redirects=False,
+    ) as download_client:
+        client = MCVAPI(
+            FakeAuth(),
+            http_client=http_client,
+            download_client=download_client,
+        )
+        zip_result = client.materials.archive(123, "Week 1")
+        tar_result = client.materials.archive(123, "folder-1", archive_format="tar.gz")
+
+    assert zip_result.path == "Week 1.zip"
+    assert zip_result.format == "zip"
+    assert (tmp_path / "Week 1.zip").is_file()
+    assert tar_result.path == "Week 1.tar.gz"
+    assert tar_result.format == "tar.gz"
+    assert (tmp_path / "Week 1.tar.gz").is_file()
+
+
 def test_get_material_raises_for_unknown_item() -> None:
     with httpx.Client(
         base_url=BASE_URL,

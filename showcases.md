@@ -493,6 +493,11 @@ Downloads:
 - set the resulting file to mode `0600`;
 - report byte count and SHA-256 in the result.
 
+`--output` is optional. Without it, a download uses the remote filename in the
+current directory. An archive uses the remote folder name with a `.zip`
+extension; `--format` changes the default extension when no output path is
+provided.
+
 ### Archive a material folder
 
 ```bash
@@ -509,7 +514,7 @@ uv run mcv courses "$MCV_COURSE" materials archive "IoT Hardware" \
 Options:
 
 ```text
---output, -o PATH   required destination
+--output, -o PATH   optional destination; defaults to the remote name
 --format FORMAT     optional override: zip, tar, or tar.gz
 --force             allow replacement of an existing destination
 ```

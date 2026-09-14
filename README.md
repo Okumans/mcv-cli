@@ -365,6 +365,10 @@ mcv courses 2110575 materials download 2160993 \
   --output ./lecture.pdf
 ```
 
+`--output` is optional. When omitted, a download uses the remote filename in
+the current directory. An archive uses the remote folder name with `.zip`; use
+`--format tar` or `--format tar.gz` to choose another default extension.
+
 Archive a material folder locally:
 
 ```bash

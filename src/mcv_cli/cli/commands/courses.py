@@ -199,7 +199,12 @@ def materials_archive(
     ctx: typer.Context,
     course: str = typer.Argument(..., autocompletion=complete_courses),
     folder: str = typer.Argument(..., autocompletion=complete_folders),
-    output: Path = typer.Option(..., "--output", "-o"),
+    output: Path | None = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Archive path; defaults to the remote folder name with a .zip extension.",
+    ),
     archive_format: ArchiveFormat | None = typer.Option(
         None, "--format", help="Override output-extension inference (zip, tar, or tar.gz)."
     ),
@@ -225,7 +230,12 @@ def materials_download(
     item_id: str = typer.Argument(
         ..., help="Material id or canonical ref.", autocompletion=complete_refs
     ),
-    output: Path = typer.Option(..., "--output", "-o"),
+    output: Path | None = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Output file; defaults to the remote filename.",
+    ),
     force: bool = typer.Option(False, "--force"),
 ) -> None:
     def action() -> Any:

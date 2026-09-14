@@ -24,10 +24,18 @@ def resolve_archive_format(output: Path, requested: str | None) -> ArchiveFormat
 
 def archive_filename(material: Material) -> str:
     if material.filepath:
-        name = Path(unquote(urlparse(material.filepath).path)).name
+        name = _safe_basename(Path(unquote(urlparse(material.filepath).path)).name)
         if name:
             return name
     return f"{material.itemid}.bin"
+
+
+def default_archive_path(folder_name: str, requested: ArchiveFormat | None) -> Path:
+    """Build a safe default archive path from a remote folder name."""
+
+    name = _safe_basename(folder_name) or "materials"
+    suffix = requested or "zip"
+    return Path(f"{name}.{suffix}")
 
 
 def unique_archive_name(name: str, used_names: set[str]) -> str:
@@ -44,4 +52,14 @@ def unique_archive_name(name: str, used_names: set[str]) -> str:
     return unique
 
 
-__all__ = ["archive_filename", "resolve_archive_format", "unique_archive_name"]
+def _safe_basename(value: str) -> str:
+    name = Path(value).name
+    return "" if name in {"", ".", ".."} else name
+
+
+__all__ = [
+    "archive_filename",
+    "default_archive_path",
+    "resolve_archive_format",
+    "unique_archive_name",
+]

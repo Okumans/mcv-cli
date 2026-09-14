@@ -277,6 +277,9 @@ The archive format is inferred from the output extension first:
 
 Use `--format zip`, `--format tar`, or `--format tar.gz` to override inference.
 Existing files are not overwritten unless `--force` is supplied.
+`--output` is optional: downloads default to the remote filename, while
+archives default to the remote folder name with the selected format extension
+(or `.zip` when no format is given).
 
 ## Local store, completion, and search
 

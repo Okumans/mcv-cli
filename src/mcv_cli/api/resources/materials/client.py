@@ -16,7 +16,12 @@ from ...core.errors import AuthenticationRequired, DownloadError, NotFoundError
 from ...core.parsing import html_from_response
 from ...core.transport import MCVTransport
 from .._base import ResourceClient
-from .archive import archive_filename, resolve_archive_format, unique_archive_name
+from .archive import (
+    archive_filename,
+    default_archive_path,
+    resolve_archive_format,
+    unique_archive_name,
+)
 from .models import ArchiveFormat, ArchiveResult, DownloadResult, Material, MaterialFolder
 from .parser import parse_material_detail, parse_materials
 
@@ -80,13 +85,15 @@ class MaterialsClient(ResourceClient):
         self,
         cv_cid: int,
         item_id: int,
-        output: Path,
+        output: Path | None = None,
         *,
         force: bool = False,
     ) -> DownloadResult:
         material = self.get(cv_cid, item_id)
         if not material.filepath:
             raise DownloadError(f"Material {item_id} does not contain a downloadable file URL.")
+        if output is None:
+            output = Path(archive_filename(material))
         if output.exists() and not force:
             raise DownloadError(f"Refusing to overwrite existing file: {output}")
         if not output.parent.exists():
@@ -119,16 +126,11 @@ class MaterialsClient(ResourceClient):
         self,
         cv_cid: int,
         folder: str,
-        output: Path,
+        output: Path | None = None,
         *,
         archive_format: ArchiveFormat | None = None,
         force: bool = False,
     ) -> ArchiveResult:
-        resolved_format = resolve_archive_format(output, archive_format)
-        if output.exists() and not force:
-            raise DownloadError(f"Refusing to overwrite existing file: {output}")
-        if not output.parent.exists():
-            raise DownloadError(f"Output directory does not exist: {output.parent}")
         selected = next(
             (
                 item
@@ -144,6 +146,14 @@ class MaterialsClient(ResourceClient):
                 resource="material_folder",
                 operation="get",
             )
+
+        if output is None:
+            output = default_archive_path(selected.name, archive_format)
+        resolved_format = resolve_archive_format(output, archive_format)
+        if output.exists() and not force:
+            raise DownloadError(f"Refusing to overwrite existing file: {output}")
+        if not output.parent.exists():
+            raise DownloadError(f"Output directory does not exist: {output.parent}")
 
         fd, temporary_name = tempfile.mkstemp(
             prefix=f".{output.name}.", suffix=".part", dir=output.parent
