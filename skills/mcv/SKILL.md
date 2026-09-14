@@ -217,7 +217,9 @@ returns nonzero if any lookup fails. Add `--envelope` for explicit
 Default output is for humans. Each resource type has a dedicated display:
 collections use resource-specific tables, details use labeled summaries, and
 downloads/archives use concise completion messages. Human mode should not be
-parsed as JSON.
+parsed as JSON. Collection tables use colored headers and portable ASCII
+separators with the outer edge disabled; labeled detail views are borderless.
+Keep that styling in human mode while leaving JSON and JSONL output unstyled.
 
 The course-scoped assignment detail command uses its compact display unless
 `--full` is supplied. `mcv get REF...` always uses the full resource display so
@@ -259,6 +261,7 @@ Material files can be downloaded directly:
 ```bash
  mcv courses 2110575 materials download 2160993 \
   --output ./lecture.pdf
+ mcv courses 2110575 materials download 2160993
 ```
 
 Archive a material folder with an output name:
@@ -279,7 +282,9 @@ Use `--format zip`, `--format tar`, or `--format tar.gz` to override inference.
 Existing files are not overwritten unless `--force` is supplied.
 `--output` is optional: downloads default to the remote filename, while
 archives default to the remote folder name with the selected format extension
-(or `.zip` when no format is given).
+(or `.zip` when no format is given). Both defaults are written in the current
+directory; use `--format` to select an archive extension when `--output` is
+omitted.
 
 ## Local store, completion, and search
 
@@ -296,6 +301,16 @@ authentication:
  mcv cache clear search
  mcv cache clear all
 ```
+
+Dynamic completion is cache-only and matches both each candidate's inserted
+value and its readable aliases. Course candidates can be found by course
+number, title words, semester, or `cv_cid`; matching ignores case and
+punctuation, accepts fragments anywhere in an alias, and tolerates small
+spelling mistakes. For example, after refreshing the cache,
+`mcv courses fault<TAB>` can insert the course number for a cached course
+whose title contains “FAULT TOLERANT COMPUTING”. The same alias-aware matching
+is used for semesters, folders, groupings, and canonical refs where readable
+help text is available.
 
 The local store is one SQLite file with separate logical namespaces. The
 completion index contains course names, folder names, titles, semesters,
