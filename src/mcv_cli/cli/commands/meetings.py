@@ -14,7 +14,9 @@ def register(app: typer.Typer) -> None:
 def list_meetings(
     ctx: typer.Context,
     include_past: bool = typer.Option(
-        False, "--include-past", help="Include meetings whose scheduled time has passed."
+        False,
+        "--include-past",
+        help="Show meetings from all dates, including meetings whose scheduled time has passed.",
     ),
     refs: bool = typer.Option(
         False, "--refs", help="Print canonical meeting references one per line."

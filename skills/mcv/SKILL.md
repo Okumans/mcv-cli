@@ -113,8 +113,10 @@ Useful commands:
  mcv courses 2110575 search "docker"
 ```
 
-Meetings exclude past events by default. Meeting results expose a preferred
-`url`, using the direct join URL when available and otherwise the detail page.
+Meeting lists show today's not-yet-past events by default. Use
+`--include-past` to show meetings from all dates, including past events. Meeting
+results expose a preferred `url`, using the direct join URL when available and
+otherwise the detail page.
 
 Assignment `show` uses a compact student-facing display by default. For a
 question-set assignment, each question is rendered as one numbered heading

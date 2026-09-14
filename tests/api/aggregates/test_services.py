@@ -70,6 +70,12 @@ class FakeMeetings:
                     join_url="https://zoom.example/meeting/29631",
                 ),
                 OnlineMeeting(
+                    itemid=29633,
+                    cv_cid=cv_cid,
+                    scheduled_at="Sep 12 2026 14:00",
+                    join_url="https://zoom.example/meeting/29633",
+                ),
+                OnlineMeeting(
                     itemid=29632,
                     cv_cid=cv_cid,
                     detail_url="https://mycourseville.example/meeting/29632",
@@ -108,15 +114,17 @@ def test_assignment_service_understands_web_submission_statuses() -> None:
     assert is_pending(Assignment(itemid=4, status="Draft"))
 
 
-def test_meeting_service_hides_past_meetings_by_default() -> None:
+def test_meeting_service_shows_today_by_default() -> None:
     service = MeetingService(cast(object, FakeAPI()))
     now = datetime(2026, 9, 12, 12, 0, tzinfo=ZoneInfo("Asia/Bangkok"))
 
-    upcoming = service.list_for_course(86428, now=now)
+    today = service.list_for_course(86428, now=now)
+    upcoming = service.list_for_course(86428, today_only=False, now=now)
     all_meetings = service.list_for_course(86428, include_past=True, now=now)
 
-    assert [meeting.itemid for meeting in upcoming] == [29631, 29632]
-    assert [meeting.itemid for meeting in all_meetings] == [29630, 29631, 29632]
+    assert [meeting.itemid for meeting in today] == [29633]
+    assert [meeting.itemid for meeting in upcoming] == [29633, 29631, 29632]
+    assert [meeting.itemid for meeting in all_meetings] == [29630, 29633, 29631, 29632]
 
 
 def test_aggregate_services_forward_semester_scope() -> None:

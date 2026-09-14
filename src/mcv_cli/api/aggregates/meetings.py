@@ -18,11 +18,13 @@ class MeetingsAggregate:
         cv_cid: int,
         *,
         include_past: bool = False,
+        today_only: bool = True,
         now: datetime | None = None,
     ) -> list[OnlineMeeting]:
         return self.collection_for_course(
             cv_cid,
             include_past=include_past,
+            today_only=today_only,
             now=now,
         ).meetings
 
@@ -31,6 +33,7 @@ class MeetingsAggregate:
         cv_cid: int,
         *,
         include_past: bool = False,
+        today_only: bool = True,
         now: datetime | None = None,
     ) -> MeetingCollection:
         collection = self.api.meetings.list(cv_cid)
@@ -39,6 +42,7 @@ class MeetingsAggregate:
                 "meetings": self._filter(
                     collection.meetings,
                     include_past=include_past,
+                    today_only=today_only,
                     now=now,
                 )
             }
@@ -51,6 +55,7 @@ class MeetingsAggregate:
         semesters: Collection[str] | None = None,
         all_semesters: bool = False,
         include_past: bool = False,
+        today_only: bool = True,
         now: datetime | None = None,
     ) -> list[OnlineMeeting]:
         results: list[OnlineMeeting] = []
@@ -69,21 +74,32 @@ class MeetingsAggregate:
                 _with_course_context(item, course)
                 for item in self.api.meetings.list(course.cv_cid).meetings
             )
-        return self._filter(results, include_past=include_past, now=now)
+        return self._filter(
+            results,
+            include_past=include_past,
+            today_only=today_only,
+            now=now,
+        )
 
     @staticmethod
     def _filter(
         meetings: list[OnlineMeeting],
         *,
         include_past: bool,
+        today_only: bool,
         now: datetime | None,
     ) -> list[OnlineMeeting]:
         current = _meeting_now(now)
-        visible = (
-            meetings
-            if include_past
-            else [item for item in meetings if not _meeting_is_past(item, current)]
-        )
+        if include_past:
+            visible = meetings
+        elif today_only:
+            visible = [
+                item
+                for item in meetings
+                if _meeting_is_today(item, current) and not _meeting_is_past(item, current)
+            ]
+        else:
+            visible = [item for item in meetings if not _meeting_is_past(item, current)]
         return sorted(visible, key=_meeting_sort_key)
 
 
@@ -98,6 +114,11 @@ def _meeting_now(now: datetime | None) -> datetime:
 def _meeting_is_past(meeting: OnlineMeeting, now: datetime) -> bool:
     scheduled = meeting.scheduled_at_datetime
     return scheduled is not None and scheduled < now
+
+
+def _meeting_is_today(meeting: OnlineMeeting, now: datetime) -> bool:
+    scheduled = meeting.scheduled_at_datetime
+    return scheduled is not None and scheduled.date() == now.date()
 
 
 def _meeting_sort_key(meeting: OnlineMeeting) -> tuple[str, bool, datetime, int]:

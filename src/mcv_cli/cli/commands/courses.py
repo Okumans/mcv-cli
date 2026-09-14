@@ -355,7 +355,9 @@ def meetings_list(
     ctx: typer.Context,
     course: str = typer.Argument(..., autocompletion=complete_courses),
     include_past: bool = typer.Option(
-        False, "--include-past", help="Include meetings whose scheduled time has passed."
+        False,
+        "--include-past",
+        help="Show meetings from all dates, including meetings whose scheduled time has passed.",
     ),
     ids: bool = typer.Option(False, "--ids", help="Print meeting ids one per line."),
     refs: bool = typer.Option(

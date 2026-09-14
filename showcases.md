@@ -577,9 +577,10 @@ uv run mcv courses "$MCV_COURSE" meetings list --include-past
 uv run mcv courses "$MCV_COURSE" meetings show 29632
 ```
 
-Meeting lists hide meetings whose scheduled time has passed by default;
-`--include-past` returns the complete list. Each result includes `url`, which
-prefers the direct `join_url` and falls back to `detail_url`.
+Meeting lists show today's not-yet-past meetings by default;
+`--include-past` returns the complete list across all dates. Each result
+includes `url`, which prefers the direct `join_url` and falls back to
+`detail_url`.
 
 The course-scoped API returns a `MeetingCollection`. Its `available` flag is
 false when MyCourseVille omits the optional meeting section for that course;
