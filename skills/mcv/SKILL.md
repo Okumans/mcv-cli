@@ -13,6 +13,25 @@ downloads and archives are allowed, but the client must not be used to submit
 or edit assignments, upload files, join meetings, control attendance, or
 change course content.
 
+## Choosing a command
+
+Use the narrowest operation that satisfies the request:
+
+- Current deadlines, today's meetings, and recent announcements:
+  `mcv --quiet --json status`
+- A general "what is happening with my courses?" request: prefer `status`
+  over separate assignment, meeting, and announcement queries.
+- Find something by text: `mcv search QUERY`
+- Fresh search results: `mcv search QUERY --refresh`
+- A known canonical ref or MyCourseVille URL: `mcv get REF`
+- Browse a course resource: `mcv courses COURSE RESOURCE list`
+- Inspect a known resource: `mcv courses COURSE RESOURCE show ID`
+- Save material locally: `mcv courses COURSE materials download ...` or
+  `mcv courses COURSE materials archive ...`
+
+Prefer `--json` or `--jsonl` when reasoning over results or composing a
+pipeline.
+
 ## Execution and authentication
 
 When running in an isolated coding sandbox, authenticated or live `mcv`
@@ -54,6 +73,9 @@ semester is the default. Put global options before the command; repeat
 `--semester` to combine terms or use global `--all` for every available
 semester on supported collection commands.
 
+If a course title is ambiguous or only approximate, resolve it with
+`mcv --json courses list` first rather than guessing a course selector.
+
 ```bash
 mcv --json courses list
 mcv --semester 2025/2 --json courses list
@@ -83,13 +105,27 @@ mcv --json announcements list
 mcv --json meetings list --include-past
 ```
 
+For a broad current-status request, prefer `mcv --quiet --json status`; it
+provides the due assignments, today's meetings, and recent announcements in a
+single live snapshot.
+
 Use a course-scoped command when a raw item id needs its course namespace.
 Prefer canonical refs for anything that will be passed to another command.
 
 ## Canonical refs and pipelines
 
+When preserving identity across commands or turns, prefer this order:
+
+1. canonical `ref`
+2. `cv_cid` plus `itemid`
+3. `course_no` plus `itemid`
+
+Never persist or pass a raw `itemid` without its course context.
+
 Use `-r` or `--refs` on list and search commands to emit one canonical ref per
-line. `-r` is available everywhere `--refs` is available:
+line. `-r` is available everywhere `--refs` is available. When the next
+command only needs resource identity, prefer `-r/--refs` instead of JSON and
+avoid extracting ids manually with `jq`:
 
 ```bash
 mcv courses 2110575 materials list -r
@@ -117,7 +153,18 @@ mcv get "https://www.mycourseville.com/?q=courseville/worksheet/78748/1889560"
 For shell composition, keep one ref per line:
 
 ```bash
+set -o pipefail
 mcv assignments list --pending -r | xargs -r -n 20 mcv get
+```
+
+The core composition pattern is: use refs to select; use `get` to hydrate.
+For machine-readable batch processing, collect the JSONL records if needed:
+
+```bash
+set -o pipefail
+mcv assignments list --pending -r \
+  | xargs -r -n 20 mcv --jsonl get \
+  | jq -s '.'
 ```
 
 Do not treat a raw id as globally unique. An arbitrary URL is never fetched.
@@ -140,64 +187,21 @@ for a collection. `--jsonl` emits one JSON value per line, which is useful for
 streaming and batch processing. `--envelope` adds the optional versioned
 wrapper and requires either machine mode.
 
-For example, `mcv --json courses list` returns an array:
+Common identity fields are:
 
-```json
-[
-  {
-    "cv_cid": 86428,
-    "course_no": "2110575",
-    "title": "Container Systems",
-    "year": "2026",
-    "semester": "1"
-  }
-]
-```
+| Field | Meaning |
+|---|---|
+| `resource_type` | Typed resource kind |
+| `ref` | Canonical reusable reference |
+| `cv_cid` | CourseVille course identity |
+| `itemid` | Resource id, scoped to the course |
+| `course_no` | Human course number |
+| `title` | Resource title |
 
-`mcv --json courses COURSE` returns one course object with the same fields:
-
-```json
-{
-  "cv_cid": 86428,
-  "course_no": "2110575",
-  "title": "Container Systems",
-  "year": "2026",
-  "semester": "1"
-}
-```
-
-Addressable resource lists such as materials return arrays of identity-bearing
-items:
-
-```json
-[
-  {
-    "resource_type": "material",
-    "ref": "mcv:material:86428:2160993",
-    "cv_cid": 86428,
-    "itemid": 2160993,
-    "title": "Docker Fundamentals",
-    "folder_name": "Week 1"
-  }
-]
-```
-
-Assignments and announcements use the same item shape, with resource-specific
-fields such as `duedate`, `question_set_submission`, `posted`, or `body`:
-
-```json
-[
-  {
-    "resource_type": "announcement",
-    "ref": "mcv:announcement:86428:2177455",
-    "cv_cid": 86428,
-    "itemid": 2177455,
-    "course_no": "2110575",
-    "title": "Exam notice",
-    "posted": "2026-09-14"
-  }
-]
-```
+`mcv --json courses list` returns an array; `mcv --json courses COURSE`
+returns one course object. Addressable resource lists and details use the
+identity fields above; assignments and announcements add resource-specific
+fields such as `duedate`, `question_set_submission`, `posted`, or `body`.
 
 Meeting and schedule lists are collection objects rather than bare arrays:
 
@@ -224,51 +228,12 @@ course-level `playlists` array and `mcv:playlist:<cv_cid>` ref. `available:
 false` means the optional collection was not present, while an available
 collection with an empty array is a valid empty result.
 
-Addressable resource details from `show` and `mcv get` include the same
-identity fields plus the full resource-specific data:
-
-```json
-{
-  "resource_type": "assignment",
-  "ref": "mcv:assignment:86428:2160997",
-  "cv_cid": 86428,
-  "itemid": 2160997,
-  "course_no": "2110575",
-  "title": "Homework 4"
-}
-```
-
-`mcv --json search "docker"` returns an array of compact summaries pointing to
-a resource:
-
-```json
-[
-  {
-    "resource_type": "assignment",
-    "ref": "mcv:assignment:86428:2160997",
-    "cv_cid": 86428,
-    "course_no": "2110575",
-    "title": "Homework 4",
-    "snippet": "...container deployment...",
-    "score": 1.25
-  }
-]
-```
+`mcv --json search "docker"` returns an array of compact summaries with a
+resource `ref`, title, matched `snippet`, and relevance `score`.
 
 `mcv --quiet --json status` returns a live cross-course snapshot. Its three
-arrays contain the same assignment, meeting, and announcement shapes shown
-above:
-
-```json
-{
-  "generated_at": "2026-09-14T12:00:00+07:00",
-  "assignment_window_days": 7,
-  "announcement_window_days": 7,
-  "assignments_due": [],
-  "meetings_today": [],
-  "announcements_recent": []
-}
-```
+arrays are `assignments_due`, `meetings_today`, and `announcements_recent`,
+along with the generation time and window sizes.
 
 Use `status` for current due work, today's meetings, and recent announcements;
 it requires live authentication and is separate from the cache-only search.
@@ -296,6 +261,11 @@ An ordinary machine error has fields such as:
 Errors normally go to stderr. `--jsonl get` writes success and error records
 to stdout in input order and exits nonzero if any lookup fails; with
 `--envelope`, successful and failed lines are discriminated by `ok`.
+
+On `not_found`, do not retry blindly. On an authentication error, check
+`mcv auth status` in the host environment. Retry only when the machine record
+has `"retryable": true`. For JSONL batches, inspect every output line even
+when the overall process exits nonzero; successful records remain usable.
 
 ## Cache, local search, and completion
 
