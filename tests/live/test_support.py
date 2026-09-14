@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from .support import FixtureConfig
+from mcv_cli.api.resources.materials.models import Material, MaterialFolder
+
+from .support import FixtureConfig, collection_items
 
 
 def test_empty_optional_availability_secret_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -24,3 +26,17 @@ def test_invalid_optional_availability_secret_is_rejected(
 
     with pytest.raises(ValueError, match="MCV_E2E_MEETINGS_AVAILABLE must be true or false"):
         FixtureConfig.from_environment()
+
+
+def test_collection_items_normalizes_python_material_folders() -> None:
+    folders = [
+        MaterialFolder(
+            folder_id="tid-1",
+            name="Lecture Slides",
+            materials=[Material(itemid=188852, cv_cid=86428, title="Chapter 6")],
+        )
+    ]
+
+    items = collection_items("folders", folders)
+
+    assert items[0]["ref"] == "mcv:material:86428:188852"

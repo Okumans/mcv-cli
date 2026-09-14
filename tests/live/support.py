@@ -24,8 +24,6 @@ from pathlib import Path
 from typing import Any, Literal, Protocol
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
-from pydantic import BaseModel
-
 from mcv_cli.api import MCVAPI
 from mcv_cli.api.core.refs import ResourceRef, ResourceType
 from mcv_cli.api.core.urls import parse_mcv_url
@@ -872,7 +870,7 @@ def classify_error(error: BaseException, *, optional: bool) -> FeatureStatus:
 
 
 def payload(value: Any) -> Any:
-    return to_jsonable(value) if isinstance(value, BaseModel) else value
+    return to_jsonable(value)
 
 
 def collection_items(feature: str, value: Any) -> list[Any]:
