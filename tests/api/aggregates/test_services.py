@@ -127,6 +127,29 @@ def test_meeting_service_shows_today_by_default() -> None:
     assert [meeting.itemid for meeting in all_meetings] == [29630, 29633, 29631, 29632]
 
 
+def test_meeting_service_includes_elapsed_meetings_from_today() -> None:
+    class TodayMeetings:
+        def list(self, cv_cid: int) -> MeetingCollection:
+            return MeetingCollection(
+                cv_cid=cv_cid,
+                meetings=[
+                    OnlineMeeting(
+                        itemid=30452,
+                        cv_cid=cv_cid,
+                        scheduled_at="Sep 14 2026 13:00",
+                    )
+                ],
+            )
+
+    class TodayAPI:
+        meetings = TodayMeetings()
+
+    service = MeetingService(cast(object, TodayAPI()))
+    now = datetime(2026, 9, 14, 14, 1, tzinfo=ZoneInfo("Asia/Bangkok"))
+
+    assert [meeting.itemid for meeting in service.list_for_course(86428, now=now)] == [30452]
+
+
 def test_aggregate_services_forward_semester_scope() -> None:
     calls: list[dict[str, object]] = []
 

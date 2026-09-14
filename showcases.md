@@ -584,8 +584,9 @@ uv run mcv courses "$MCV_COURSE" meetings list --include-past
 uv run mcv courses "$MCV_COURSE" meetings show 29632
 ```
 
-Meeting lists show today's not-yet-past meetings by default;
-`--include-past` returns the complete list across all dates. Each result
+Meeting lists show all meetings dated today by default, including meetings whose
+scheduled time has passed; `--include-past` returns the complete list across all
+dates. Each result
 includes `url`, which prefers the direct `join_url` and falls back to
 `detail_url`.
 

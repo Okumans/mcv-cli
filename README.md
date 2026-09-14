@@ -205,9 +205,9 @@ Assignments, announcements, meeting metadata, and course pages are read-only.
 Assignment details expose the information visible to the student, including
 question-set and submission metadata when available; they do not answer or
 submit work. Meetings expose available links and recordings without opening or
-joining them. Meeting lists show today's not-yet-past meetings by default; use
-`--include-past` to show meetings from all dates, including meetings whose
-scheduled time has passed.
+joining them. Meeting lists show all meetings dated today by default, including
+ones whose scheduled time has passed; use `--include-past` to show meetings from
+all dates.
 
 ## References and shell pipelines
 

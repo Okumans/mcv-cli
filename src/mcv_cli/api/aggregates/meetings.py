@@ -93,11 +93,7 @@ class MeetingsAggregate:
         if include_past:
             visible = meetings
         elif today_only:
-            visible = [
-                item
-                for item in meetings
-                if _meeting_is_today(item, current) and not _meeting_is_past(item, current)
-            ]
+            visible = [item for item in meetings if _meeting_is_today(item, current)]
         else:
             visible = [item for item in meetings if not _meeting_is_past(item, current)]
         return sorted(visible, key=_meeting_sort_key)
