@@ -323,6 +323,11 @@ The cache clear targets are independent: clearing `completion` preserves
 search, clearing `search` preserves completion, and `all` clears both. A bare
 `mcv cache clear` is intentionally invalid.
 
+Shell completion matches course numbers and readable aliases such as title
+words, semester, and `cv_cid`. Matching ignores case and punctuation and allows
+small spelling mistakes, so a fragment such as `fault` can select a course
+titled `FAULT TOLERANT COMPUTING` while still inserting its course number.
+
 Search is local by default and never performs hidden network requests:
 
 ```bash

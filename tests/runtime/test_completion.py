@@ -47,6 +47,31 @@ def test_completion_uses_readable_courses_and_canonical_refs(tmp_path, monkeypat
     ] == ["IoT Hardware"]
 
 
+def test_completion_matches_course_aliases_and_small_typos(tmp_path, monkeypatch) -> None:
+    cache = CacheStore(profile_name="default", provider="chula", root=tmp_path)
+    cache.upsert_courses(
+        [
+            Course(
+                cv_cid=85386,
+                course_no="2110473",
+                title="FAULT TOLERANT COMPUTING [Section 21 & 51]",
+                year="2026",
+                semester="1",
+            )
+        ]
+    )
+    monkeypatch.setattr("mcv_cli.runtime.completion.active_cache", lambda: cache)
+
+    expected_help = "FAULT TOLERANT COMPUTING [Section 21 & 51] | 2026/1 | cv_cid=85386"
+    for query in ("fault", "fualt", "fault-tolerant", "0473", "2026/1", "85386"):
+        matches = completion_items("courses", query)
+        assert [(item.value, item.help) for item in matches] == [("2110473", expected_help)]
+
+    assert [item.value for item in complete_course_group(SimpleNamespace(args=[]), "fault")] == [
+        "2110473"
+    ]
+
+
 def test_completion_does_not_need_the_network(tmp_path, monkeypatch) -> None:
     cache = CacheStore(profile_name="default", provider="chula", root=tmp_path)
     monkeypatch.setattr("mcv_cli.runtime.completion.active_cache", lambda: cache)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import difflib
+import re
 from typing import Any
 
 from typer._click.shell_completion import CompletionItem
@@ -8,6 +10,16 @@ from ..api.core.errors import APIError
 from .auth import AuthManager
 from .cache import CacheStore
 from .config import Settings
+
+try:
+    from rapidfuzz import fuzz  # pyright: ignore[reportMissingImports]
+except ImportError:  # pragma: no cover - only used in incomplete environments
+    fuzz = None
+
+_COMPLETION_SPACE = re.compile(r"\s+")
+_COMPLETION_SEPARATOR = re.compile(r"[^\w]+", flags=re.UNICODE)
+_FUZZY_TOKEN_MIN_LENGTH = 3
+_FUZZY_TOKEN_THRESHOLD = 75.0
 
 
 def active_cache() -> CacheStore | None:
@@ -44,12 +56,63 @@ def completion_items(
         # Completion must never turn a stale, locked, or corrupt cache into a
         # shell error or a network request.
         return []
-    prefix = incomplete.casefold()
+    query = _normalize_completion_text(incomplete)
     return [
-        CompletionItem(record["value"], help=record.get("help"))
+        CompletionItem(str(record["value"]), help=record.get("help"))
         for record in records
-        if str(record["value"]).casefold().startswith(prefix)
+        if _matches_completion_query(query, record)
     ]
+
+
+def _normalize_completion_text(value: object) -> str:
+    """Normalize a shell fragment for matching human-readable aliases."""
+
+    text = _COMPLETION_SEPARATOR.sub(" ", str(value).casefold())
+    return _COMPLETION_SPACE.sub(" ", text).strip()
+
+
+def _matches_completion_query(query: str, record: dict[str, Any]) -> bool:
+    """Match a candidate value or any readable alias against a shell query."""
+
+    if not query:
+        return True
+
+    aliases = (
+        _normalize_completion_text(record.get("value", "")),
+        _normalize_completion_text(record.get("help", "")),
+    )
+    aliases = tuple(alias for alias in aliases if alias)
+    if any(query in alias for alias in aliases):
+        return True
+
+    query_tokens = query.split()
+    if not query_tokens or any(token.isdecimal() for token in query_tokens):
+        return False
+
+    # A shell normally supplies one token at a time, but requiring every token
+    # here also makes quoted multi-word aliases behave naturally.
+    for alias in aliases:
+        alias_tokens = alias.split()
+        if all(
+            any(_fuzzy_token_match(token, alias_token) for alias_token in alias_tokens)
+            for token in query_tokens
+        ):
+            return True
+    return False
+
+
+def _fuzzy_token_match(query: str, candidate: str) -> bool:
+    """Allow small spelling errors without making short queries too noisy."""
+
+    if len(query) < _FUZZY_TOKEN_MIN_LENGTH:
+        return False
+    if query in candidate or candidate in query:
+        return True
+    if fuzz is not None:
+        score = float(fuzz.ratio(query, candidate))
+    else:
+        score = difflib.SequenceMatcher(None, query, candidate).ratio() * 100
+    return score >= _FUZZY_TOKEN_THRESHOLD
 
 
 def _context_course_id(ctx: Any) -> int | None:
