@@ -11,6 +11,7 @@ from mcv_cli.runtime.cache import CacheStore
 from mcv_cli.runtime.completion import (
     complete_course_filters,
     complete_course_group,
+    complete_courses,
     complete_refs_for,
     completion_items,
 )
@@ -75,6 +76,126 @@ def test_completion_matches_course_aliases_and_small_typos(tmp_path, monkeypatch
     assert [item.value for item in complete_course_group(SimpleNamespace(args=[]), "fault")] == [
         "2110473"
     ]
+
+
+def test_completion_respects_default_selected_and_all_semester_scopes(
+    tmp_path, monkeypatch
+) -> None:
+    cache = CacheStore(profile_name="default", provider="chula", root=tmp_path)
+    cache.upsert_courses(
+        [
+            Course(
+                cv_cid=86428,
+                course_no="2110575",
+                title="Current course",
+                year="2026",
+                semester="1",
+            ),
+            Course(
+                cv_cid=85386,
+                course_no="2110473",
+                title="Historical course",
+                year="2025",
+                semester="2",
+            ),
+        ]
+    )
+    cache.record_semesters(("2026/1", "2025/2"), current="2026/1")
+    monkeypatch.setattr("mcv_cli.runtime.completion.active_cache", lambda: cache)
+
+    default = complete_courses(SimpleNamespace(params={}), [], "")
+    selected = complete_courses(
+        SimpleNamespace(params={"semester": ["2025/2"]}), [], ""
+    )
+    all_semesters = complete_courses(
+        SimpleNamespace(params={"all_semesters": True}), [], ""
+    )
+    combined = complete_courses(
+        SimpleNamespace(params={"semesters": ("2025/2", "2026/1")}), [], ""
+    )
+    from_args = complete_courses(
+        SimpleNamespace(params={}), ["--semester", "2025/2", "courses"], ""
+    )
+    course_group = complete_course_group(
+        SimpleNamespace(params={"semester": ["2025/2"]}, args=[]), ""
+    )
+
+    assert [item[0] for item in default] == ["2110575"]
+    assert [item[0] for item in selected] == ["2110473"]
+    assert [item[0] for item in all_semesters] == ["2110473", "2110575"]
+    assert {item[0] for item in combined} == {"2110473", "2110575"}
+    assert [item[0] for item in from_args] == ["2110473"]
+    assert [item.value for item in course_group] == ["list", "2110473"]
+
+
+def test_aggregate_reference_completion_uses_the_same_semester_scope(
+    tmp_path, monkeypatch
+) -> None:
+    cache = CacheStore(profile_name="default", provider="chula", root=tmp_path)
+    cache.upsert_courses(
+        [
+            Course(
+                cv_cid=86428,
+                course_no="2110575",
+                title="Current course",
+                year="2026",
+                semester="1",
+            ),
+            Course(
+                cv_cid=85386,
+                course_no="2110473",
+                title="Historical course",
+                year="2025",
+                semester="2",
+            ),
+        ]
+    )
+    cache.record_semesters(("2026/1", "2025/2"), current="2026/1")
+    cache.upsert_resources(
+        [
+            Assignment(itemid=1, cv_cid=86428, title="Current assignment"),
+            Assignment(itemid=2, cv_cid=85386, title="Historical assignment"),
+        ]
+    )
+    monkeypatch.setattr("mcv_cli.runtime.completion.active_cache", lambda: cache)
+    completer = complete_refs_for(ResourceType.ASSIGNMENT)
+
+    hidden_historical = completer(
+        SimpleNamespace(params={"course": "2110473"}), [], "mcv:"
+    )
+    selected_course = completer(
+        SimpleNamespace(
+            params={"course": "2110473", "semester": ["2025/2"]}
+        ),
+        [],
+        "mcv:",
+    )
+
+    default = completer(SimpleNamespace(params={}), [], "mcv:")
+    selected = completer(
+        SimpleNamespace(params={"semester": ["2025/2"]}), [], "mcv:"
+    )
+    all_semesters = completer(
+        SimpleNamespace(params={"all_semesters": True}), [], "mcv:"
+    )
+    parent_scoped = completer(
+        SimpleNamespace(
+            params={},
+            parent=SimpleNamespace(params={"semester": ["2025/2"]}),
+        ),
+        [],
+        "mcv:",
+    )
+
+    assert [item[0] for item in default] == ["mcv:assignment:86428:1"]
+    assert [item[0] for item in selected] == ["mcv:assignment:85386:2"]
+    assert {item[0] for item in all_semesters} == {
+        "mcv:assignment:85386:2",
+        "mcv:assignment:86428:1",
+    }
+    assert [item[0] for item in parent_scoped] == ["mcv:assignment:85386:2"]
+    assert hidden_historical == []
+    assert [item[0] for item in selected_course] == ["mcv:assignment:85386:2"]
 
 
 def test_completion_preserves_comma_scoped_course_filters(tmp_path, monkeypatch) -> None:

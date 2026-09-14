@@ -23,6 +23,7 @@ class CourseClient(ResourceClient):
         if all_semesters and (semester is not None or semesters is not None):
             raise ValueError("Use either a semester selection or all_semesters, not both.")
         available_semesters, current_semester = self._get_semester_options()
+        self._last_current_semester = current_semester
         if all_semesters:
             selected_semesters = available_semesters
         elif semesters is not None:
@@ -48,6 +49,12 @@ class CourseClient(ResourceClient):
                     seen.add(key)
                     courses.append(course)
         return self.record_result(courses)
+
+    @property
+    def last_current_semester(self) -> str | None:
+        """Expose the server-selected current term to cache refresh callers."""
+
+        return getattr(self, "_last_current_semester", None)
 
     def get(self, cv_cid: int, *, semester: str | None = None) -> Course:
         matches = [item for item in self.list(semester=semester) if item.cv_cid == cv_cid]

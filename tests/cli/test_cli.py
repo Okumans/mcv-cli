@@ -81,7 +81,7 @@ def test_version() -> None:
     result = runner.invoke(app, ["--version"])
 
     assert result.exit_code == 0
-    assert result.stdout.strip() == "0.3.0"
+    assert result.stdout.strip() == "0.4.0"
 
 
 def test_short_help_and_version_aliases() -> None:
@@ -91,7 +91,7 @@ def test_short_help_and_version_aliases() -> None:
     assert help_result.exit_code == 0
     assert "Usage: root" in help_result.stdout
     assert version_result.exit_code == 0
-    assert version_result.stdout.strip() == "0.3.0"
+    assert version_result.stdout.strip() == "0.4.0"
 
 
 def test_status_dashboard_has_a_human_and_machine_contract(monkeypatch) -> None:

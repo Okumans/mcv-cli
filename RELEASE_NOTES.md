@@ -1,5 +1,26 @@
 # Release notes
 
+## 0.4.0
+
+This release improves the interactive CLI workflow and keeps cached content
+strictly within the selected course and semester scope.
+
+- Added the unified `mcv status` dashboard for upcoming assignments, today's
+  meetings, and recent announcements, including `--all` detail output.
+- Added progress reporting for multi-course and multi-resource fetches while
+  keeping machine-readable output clean.
+- Added resource-specific aggregate and course-scoped search aliases, exact
+  search support, and optional `fzf` interactive selection.
+- Improved shell completion with fuzzy course aliases, readable help text,
+  and canonical resource references.
+- Fixed completion to default to the current semester, honor repeated
+  `--semester` selections and `--all`, and hide out-of-scope course/resource
+  references.
+- Preserved the current-semester cache marker during incremental updates and
+  recorded the server-selected current semester during cache refreshes.
+- Made material downloads and folder archives use the remote filename or
+  folder name when `--output` is omitted.
+
 ## 0.3.0
 
 This release adds a host-calibrated, authenticated read-only release gate.

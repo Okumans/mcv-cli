@@ -89,6 +89,44 @@ def _append_course_condition(
     params.extend(values)
 
 
+def _normalized_semesters(values: Collection[str] | None) -> tuple[str, ...]:
+    if values is None:
+        return ()
+    return tuple(
+        dict.fromkeys(
+            value.strip()
+            for value in values
+            if isinstance(value, str) and value.strip()
+        )
+    )
+
+
+def _semester_sort_key(value: str) -> tuple[int, str]:
+    year, separator, term = value.partition("/")
+    if separator:
+        try:
+            return (int(year) * 100 + int(term), "")
+        except ValueError:
+            pass
+    return (-1, value)
+
+
+def _semester_condition(
+    values: Collection[str], *, prefix: str = ""
+) -> tuple[str, list[Any]]:
+    clauses: list[str] = []
+    params: list[Any] = []
+    for value in _normalized_semesters(values):
+        year, separator, term = value.partition("/")
+        if separator and year and term:
+            clauses.append(f"({prefix}year = ? AND {prefix}semester = ?)")
+            params.extend((year, term))
+        elif year:
+            clauses.append(f"{prefix}year = ?")
+            params.append(year)
+    return " OR ".join(clauses), params
+
+
 def _ignore_search_schema_error(error: CacheSchemaError) -> bool:
     """Keep corrupt/old local search empty, but never hide a future schema."""
 
@@ -623,16 +661,26 @@ class CacheStore:
             connection.close()
 
     def record_semesters(self, values: Iterable[str], *, current: str | None = None) -> None:
+        values = tuple(dict.fromkeys(value for value in values if value))
         now = _timestamp()
         connection = self._open()
         try:
-            for value in dict.fromkeys(value for value in values if value):
-                connection.execute(
-                    "INSERT INTO semesters(value, is_current, updated_at) VALUES(?, ?, ?) "
-                    "ON CONFLICT(value) DO UPDATE SET is_current=excluded.is_current, "
-                    "updated_at=excluded.updated_at",
-                    (value, int(value == current), now),
-                )
+            if current is not None:
+                connection.execute("UPDATE semesters SET is_current = 0")
+            for value in values:
+                if current is None:
+                    connection.execute(
+                        "INSERT INTO semesters(value, is_current, updated_at) VALUES(?, 0, ?) "
+                        "ON CONFLICT(value) DO UPDATE SET updated_at=excluded.updated_at",
+                        (value, now),
+                    )
+                else:
+                    connection.execute(
+                        "INSERT INTO semesters(value, is_current, updated_at) VALUES(?, ?, ?) "
+                        "ON CONFLICT(value) DO UPDATE SET is_current=excluded.is_current, "
+                        "updated_at=excluded.updated_at",
+                        (value, int(value == current), now),
+                    )
             connection.commit()
         finally:
             connection.close()
@@ -1303,17 +1351,78 @@ class CacheStore:
             rank=float(row[7] or 0.0),
         )
 
-    def candidates(self, kind: str, *, cv_cid: int | None = None) -> list[dict[str, Any]]:
+    def _completion_semester_condition(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        semesters: Collection[str] | None,
+        all_semesters: bool,
+        prefix: str = "",
+    ) -> tuple[str | None, list[Any]]:
+        if all_semesters:
+            return None, []
+
+        selected = _normalized_semesters(semesters)
+        if not selected:
+            try:
+                current_rows = connection.execute(
+                    "SELECT value FROM semesters WHERE is_current = 1 ORDER BY value DESC"
+                ).fetchall()
+            except sqlite3.Error:
+                current_rows = []
+            selected = tuple(str(row[0]) for row in current_rows if row[0])
+
+        if not selected:
+            try:
+                course_rows = connection.execute(
+                    """
+                    SELECT DISTINCT year, semester FROM courses
+                    WHERE year <> '' AND semester <> ''
+                    """
+                ).fetchall()
+            except sqlite3.Error:
+                course_rows = []
+            available = tuple(
+                f"{row[0]}/{row[1]}" for row in course_rows if row[0] and row[1]
+            )
+            if len(available) == 1:
+                selected = available
+            elif available:
+                selected = (max(available, key=_semester_sort_key),)
+
+        if not selected:
+            return None, []
+        condition, params = _semester_condition(selected, prefix=prefix)
+        return (condition or None), params
+
+    def candidates(
+        self,
+        kind: str,
+        *,
+        cv_cid: int | None = None,
+        semesters: Collection[str] | None = None,
+        all_semesters: bool = False,
+    ) -> list[dict[str, Any]]:
         """Return completion records without ever opening a network client."""
 
         connection = self._connect(read_only=True)
         try:
             if kind == "courses":
-                rows = connection.execute(
-                    """
+                semester_condition, semester_params = self._completion_semester_condition(
+                    connection,
+                    semesters=semesters,
+                    all_semesters=all_semesters,
+                )
+                query = """
                     SELECT cv_cid, course_no, title, year, semester, section
-                    FROM courses ORDER BY course_no, title, cv_cid
-                    """
+                    FROM courses
+                """
+                if semester_condition is not None:
+                    query += f" WHERE {semester_condition}"
+                query += " ORDER BY course_no, title, cv_cid"
+                rows = connection.execute(
+                    query,
+                    semester_params,
                 ).fetchall()
                 return self._course_candidates(rows)
             if kind == "semesters":
@@ -1351,14 +1460,36 @@ class CacheStore:
                 ).fetchall()
                 return [{"value": str(row[0]), "help": row[1] or str(row[0])} for row in rows]
             if kind == "refs":
-                query = (
-                    "SELECT resource_type, cv_cid, item_id, title "
-                    "FROM resources WHERE cv_cid = ? ORDER BY resource_type, title, item_id"
-                    if cv_cid is not None
-                    else "SELECT resource_type, cv_cid, item_id, title "
-                    "FROM resources ORDER BY resource_type, title, item_id"
+                semester_condition, semester_params = self._completion_semester_condition(
+                    connection,
+                    semesters=semesters,
+                    all_semesters=all_semesters,
+                    prefix="scoped_courses.",
                 )
-                rows = connection.execute(query, (cv_cid,) if cv_cid is not None else ()).fetchall()
+                resource_conditions: list[str] = []
+                resource_params: list[Any] = []
+                if cv_cid is not None:
+                    resource_conditions.append("resources.cv_cid = ?")
+                    resource_params.append(cv_cid)
+                if semester_condition is not None:
+                    resource_conditions.append(
+                        "EXISTS ("
+                        "SELECT 1 FROM courses AS scoped_courses "
+                        "WHERE scoped_courses.cv_cid = resources.cv_cid "
+                        f"AND ({semester_condition})"
+                        ")"
+                    )
+                    resource_params.extend(semester_params)
+                query = (
+                    "SELECT resource_type, cv_cid, item_id, title FROM resources "
+                    + (
+                        "WHERE " + " AND ".join(resource_conditions) + " "
+                        if resource_conditions
+                        else ""
+                    )
+                    + "ORDER BY resource_type, title, item_id"
+                )
+                rows = connection.execute(query, resource_params).fetchall()
                 candidates: list[tuple[str, str, str]] = [
                     (
                         str(row[0]),
@@ -1371,25 +1502,37 @@ class CacheStore:
                     )
                     for row in rows
                 ]
+                playlist_conditions = [
+                    "collection_status.collection_type = 'playlist'",
+                    "collection_status.available = 1",
+                ]
+                playlist_params: list[Any] = []
+                if cv_cid is not None:
+                    playlist_conditions.append("courses.cv_cid = ?")
+                    playlist_params.append(cv_cid)
+                playlist_condition, playlist_semester_params = (
+                    self._completion_semester_condition(
+                        connection,
+                        semesters=semesters,
+                        all_semesters=all_semesters,
+                        prefix="courses.",
+                    )
+                )
+                if playlist_condition is not None:
+                    playlist_conditions.append(playlist_condition)
+                    playlist_params.extend(playlist_semester_params)
                 playlist_query = (
                     "SELECT DISTINCT courses.cv_cid, courses.title "
                     "FROM courses JOIN collection_status "
                     "ON collection_status.cv_cid = courses.cv_cid "
-                    "AND collection_status.collection_type = 'playlist' "
-                    "AND collection_status.available = 1 "
-                    "WHERE courses.cv_cid = ? ORDER BY courses.title, courses.cv_cid"
-                    if cv_cid is not None
-                    else "SELECT DISTINCT courses.cv_cid, courses.title "
-                    "FROM courses JOIN collection_status "
-                    "ON collection_status.cv_cid = courses.cv_cid "
-                    "AND collection_status.collection_type = 'playlist' "
-                    "AND collection_status.available = 1 "
-                    "ORDER BY courses.title, courses.cv_cid"
+                    "WHERE "
+                    + " AND ".join(playlist_conditions)
+                    + " ORDER BY courses.title, courses.cv_cid"
                 )
                 try:
                     playlist_rows = connection.execute(
                         playlist_query,
-                        (cv_cid,) if cv_cid is not None else (),
+                        playlist_params,
                     ).fetchall()
                 except sqlite3.OperationalError:
                     # A pre-v2 cache has no collection_status table.  It is
@@ -1426,6 +1569,47 @@ class CacheStore:
     def resolve_course(self, reference: str) -> int | None:
         values = self.resolve_course_ids(reference)
         return next(iter(values)) if len(values) == 1 else None
+
+    def resolve_course_ids_for_completion(
+        self,
+        reference: str,
+        *,
+        semesters: Collection[str] | None = None,
+        all_semesters: bool = False,
+    ) -> tuple[int, ...]:
+        """Resolve a completion selector within the visible semester scope."""
+
+        normalized = " ".join(reference.split()).casefold()
+        try:
+            connection = self._connect(read_only=True)
+        except sqlite3.Error:
+            return ()
+        try:
+            try:
+                semester_condition, semester_params = self._completion_semester_condition(
+                    connection,
+                    semesters=semesters,
+                    all_semesters=all_semesters,
+                )
+                conditions = [
+                    "CAST(cv_cid AS TEXT) = ?",
+                    "lower(course_no) = ?",
+                    "lower(title) = ?",
+                ]
+                params: list[Any] = [reference.strip(), normalized, normalized]
+                if semester_condition is not None:
+                    conditions.append(f"({semester_condition})")
+                    params.extend(semester_params)
+                selector_condition = "(" + " OR ".join(conditions[:3]) + ")"
+                query = "SELECT DISTINCT cv_cid FROM courses WHERE " + selector_condition
+                if len(conditions) == 4:
+                    query += " AND " + conditions[3]
+                rows = connection.execute(query, params).fetchall()
+            except sqlite3.Error:
+                return ()
+            return tuple(sorted({int(row[0]) for row in rows}))
+        finally:
+            connection.close()
 
     def resolve_course_ids(self, reference: str) -> tuple[int, ...]:
         """Return every cached course id matching an exact course selector."""

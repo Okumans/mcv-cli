@@ -751,6 +751,7 @@ def test_client_defaults_to_current_semester() -> None:
     ) as http_client:
         client = MCVAPI(FakeAuth(), http_client=http_client)
         assert client.courses.list() == []
+        assert client.courses.last_current_semester == "2026/1"
 
     assert requested_semesters == ["2026/1"]
 

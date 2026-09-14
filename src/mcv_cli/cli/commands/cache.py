@@ -131,15 +131,32 @@ def _refresh_cache(
             if not references
             else _select_courses(discovered, references)
         )
-        if not references:
-            semesters = [
+        discovered_semesters = tuple(
+            dict.fromkeys(
                 value for value in (course_semester(item) for item in discovered) if value
-            ]
-            cache.replace_courses(discovered, semesters=semesters)
+            )
+        )
+        known_semesters = discovered_semesters
+        current_semester = getattr(api.courses, "last_current_semester", None)
+        if isinstance(current_semester, str) and current_semester:
+            known_semesters = tuple(
+                dict.fromkeys((*discovered_semesters, current_semester))
+            )
+        if not references:
+            cache.replace_courses(discovered, semesters=discovered_semesters)
         else:
             cache.upsert_courses(courses)
         cache.record_semesters(
-            value for value in (course_semester(item) for item in discovered) if value
+            known_semesters,
+            current=(
+                current_semester
+                if isinstance(current_semester, str) and current_semester
+                else (
+                    discovered_semesters[0]
+                    if semester is None and not all_semesters and discovered_semesters
+                    else None
+                )
+            ),
         )
 
         progress = progress_for(ctx)

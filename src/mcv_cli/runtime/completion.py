@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import difflib
 import re
+from collections.abc import Collection, Mapping
+from dataclasses import dataclass
 from typing import Any
 
 from typer._click.shell_completion import CompletionItem
@@ -26,6 +28,127 @@ _FUZZY_TOKEN_THRESHOLD = 75.0
 # cross-course; this sentinel means that it is course-scoped but has no safe
 # cached course id to query.
 _NO_MATCHING_COURSE = -1
+
+
+@dataclass(frozen=True)
+class _CompletionScope:
+    semesters: tuple[str, ...] = ()
+    all_semesters: bool = False
+
+
+def _context_mapping(ctx: Any) -> dict[str, Any]:
+    """Merge root and child Click parameters for shell completion."""
+
+    contexts: list[Any] = []
+    current = ctx
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        contexts.append(current)
+        current = getattr(current, "parent", None)
+
+    merged: dict[str, Any] = {}
+    for context in reversed(contexts):
+        params = getattr(context, "params", None)
+        if isinstance(params, Mapping):
+            for key, value in params.items():
+                if key in {"semester", "semesters"}:
+                    if value or key not in merged:
+                        merged[key] = value
+                elif key == "all_semesters":
+                    merged[key] = bool(merged.get(key, False)) or bool(value)
+                else:
+                    merged[key] = value
+        obj = getattr(context, "obj", None)
+        if isinstance(obj, Mapping):
+            for key, value in obj.items():
+                if key in {"semester", "semesters"}:
+                    if value or key not in merged:
+                        merged[key] = value
+                elif key == "all_semesters":
+                    merged[key] = bool(merged.get(key, False)) or bool(value)
+                else:
+                    merged[key] = value
+    return merged
+
+
+def _scope_values(value: object) -> tuple[str, ...]:
+    if isinstance(value, str):
+        return (value,) if value.strip() else ()
+    if isinstance(value, Collection):
+        return tuple(
+            dict.fromkeys(
+                item.strip()
+                for item in value
+                if isinstance(item, str) and item.strip()
+            )
+        )
+    return ()
+
+
+def _scope_from_args(args: Collection[str]) -> _CompletionScope:
+    """Recover root options when Click has not populated parent params yet."""
+
+    semesters: list[str] = []
+    all_semesters = False
+    before_command = True
+    index = 0
+    values = list(args)
+    while index < len(values):
+        token = values[index]
+        if before_command and token == "--semester":
+            if index + 1 < len(values):
+                semesters.extend(_scope_values(values[index + 1]))
+                index += 2
+                continue
+        elif before_command and token.startswith("--semester="):
+            semesters.extend(_scope_values(token.split("=", 1)[1]))
+            index += 1
+            continue
+        elif before_command and token in {"--all", "-a"}:
+            all_semesters = True
+            index += 1
+            continue
+        if not token.startswith("-"):
+            before_command = False
+        index += 1
+    return _CompletionScope(tuple(dict.fromkeys(semesters)), all_semesters)
+
+
+def _completion_scope(ctx: Any, args: Collection[str] = ()) -> _CompletionScope:
+    mapping = _context_mapping(ctx)
+    semesters: list[str] = []
+    for key in ("semesters", "semester"):
+        semesters.extend(_scope_values(mapping.get(key)))
+    all_semesters = bool(mapping.get("all_semesters", False))
+    if not semesters and not all_semesters:
+        return _scope_from_args(args)
+    return _CompletionScope(tuple(dict.fromkeys(semesters)), all_semesters)
+
+
+def _strip_scope_args(args: Collection[str]) -> list[str]:
+    """Remove root semester options from the custom course route grammar."""
+
+    result: list[str] = []
+    before_command = True
+    index = 0
+    values = list(args)
+    while index < len(values):
+        token = values[index]
+        if before_command and token == "--semester":
+            index += 2
+            continue
+        if before_command and token.startswith("--semester="):
+            index += 1
+            continue
+        if before_command and token in {"--all", "-a"}:
+            index += 1
+            continue
+        result.append(token)
+        if not token.startswith("-"):
+            before_command = False
+        index += 1
+    return result
 
 
 def active_cache() -> CacheStore | None:
@@ -53,12 +176,19 @@ def completion_items(
     *,
     cv_cid: int | None = None,
     resource_type: ResourceType | str | None = None,
+    semesters: Collection[str] | None = None,
+    all_semesters: bool = False,
 ) -> list[CompletionItem]:
     cache = active_cache()
     if cache is None:
         return []
     try:
-        records = cache.candidates(kind, cv_cid=cv_cid)
+        records = cache.candidates(
+            kind,
+            cv_cid=cv_cid,
+            semesters=semesters,
+            all_semesters=all_semesters,
+        )
     except Exception:
         # Completion must never turn a stale, locked, or corrupt cache into a
         # shell error or a network request.
@@ -136,18 +266,23 @@ def _fuzzy_token_match(query: str, candidate: str) -> bool:
     return score >= _FUZZY_TOKEN_THRESHOLD
 
 
-def _context_course_id(ctx: Any) -> int | None:
-    params = getattr(ctx, "params", {})
+def _context_course_id(ctx: Any, scope: _CompletionScope | None = None) -> int | None:
+    params = _context_mapping(ctx)
     if "course" not in params:
         return None
     reference = params.get("course")
     if not isinstance(reference, str):
         return _NO_MATCHING_COURSE
     cache = active_cache()
-    return _completion_course_id(reference, cache)
+    return _completion_course_id(reference, cache, scope=scope)
 
 
-def _completion_course_id(reference: str, cache: CacheStore | None) -> int:
+def _completion_course_id(
+    reference: str,
+    cache: CacheStore | None,
+    *,
+    scope: _CompletionScope | None = None,
+) -> int:
     """Resolve an explicit course selector without widening its scope.
 
     Completion is best-effort and cache-only.  A missing or ambiguous cached
@@ -157,20 +292,43 @@ def _completion_course_id(reference: str, cache: CacheStore | None) -> int:
     """
 
     if cache is not None:
+        scope = scope or _CompletionScope()
         try:
-            matches = cache.resolve_course_ids(reference)
+            matches = cache.resolve_course_ids_for_completion(
+                reference,
+                semesters=scope.semesters,
+                all_semesters=scope.all_semesters,
+            )
         except Exception:
             matches = ()
         if len(matches) == 1:
             return matches[0]
         if len(matches) > 1:
             return _NO_MATCHING_COURSE
+        if reference.isdigit():
+            try:
+                known_matches = cache.resolve_course_ids(reference)
+            except Exception:
+                known_matches = ()
+            # A raw cv_cid is useful when the cache has no course metadata at
+            # all.  Once the cache knows that id belongs to another semester,
+            # fail closed instead of leaking its resources into completion.
+            if known_matches:
+                return _NO_MATCHING_COURSE
     return int(reference) if reference.isdigit() else _NO_MATCHING_COURSE
 
 
 def complete_courses(ctx: Any, args: list[str], incomplete: str) -> list[tuple[str, str | None]]:
-    del ctx, args
-    return [(item.value, item.help) for item in completion_items("courses", incomplete)]
+    scope = _completion_scope(ctx, args)
+    return [
+        (item.value, item.help)
+        for item in completion_items(
+            "courses",
+            incomplete,
+            semesters=scope.semesters,
+            all_semesters=scope.all_semesters,
+        )
+    ]
 
 
 def complete_course_filters(
@@ -178,7 +336,7 @@ def complete_course_filters(
 ) -> list[tuple[str, str | None]]:
     """Complete the final selector in a comma-separated ``--courses`` value."""
 
-    del ctx, args
+    scope = _completion_scope(ctx, args)
     option_prefix = ""
     value = incomplete
     if value.startswith("--courses="):
@@ -188,7 +346,12 @@ def complete_course_filters(
     leading = f"{prefix}{separator}"
     return [
         (f"{option_prefix}{leading}{item.value}", item.help)
-        for item in completion_items("courses", fragment)
+        for item in completion_items(
+            "courses",
+            fragment,
+            semesters=scope.semesters,
+            all_semesters=scope.all_semesters,
+        )
     ]
 
 
@@ -198,25 +361,48 @@ def complete_semesters(ctx: Any, args: list[str], incomplete: str) -> list[tuple
 
 
 def complete_folders(ctx: Any, args: list[str], incomplete: str) -> list[tuple[str, str | None]]:
-    del args
-    cv_cid = _context_course_id(ctx)
+    scope = _completion_scope(ctx, args)
+    cv_cid = _context_course_id(ctx, scope)
     return [
-        (item.value, item.help) for item in completion_items("folders", incomplete, cv_cid=cv_cid)
+        (item.value, item.help)
+        for item in completion_items(
+            "folders",
+            incomplete,
+            cv_cid=cv_cid,
+            semesters=scope.semesters,
+            all_semesters=scope.all_semesters,
+        )
     ]
 
 
 def complete_groupings(ctx: Any, args: list[str], incomplete: str) -> list[tuple[str, str | None]]:
-    del args
-    cv_cid = _context_course_id(ctx)
+    scope = _completion_scope(ctx, args)
+    cv_cid = _context_course_id(ctx, scope)
     return [
-        (item.value, item.help) for item in completion_items("groupings", incomplete, cv_cid=cv_cid)
+        (item.value, item.help)
+        for item in completion_items(
+            "groupings",
+            incomplete,
+            cv_cid=cv_cid,
+            semesters=scope.semesters,
+            all_semesters=scope.all_semesters,
+        )
     ]
 
 
 def complete_refs(ctx: Any, args: list[str], incomplete: str) -> list[tuple[str, str | None]]:
-    del args
-    cv_cid = _context_course_id(ctx)
-    return [(item.value, item.help) for item in completion_items("refs", incomplete, cv_cid=cv_cid)]
+    scope = _completion_scope(ctx, args)
+    cv_cid = _context_course_id(ctx, scope)
+    return [
+        (item.value, item.help)
+        for item in completion_items(
+            "refs",
+            incomplete,
+            cv_cid=cv_cid,
+            semesters=scope.semesters,
+            all_semesters=scope.all_semesters,
+        )
+    ]
 
 
 def complete_refs_for(
@@ -225,8 +411,8 @@ def complete_refs_for(
     """Create a ref completer restricted to one resource type."""
 
     def complete(ctx: Any, args: list[str], incomplete: str) -> list[tuple[str, str | None]]:
-        del args
-        cv_cid = _context_course_id(ctx)
+        scope = _completion_scope(ctx, args)
+        cv_cid = _context_course_id(ctx, scope)
         return [
             (item.value, item.help)
             for item in completion_items(
@@ -234,6 +420,8 @@ def complete_refs_for(
                 incomplete,
                 cv_cid=cv_cid,
                 resource_type=resource_type,
+                semesters=scope.semesters,
+                all_semesters=scope.all_semesters,
             )
         ]
 
@@ -243,10 +431,12 @@ def complete_refs_for(
 def complete_course_group(ctx: Any, incomplete: str) -> list[CompletionItem]:
     """Complete the custom ``courses COURSE RESOURCE ACTION`` grammar."""
 
-    args = [
+    raw_args = [
         *list(getattr(ctx, "_protected_args", [])),
         *list(getattr(ctx, "args", [])),
     ]
+    scope = _completion_scope(ctx, raw_args)
+    args = _strip_scope_args(raw_args)
     if not args:
         prefix = incomplete.casefold()
         static = (
@@ -254,7 +444,12 @@ def complete_course_group(ctx: Any, incomplete: str) -> list[CompletionItem]:
             if "list".startswith(prefix)
             else []
         )
-        return static + completion_items("courses", incomplete)
+        return static + completion_items(
+            "courses",
+            incomplete,
+            semesters=scope.semesters,
+            all_semesters=scope.all_semesters,
+        )
 
     # Click excludes the incomplete token from ctx.args.  Thus one complete
     # token is the course and the next token is either a resource or its action.
@@ -276,7 +471,7 @@ def complete_course_group(ctx: Any, incomplete: str) -> list[CompletionItem]:
         cache = active_cache()
         cached_course_id: int | None = None
         if cache is not None:
-            cached_course_id = _completion_course_id(course, cache)
+            cached_course_id = _completion_course_id(course, cache, scope=scope)
         elif course.isdigit():
             cached_course_id = int(course)
         optional_collections = {
@@ -341,11 +536,23 @@ def complete_course_group(ctx: Any, incomplete: str) -> list[CompletionItem]:
         ]
 
     cache = active_cache()
-    cv_cid = _completion_course_id(course, cache)
+    cv_cid = _completion_course_id(course, cache, scope=scope)
     if "--folder" in args:
-        return completion_items("folders", incomplete, cv_cid=cv_cid)
+        return completion_items(
+            "folders",
+            incomplete,
+            cv_cid=cv_cid,
+            semesters=scope.semesters,
+            all_semesters=scope.all_semesters,
+        )
     if "--grouping" in args:
-        return completion_items("groupings", incomplete, cv_cid=cv_cid)
+        return completion_items(
+            "groupings",
+            incomplete,
+            cv_cid=cv_cid,
+            semesters=scope.semesters,
+            all_semesters=scope.all_semesters,
+        )
 
     action = args[2] if len(args) > 2 else ""
     addressable = {
@@ -367,7 +574,15 @@ def complete_course_group(ctx: Any, incomplete: str) -> list[CompletionItem]:
             incomplete,
             cv_cid=cv_cid,
             resource_type=resource_types[resource],
+            semesters=scope.semesters,
+            all_semesters=scope.all_semesters,
         )
     if resource == "materials" and action == "archive":
-        return completion_items("folders", incomplete, cv_cid=cv_cid)
+        return completion_items(
+            "folders",
+            incomplete,
+            cv_cid=cv_cid,
+            semesters=scope.semesters,
+            all_semesters=scope.all_semesters,
+        )
     return []

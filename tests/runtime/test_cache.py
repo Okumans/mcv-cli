@@ -205,6 +205,19 @@ def test_cache_indexes_completion_values_without_resource_content(tmp_path: Path
     ]
 
 
+def test_incremental_semester_records_preserve_the_current_marker(tmp_path: Path) -> None:
+    cache = CacheStore(profile_name="default", provider="chula", root=tmp_path)
+    cache.record_semesters(("2026/1", "2025/2"), current="2026/1")
+    cache.record_semesters(("2025/2",))
+
+    with sqlite3.connect(cache.path) as connection:
+        rows = connection.execute(
+            "SELECT value, is_current FROM semesters ORDER BY value DESC"
+        ).fetchall()
+
+    assert rows == [("2026/1", 1), ("2025/2", 0)]
+
+
 def test_cache_does_not_suggest_an_unavailable_playlist(tmp_path: Path) -> None:
     cache = CacheStore(profile_name="default", provider="chula", root=tmp_path)
     cache.upsert_courses([Course(cv_cid=86428, course_no="2110575", title="IoT")])
