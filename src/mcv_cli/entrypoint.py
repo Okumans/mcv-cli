@@ -7,7 +7,7 @@ import os
 
 def main() -> None:
     if os.getenv("_MCV_COMPLETE"):
-        from .runtime.completion_cli import run_completion
+        from .runtime.completion.cli import run_completion
 
         run_completion()
         return

@@ -7,8 +7,8 @@ from pathlib import Path
 
 from mcv_cli.api.resources.courses.models import Course
 from mcv_cli.runtime.cache import CacheStore
-from mcv_cli.runtime.completion_cli import complete_arguments
-from mcv_cli.runtime.completion_state import activate
+from mcv_cli.runtime.completion.cli import complete_arguments
+from mcv_cli.runtime.completion.state import activate
 
 
 def _completion_process(

@@ -20,7 +20,7 @@ from ..api.core.constants import (
     PUBLIC_REDIRECT_URI,
 )
 from ..api.core.errors import AuthenticationError, AuthenticationRequired
-from .completion_state import activate, deactivate
+from .completion.state import activate, deactivate
 from .config import Settings
 from .errors import ConfigurationError
 from .models import AuthProvider, StoredProfile

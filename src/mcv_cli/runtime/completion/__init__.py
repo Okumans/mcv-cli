@@ -8,8 +8,8 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from .completion_index import CompletionIndex, CompletionRecord
-from .completion_state import active_cache_path
+from .index import CompletionIndex, CompletionRecord
+from .state import active_cache_path
 
 _COMPLETION_SPACE = re.compile(r"\s+")
 _COMPLETION_SEPARATOR = re.compile(r"[^\w]+", flags=re.UNICODE)

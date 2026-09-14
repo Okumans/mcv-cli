@@ -10,7 +10,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from .completion import (
+from . import (
     CompletionCandidate,
     complete_course_filters,
     complete_course_group,

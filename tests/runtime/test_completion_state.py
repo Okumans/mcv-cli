@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import stat
 
-from mcv_cli.runtime.completion_state import (
+from mcv_cli.runtime.completion.state import (
     CompletionState,
     activate,
     active_cache_path,

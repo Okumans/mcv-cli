@@ -5,7 +5,7 @@ from __future__ import annotations
 from ..api.core.errors import APIError
 from .auth import AuthManager
 from .cache import CacheStore
-from .completion_state import activate
+from .completion.state import activate
 from .config import Settings
 
 

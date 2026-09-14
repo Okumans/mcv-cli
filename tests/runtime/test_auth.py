@@ -14,7 +14,7 @@ from mcv_cli.api.core.constants import (
 )
 from mcv_cli.api.core.errors import AuthenticationError
 from mcv_cli.runtime.auth import AuthManager, build_public_authorization_url
-from mcv_cli.runtime.completion_state import read_state
+from mcv_cli.runtime.completion.state import read_state
 from mcv_cli.runtime.errors import ConfigurationError
 from mcv_cli.runtime.models import AuthProvider
 

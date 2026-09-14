@@ -6,7 +6,7 @@ from mcv_cli.api.resources.courses.models import Course
 from mcv_cli.api.resources.materials.models import Material, MaterialFolder
 from mcv_cli.api.resources.playlists.models import PlaylistCollection
 from mcv_cli.runtime.cache import CacheStore
-from mcv_cli.runtime.completion_index import CompletionIndex
+from mcv_cli.runtime.completion.index import CompletionIndex
 
 
 def test_lightweight_index_matches_current_completion_namespace(tmp_path) -> None:
