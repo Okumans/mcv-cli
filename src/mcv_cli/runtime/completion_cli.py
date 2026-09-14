@@ -89,6 +89,7 @@ _SEARCH_OPTIONS = {
     "--limit": "Maximum result count",
     "--exact": "Match the complete phrase",
     "--fuzzy": "Enable fuzzy matching",
+    "-z": "Enable fuzzy matching",
     "--refs": "Print canonical references",
     "--all": "Show expanded rows",
     "-a": "Show expanded rows",

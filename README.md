@@ -239,7 +239,7 @@ mcv courses 2110575 meetings search "zoom"
 mcv courses 2110575 playlists search "lecture"
 ```
 
-Every search path also accepts `--fuzzy` to open an interactive `fzf` selector
+Every search path also accepts `-z` or `--fuzzy` to open an interactive `fzf` selector
 over the cached results in that command's scope. The query is optional with
 this flag; when supplied, it seeds the selector, while `Enter` returns one
 resource and `Esc` exits without output:
@@ -446,7 +446,7 @@ Search results are compact summaries with canonical references. Human output
 highlights matched text in titles and snippets, including the actual title
 word rescued by typo-tolerant matching. Pass a result reference to `mcv get`
 when the full resource is needed. Use `--exact` to match the complete query
-phrase literally and disable normal fuzzy matching. `--fuzzy` is the separate
+phrase literally and disable normal fuzzy matching. `-z`/`--fuzzy` is the separate
 interactive mode: it browses up to 1,000 cached candidates after applying the
 course and resource filters, then serializes the selected result using the
 requested human, `--refs`, JSON, or JSONL output mode. `--limit` applies to

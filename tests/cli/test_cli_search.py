@@ -221,6 +221,7 @@ def test_search_help_exposes_interactive_fuzzy_selection() -> None:
 
     assert result.exit_code == 0, result.output
     assert "--fuzzy" in result.stdout
+    assert "-z" in result.stdout
 
 
 @pytest.mark.parametrize(
@@ -243,6 +244,7 @@ def test_every_search_alias_exposes_interactive_fuzzy_selection(command: list[st
 
     assert result.exit_code == 0, result.output
     assert "--fuzzy" in result.stdout
+    assert "-z" in result.stdout
 
 
 def test_fuzzy_search_selects_a_cached_result_and_seeds_fzf(monkeypatch, tmp_path) -> None:
@@ -267,7 +269,7 @@ def test_fuzzy_search_selects_a_cached_result_and_seeds_fzf(monkeypatch, tmp_pat
     monkeypatch.setattr(fuzzy_cli.shutil, "which", lambda name: "/usr/bin/fzf")
     monkeypatch.setattr(fuzzy_cli.subprocess, "run", fake_run)
 
-    result = runner.invoke(app, ["--quiet", "search", "compose", "--fuzzy", "--refs"])
+    result = runner.invoke(app, ["--quiet", "search", "compose", "-z", "--refs"])
 
     assert result.exit_code == 0, result.output
     assert result.stdout.strip() == "mcv:assignment:86428:2160997"
@@ -298,7 +300,7 @@ def test_course_resource_fuzzy_search_preserves_scope(monkeypatch, tmp_path) -> 
 
     result = runner.invoke(
         app,
-        ["--quiet", "courses", "2110575", "materials", "search", "--fuzzy", "--refs"],
+        ["--quiet", "courses", "2110575", "materials", "search", "-z", "--refs"],
     )
 
     assert result.exit_code == 0, result.output

@@ -77,6 +77,7 @@ def test_root_completion_lists_commands_before_options() -> None:
     assert values[:4] == ["auth", "courses", "assignments", "announcements"]
     assert values.index("courses") < values.index("--all")
     assert values.index("assignments") < values.index("-q")
+    assert "-z" in [item.value for item in complete_arguments(["search"], "-")]
 
 
 def test_completion_client_preserves_all_shell_completion_protocols(tmp_path: Path) -> None:
