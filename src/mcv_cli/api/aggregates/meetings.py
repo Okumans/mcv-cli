@@ -2,16 +2,18 @@ from __future__ import annotations
 
 from collections.abc import Collection
 from datetime import datetime
-from typing import Any
+from typing import cast
 
 from ..core.dates import COURSEVILLE_TIMEZONE
+from ..core.progress import ProgressLike
 from ..resources.meetings.models import MeetingCollection, OnlineMeeting
+from ._protocols import AggregateAPI
 from .assignments import _course_sort_key, _semester_kwargs, _with_course_context
 
 
 class MeetingsAggregate:
-    def __init__(self, api: Any) -> None:
-        self.api = api
+    def __init__(self, api: object) -> None:
+        self.api = cast(AggregateAPI, api)
 
     def list_for_course(
         self,
@@ -57,7 +59,7 @@ class MeetingsAggregate:
         include_past: bool = False,
         today_only: bool = True,
         now: datetime | None = None,
-        progress: Any | None = None,
+        progress: ProgressLike | None = None,
     ) -> list[OnlineMeeting]:
         results: list[OnlineMeeting] = []
         courses = sorted(

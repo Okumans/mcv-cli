@@ -7,7 +7,8 @@ import sqlite3
 from collections.abc import Collection
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+
+from ...api.core.types import SQLiteValue
 
 _CACHE_SCHEMA_VERSION = 3
 _SAFE_COMPONENT = re.compile(r"[^A-Za-z0-9_.-]+")
@@ -43,9 +44,9 @@ def _semester_sort_key(value: str) -> tuple[int, str]:
 
 def _semester_condition(
     values: Collection[str], *, prefix: str = ""
-) -> tuple[str, list[Any]]:
+) -> tuple[str, list[SQLiteValue]]:
     clauses: list[str] = []
-    params: list[Any] = []
+    params: list[SQLiteValue] = []
     for value in _normalized_semesters(values):
         year, separator, term = value.partition("/")
         if separator and year and term:
@@ -99,7 +100,7 @@ class CompletionIndex:
         semesters: Collection[str] | None,
         all_semesters: bool,
         prefix: str = "",
-    ) -> tuple[str | None, list[Any]]:
+    ) -> tuple[str | None, list[SQLiteValue]]:
         if all_semesters:
             return None, []
 
@@ -236,7 +237,7 @@ class CompletionIndex:
             prefix="scoped_courses.",
         )
         resource_conditions: list[str] = []
-        resource_params: list[Any] = []
+        resource_params: list[SQLiteValue] = []
         if cv_cid is not None:
             resource_conditions.append("resources.cv_cid = ?")
             resource_params.append(cv_cid)
@@ -272,7 +273,7 @@ class CompletionIndex:
             "collection_status.collection_type = 'playlist'",
             "collection_status.available = 1",
         ]
-        playlist_params: list[Any] = []
+        playlist_params: list[SQLiteValue] = []
         if cv_cid is not None:
             playlist_conditions.append("courses.cv_cid = ?")
             playlist_params.append(cv_cid)
@@ -335,7 +336,7 @@ class CompletionIndex:
                 "lower(course_no) = ?",
                 "lower(title) = ?",
             ]
-            params: list[Any] = [reference.strip(), normalized, normalized]
+            params: list[SQLiteValue] = [reference.strip(), normalized, normalized]
             if semester_condition is not None:
                 conditions.append(f"({semester_condition})")
                 params.extend(semester_params)

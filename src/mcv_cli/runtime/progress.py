@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from contextlib import AbstractContextManager
-from typing import Any
+from types import TracebackType
+from typing import cast
 
 from rich.console import Console
 from rich.progress import (
@@ -14,7 +15,7 @@ from rich.progress import (
 )
 
 
-class ProgressReporter(AbstractContextManager[Any]):
+class ProgressReporter(AbstractContextManager["ProgressReporter"]):
     """A lazy, stderr-only progress display for multi-request operations.
 
     The reporter is intentionally optional.  Core client and service methods
@@ -40,7 +41,13 @@ class ProgressReporter(AbstractContextManager[Any]):
     def __enter__(self) -> ProgressReporter:
         return self
 
-    def __exit__(self, *_: Any) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        del exc_type, exc_value, traceback
         self.close()
 
     def add_task(self, description: str, *, total: int | None = None) -> TaskID | None:
@@ -51,9 +58,9 @@ class ProgressReporter(AbstractContextManager[Any]):
             self._started = True
         return self._progress.add_task(description, total=total)
 
-    def advance(self, task_id: TaskID | None, amount: int = 1) -> None:
+    def advance(self, task_id: object | None, amount: int = 1) -> None:
         if self._progress is not None and task_id is not None:
-            self._progress.advance(task_id, amount)
+            self._progress.advance(cast(TaskID, task_id), amount)
 
     def close(self) -> None:
         if self._progress is not None and self._started:

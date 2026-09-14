@@ -3,10 +3,11 @@ from __future__ import annotations
 import difflib
 import re
 from collections.abc import Collection
-from typing import Any
+from typing import TypedDict, cast
 
 from ..core.errors import InvalidReferenceError, SearchUnavailableError, ValidationError
 from ..core.refs import ResourceRef, ResourceType
+from ..core.types import JsonObject, JsonValue
 from .models import SearchCandidate, SearchDocument, SearchResult
 from .protocols import SearchRepository
 
@@ -20,6 +21,10 @@ _TOKEN = re.compile(r"[\w]+", flags=re.UNICODE)
 _SEARCHABLE_TYPES = frozenset(ResourceType)
 _FUZZY_MATCH_THRESHOLD = 0.55
 _FUZZY_HIGHLIGHT_THRESHOLD = 0.6
+
+
+class _CourseFilterKwargs(TypedDict, total=False):
+    cv_cids: frozenset[int]
 
 
 class SearchClient:
@@ -189,7 +194,7 @@ def _course_matches(cv_cid: int, selected_courses: frozenset[int] | None) -> boo
 
 def _course_filter_kwargs(
     selected_courses: frozenset[int] | None,
-) -> dict[str, Any]:
+) -> _CourseFilterKwargs:
     if selected_courses is None:
         return {}
     return {"cv_cids": selected_courses}
@@ -218,13 +223,16 @@ def _normalize_types(
         try:
             parsed = value if isinstance(value, ResourceType) else ResourceType(value)
         except (TypeError, ValueError) as error:
+            details: JsonObject = {
+                "resource_type": str(value),
+                "supported": cast(
+                    JsonValue, sorted(item.value for item in _SEARCHABLE_TYPES)
+                ),
+            }
             raise ValidationError(
                 f'Unsupported search resource type "{value}".',
                 code="unsupported_search_type",
-                details={
-                    "resource_type": str(value),
-                    "supported": sorted(item.value for item in _SEARCHABLE_TYPES),
-                },
+                details=details,
                 resource="search",
                 operation="search",
             ) from error

@@ -2,14 +2,16 @@ from __future__ import annotations
 
 from collections.abc import Collection
 from datetime import datetime, time, timedelta
-from typing import Any
+from typing import cast
 
 from pydantic import BaseModel, Field
 
 from ..core.dates import COURSEVILLE_TIMEZONE, parse_courseville_date
+from ..core.progress import ProgressLike
 from ..resources.announcements.models import Announcement
 from ..resources.assignments.models import Assignment
 from ..resources.meetings.models import OnlineMeeting
+from ._protocols import AggregateAPI
 from .assignments import _course_sort_key, _semester_kwargs, _with_course_context, is_pending
 
 
@@ -27,8 +29,8 @@ class StatusSnapshot(BaseModel):
 class StatusAggregate:
     """Build a small current-work snapshot with one course discovery pass."""
 
-    def __init__(self, api: Any) -> None:
-        self.api = api
+    def __init__(self, api: object) -> None:
+        self.api = cast(AggregateAPI, api)
 
     def snapshot(
         self,
@@ -39,7 +41,7 @@ class StatusAggregate:
         assignment_window_days: int = 7,
         announcement_window_days: int = 7,
         now: datetime | None = None,
-        progress: Any | None = None,
+        progress: ProgressLike | None = None,
     ) -> StatusSnapshot:
         if assignment_window_days < 1 or announcement_window_days < 1:
             raise ValueError("Status windows must be at least one day.")

@@ -2,15 +2,25 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from collections.abc import Callable
+from typing import Literal, Protocol, cast
 
-from rich.console import Group
+from rich.console import Group, RenderableType
 from rich.padding import Padding as RichPadding
 from rich.table import Table
 from rich.text import Text
+from typer._click.core import Command
+from typer._click.core import Context as ClickContext
+from typer.core import TyperGroup
 
 
-def _append_cell(target: Text, cell: Any) -> None:
+class _RichUtils(Protocol):
+    Panel: Callable[..., RenderableType]
+    Padding: Callable[..., RenderableType]
+    rich_format_help: Callable[..., None]
+
+
+def _append_cell(target: Text, cell: object) -> None:
     """Append a non-empty Rich cell while preserving its styles and spans."""
 
     if not str(cell):
@@ -23,7 +33,7 @@ def _append_cell(target: Text, cell: Any) -> None:
         target.append(str(cell))
 
 
-def _merge_cells(cells: list[Any]) -> Text:
+def _merge_cells(cells: list[object]) -> Text:
     """Combine aliases from one Typer table column into a styled label."""
 
     value = Text()
@@ -32,7 +42,7 @@ def _merge_cells(cells: list[Any]) -> Text:
     return value
 
 
-def _option_metavar(cell: Any, label: Text) -> Text:
+def _option_metavar(cell: object, label: Text) -> Text:
     """Use a readable, option-specific metavar instead of Typer's ``<str>``."""
 
     value = cell.copy() if isinstance(cell, Text) else Text(str(cell))
@@ -52,7 +62,7 @@ def _option_metavar(cell: Any, label: Text) -> Text:
     return value
 
 
-def _compact_options_table(renderable: Any) -> Any:
+def _compact_options_table(renderable: object) -> object:
     """Join Typer's option columns into the conventional CLI layout."""
 
     if not isinstance(renderable, Table) or len(renderable.columns) < 6:
@@ -125,24 +135,26 @@ def _compact_options_table(renderable: Any) -> Any:
     return table
 
 
-def _minimal_panel(renderable: Any, *, title: str | None = None, **_: Any) -> Group:
+def _minimal_panel(renderable: object, *, title: str | None = None, **_: object) -> Group:
     """Keep a help section heading while removing its decorative border."""
 
-    items: list[Any] = []
+    items: list[RenderableType] = []
     if title:
         items.append(Text(f"{title}:", style="bold cyan"))
     if title == "Options":
         renderable = _compact_options_table(renderable)
-    items.append(RichPadding(renderable, (0, 0, 0, 2)))
+    items.append(RichPadding(cast(RenderableType, renderable), (0, 0, 0, 2)))
     items.append(Text(""))
     return Group(*items)
 
 
-def _minimal_padding(renderable: Any, padding: Any = 0, *_: Any, **__: Any) -> Any:
+def _minimal_padding(
+    renderable: RenderableType, padding: object = 0, *_: object, **__: object
+) -> RenderableType:
     """Keep compact spacing while separating the prose from help sections."""
 
     if padding == (0, 1, 1, 1):
-        return Group(Text(""), renderable, Text(""))
+        return Group(Text(""), cast(RenderableType, renderable), Text(""))
     return renderable
 
 
@@ -151,12 +163,17 @@ def install_minimal_rich_help() -> None:
 
     from typer import rich_utils
 
-    original = rich_utils.rich_format_help
+    rich_module = cast(_RichUtils, rich_utils)
+    original = rich_module.rich_format_help
     if getattr(original, "_mcv_minimal_help", False):
         return
 
-    def format_help(*, obj: Any, ctx: Any, markup_mode: Any) -> None:
-        rich_module = cast(Any, rich_utils)
+    def format_help(
+        *,
+        obj: Command | TyperGroup,
+        ctx: ClickContext,
+        markup_mode: Literal["markdown", "rich"],
+    ) -> None:
         original_panel = rich_module.Panel
         original_padding = rich_module.Padding
         rich_module.Panel = _minimal_panel
@@ -168,7 +185,7 @@ def install_minimal_rich_help() -> None:
             rich_module.Padding = original_padding
 
     format_help.__dict__["_mcv_minimal_help"] = True
-    cast(Any, rich_utils).rich_format_help = format_help
+    rich_module.rich_format_help = format_help
 
 
 __all__ = ["install_minimal_rich_help"]

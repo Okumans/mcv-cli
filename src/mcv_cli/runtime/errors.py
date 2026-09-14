@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
-
 from ..api.core.errors import APIError
+from ..api.core.types import JsonValue
 
 
 class RuntimeError(APIError):
@@ -19,7 +18,7 @@ class StorageError(RuntimeError):
         self,
         message: str,
         *,
-        details: Any | None = None,
+        details: JsonValue | None = None,
         operation: str | None = None,
     ) -> None:
         super().__init__(
@@ -37,7 +36,7 @@ class CacheError(RuntimeError):
         self,
         message: str,
         *,
-        details: Any | None = None,
+        details: JsonValue | None = None,
         operation: str | None = None,
     ) -> None:
         super().__init__(

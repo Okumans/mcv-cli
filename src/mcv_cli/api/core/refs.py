@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -64,7 +63,7 @@ class ResourceRef(BaseModel):
         return f"mcv:{self.resource_type.value}:{self.cv_cid}:{self.item_id}"
 
 
-def ref_for_resource(resource: Any) -> ResourceRef:
+def ref_for_resource(resource: object) -> ResourceRef:
     """Create a canonical ref without importing resource modules at import time."""
 
     from .resource import AddressableResource

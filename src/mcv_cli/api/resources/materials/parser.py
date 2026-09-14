@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import re
-from typing import Any
 from urllib.parse import urljoin
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from ...core.constants import BASE_URL
 from ...core.parsing import (
@@ -89,7 +88,7 @@ def parse_material_detail(material: Material, html_doc: str, detail_url: str) ->
     )
 
 
-def _external_links(element: Any) -> list[str]:
+def _external_links(element: Tag | BeautifulSoup) -> list[str]:
     links: list[str] = []
     for anchor in element.find_all("a", href=True):
         href = absolute_href(anchor)

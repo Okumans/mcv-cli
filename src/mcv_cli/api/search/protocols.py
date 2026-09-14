@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Collection, Sequence
-from typing import Any, Protocol
+from typing import Protocol
 
 from ..core.refs import ResourceRef, ResourceType
 from .models import SearchCandidate, SearchDocument
@@ -40,7 +40,7 @@ class SearchRepository(Protocol):
 
 
 class ResourceCacheSink(Protocol):
-    def record_value(self, value: Any, *, detail_level: str = "summary") -> None: ...
+    def record_value(self, value: object, *, detail_level: str = "summary") -> None: ...
 
 
 class LocalStore(SearchRepository, ResourceCacheSink, Protocol):

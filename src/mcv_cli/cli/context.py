@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
-from typing import Any, TypeVar
+from collections.abc import Callable, Iterable, Mapping
+from typing import TypedDict, TypeVar, cast
 
 import typer
+from pydantic import BaseModel
 
 from ..api import MCVAPI
 from ..api.core.errors import APIError
 from ..api.core.refs import ResourceRef, ResourceType, ref_for_resource
+from ..api.core.resource import AddressableResource
 from ..api.resources.courses.models import Course
 from ..presentation.json import ShellIdList
 from ..presentation.output import DisplayMode, emit, emit_error
@@ -27,10 +29,33 @@ from .errors import (
 
 _FetchInput = TypeVar("_FetchInput")
 _FetchOutput = TypeVar("_FetchOutput")
+_RunResult = TypeVar("_RunResult")
+_RecordT = TypeVar("_RecordT", bound=BaseModel)
 
 
-def object_for(ctx: typer.Context) -> dict[str, Any]:
-    return ctx.ensure_object(dict)
+class CLIContextState(TypedDict, total=False):
+    json: bool
+    jsonl: bool
+    envelope: bool
+    quiet: bool
+    semester: str
+    semesters: tuple[str, ...]
+    all_semesters: bool
+    progress: ProgressReporter
+
+
+class SemesterScopeKwargs(TypedDict, total=False):
+    semester: str
+    semesters: tuple[str, ...]
+    all_semesters: bool
+
+
+class ProgressOptions(TypedDict, total=False):
+    progress: ProgressReporter
+
+
+def object_for(ctx: typer.Context) -> CLIContextState:
+    return cast(CLIContextState, ctx.ensure_object(dict))
 
 
 def json_mode(ctx: typer.Context) -> bool:
@@ -74,7 +99,7 @@ def selected_semester(ctx: typer.Context) -> str | None:
     return values[0] if values else None
 
 
-def semester_scope_kwargs(ctx: typer.Context) -> dict[str, Any]:
+def semester_scope_kwargs(ctx: typer.Context) -> SemesterScopeKwargs:
     if all_semester_scope(ctx):
         return {"all_semesters": True}
     values = selected_semesters(ctx)
@@ -99,7 +124,7 @@ def progress_enabled(ctx: typer.Context) -> bool:
     return not quiet_mode(ctx) and not json_mode(ctx) and not jsonl_mode(ctx)
 
 
-def progress_options(ctx: typer.Context) -> dict[str, Any]:
+def progress_options(ctx: typer.Context) -> ProgressOptions:
     if not progress_enabled(ctx):
         return {}
     progress = progress_for(ctx)
@@ -134,13 +159,19 @@ def make_manager() -> AuthManager:
     return AuthManager(settings=Settings(), output=lambda message: typer.echo(message, err=True))
 
 
-_AUTO_CACHE = object()
+class _AutoCache:
+    pass
 
 
-def make_api(*, cache_store: CacheStore | None | object = _AUTO_CACHE) -> MCVAPI:
+_AUTO_CACHE = _AutoCache()
+
+
+def make_api(*, cache_store: CacheStore | None | _AutoCache = _AUTO_CACHE) -> MCVAPI:
     manager = make_manager()
-    selected_cache = cache_namespace(manager) if cache_store is _AUTO_CACHE else cache_store
-    return MCVAPI(manager, cache_store=selected_cache)  # type: ignore[arg-type]
+    selected_cache = (
+        cache_namespace(manager) if isinstance(cache_store, _AutoCache) else cache_store
+    )
+    return MCVAPI(manager, cache_store=selected_cache)
 
 
 def cache_namespace(manager: AuthManager | None = None) -> CacheStore:
@@ -157,7 +188,8 @@ def cache_namespace(manager: AuthManager | None = None) -> CacheStore:
     )
 
 
-def cache_update(ctx: typer.Context, value: Any) -> None:
+def cache_update(ctx: typer.Context, value: object) -> None:
+    del ctx
     cache = active_cache()
     if cache is None:
         return
@@ -167,7 +199,7 @@ def cache_update(ctx: typer.Context, value: Any) -> None:
         return
 
 
-def cache_record_value(cache: CacheStore, value: Any) -> None:
+def cache_record_value(cache: CacheStore, value: object) -> None:
     cache.record_value(value)
 
 
@@ -179,11 +211,11 @@ def course_semester(course: Course) -> str | None:
 
 def run(
     ctx: typer.Context,
-    action: Callable[[], Any],
+    action: Callable[[], _RunResult | None],
     *,
     display_mode: DisplayMode = "collection",
 ) -> None:
-    result: Any = None
+    result: _RunResult | None = None
     caught_error: APIError | None = None
     with ProgressReporter(progress_enabled(ctx)) as progress:
         object_for(ctx)["progress"] = progress
@@ -243,7 +275,9 @@ def resource_item_id_for_course(
     return reference.item_id
 
 
-def resource_refs(records: list[Any], *, cv_cid: int | None = None) -> ShellIdList:
+def resource_refs(
+    records: Iterable[AddressableResource], *, cv_cid: int | None = None
+) -> ShellIdList:
     references: list[str] = []
     for record in records:
         if cv_cid is not None and getattr(record, "cv_cid", None) is None:
@@ -253,12 +287,12 @@ def resource_refs(records: list[Any], *, cv_cid: int | None = None) -> ShellIdLi
 
 
 def project_records(
-    records: list[Any],
+    records: Iterable[_RecordT],
     fields: str,
     *,
     available_fields: set[str],
-    computed_fields: dict[str, Callable[[Any], Any]] | None = None,
-) -> list[dict[str, Any]]:
+    computed_fields: Mapping[str, Callable[[_RecordT], object]] | None = None,
+) -> list[dict[str, object]]:
     selected = tuple(dict.fromkeys(field.strip() for field in fields.split(",") if field.strip()))
     if not selected:
         raise UsageError("--select must contain at least one field.")

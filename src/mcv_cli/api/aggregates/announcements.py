@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 from collections.abc import Collection
-from typing import Any
+from typing import cast
 
+from ..core.progress import ProgressLike
 from ..resources.announcements.models import Announcement
+from ._protocols import AggregateAPI
 from .assignments import _course_sort_key, _semester_kwargs, _with_course_context
 
 
 class AnnouncementsAggregate:
-    def __init__(self, api: Any) -> None:
-        self.api = api
+    def __init__(self, api: object) -> None:
+        self.api = cast(AggregateAPI, api)
 
     def list(
         self,
@@ -17,7 +19,7 @@ class AnnouncementsAggregate:
         semester: str | None = None,
         semesters: Collection[str] | None = None,
         all_semesters: bool = False,
-        progress: Any | None = None,
+        progress: ProgressLike | None = None,
     ) -> list[Announcement]:
         results: list[Announcement] = []
         courses = sorted(

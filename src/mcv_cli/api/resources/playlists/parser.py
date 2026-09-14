@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Iterable, Iterator
-from typing import Any
+from typing import cast
 from urllib.parse import parse_qs, urlparse
 
 from bs4 import BeautifulSoup, Tag
@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup, Tag
 from ...core.constants import BASE_URL
 from ...core.errors import ParseError
 from ...core.parsing import absolute_url, looks_like_course_page, text
+from ...core.types import JsonObject, JsonValue
 from .models import (
     Playlist,
     PlaylistCollection,
@@ -157,19 +158,19 @@ def playlist_ids(html_doc: str) -> list[str]:
     return values
 
 
-def _embedded_payloads(soup: BeautifulSoup) -> Iterator[Any]:
+def _embedded_payloads(soup: BeautifulSoup) -> Iterator[JsonValue]:
     for script in soup.select('script[type="application/json"], script[data-playlist-json]'):
         raw = script.string or script.get_text()
         if not raw.strip():
             continue
         try:
-            yield json.loads(raw)
+            yield cast(JsonValue, json.loads(raw))
         except (TypeError, json.JSONDecodeError):
             continue
 
 
 def _collection_from_payload(
-    payload: Any,
+    payload: JsonValue,
     cv_cid: int,
     source_url: str,
 ) -> PlaylistCollection | None:
@@ -221,7 +222,7 @@ def _collection_from_payload(
     )
 
 
-def _playlist_from_payload_value(value: Any, source_url: str) -> Playlist | None:
+def _playlist_from_payload_value(value: JsonValue, source_url: str) -> Playlist | None:
     if not isinstance(value, dict):
         return None
     nodes_value = _first_value(
@@ -248,7 +249,7 @@ def _playlist_from_payload_value(value: Any, source_url: str) -> Playlist | None
     )
 
 
-def _payload_candidate(payload: Any) -> dict[str, Any] | None:
+def _payload_candidate(payload: JsonValue) -> JsonObject | None:
     if isinstance(payload, dict):
         if any(
             key in payload
@@ -373,7 +374,7 @@ def _nodes_for_container(container: Tag) -> list[PlaylistNode]:
     )
 
 
-def _payload_nodes(values: list[Any], counter: list[int]) -> list[PlaylistNode]:
+def _payload_nodes(values: list[JsonValue], counter: list[int]) -> list[PlaylistNode]:
     nodes: list[PlaylistNode] = []
     for value in values:
         if not isinstance(value, dict):
@@ -891,19 +892,19 @@ def _positive_int(value: object) -> int | None:
     return None
 
 
-def _first_value(values: dict[str, Any], *keys: str) -> Any:
+def _first_value(values: JsonObject, *keys: str) -> JsonValue | None:
     for key in keys:
         if key in values:
             return values[key]
     return None
 
 
-def _string_value(values: dict[str, Any], *keys: str) -> str | None:
+def _string_value(values: JsonObject, *keys: str) -> str | None:
     value = _first_value(values, *keys)
     return _clean(str(value)) if value is not None and str(value).strip() else None
 
 
-def _url_value(values: dict[str, Any], *keys: str) -> str | None:
+def _url_value(values: JsonObject, *keys: str) -> str | None:
     value = _string_value(values, *keys)
     return absolute_url(value) if value else None
 

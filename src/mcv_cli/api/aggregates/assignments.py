@@ -2,28 +2,43 @@ from __future__ import annotations
 
 import re
 from collections.abc import Collection
-from typing import Any
+from typing import TypedDict, TypeVar, cast
 
+from ..core.progress import ProgressLike
+from ..core.types import JsonValue
+from ..resources.announcements.models import Announcement
 from ..resources.assignments.models import Assignment
 from ..resources.courses.models import Course
+from ..resources.meetings.models import OnlineMeeting
+from ._protocols import AggregateAPI
 
 
 def _course_sort_key(course: Course) -> tuple[str, str, int]:
     return (course.course_no or "", course.title or "", course.cv_cid)
 
 
-def _with_course_context(resource: Any, course: Course) -> Any:
-    updates: dict[str, Any] = {"cv_cid": resource.cv_cid or course.cv_cid}
-    if hasattr(resource, "course_no"):
-        updates["course_no"] = course.course_no
+_CourseResource = TypeVar("_CourseResource", Assignment, Announcement, OnlineMeeting)
+
+
+def _with_course_context(resource: _CourseResource, course: Course) -> _CourseResource:
+    updates: dict[str, JsonValue] = {
+        "cv_cid": resource.cv_cid or course.cv_cid,
+        "course_no": course.course_no,
+    }
     return resource.model_copy(update=updates)
+
+
+class _SemesterKwargs(TypedDict, total=False):
+    semester: str
+    semesters: Collection[str]
+    all_semesters: bool
 
 
 class AssignmentsAggregate:
     """Cross-course assignment queries built on the resource clients."""
 
-    def __init__(self, api: Any) -> None:
-        self.api = api
+    def __init__(self, api: object) -> None:
+        self.api = cast(AggregateAPI, api)
 
     def list(
         self,
@@ -33,7 +48,7 @@ class AssignmentsAggregate:
         all_semesters: bool = False,
         pending: bool = False,
         due: bool = False,
-        progress: Any | None = None,
+        progress: ProgressLike | None = None,
     ) -> list[Assignment]:
         results: list[Assignment] = []
         courses = sorted(
@@ -95,7 +110,7 @@ def _semester_kwargs(
     semester: str | None,
     semesters: Collection[str] | None,
     all_semesters: bool,
-) -> dict[str, object]:
+) -> _SemesterKwargs:
     if semester is not None and semesters is not None:
         raise ValueError("Use either semester or semesters, not both.")
     if all_semesters and (semester is not None or semesters is not None):

@@ -5,7 +5,7 @@ this package initializer light is important because shell completion imports
 small runtime modules before the normal authentication and storage stack.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .auth import AuthManager
@@ -22,7 +22,7 @@ __all__ = [
 ]
 
 
-def __getattr__(name: str) -> Any:
+def __getattr__(name: str) -> object:
     if name == "AuthManager":
         from .auth import AuthManager
 

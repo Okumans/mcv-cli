@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from typing import Any
 
 from ..core.resource import AddressableResource
+from ..core.types import JsonObject, JsonValue
 from ..resources.announcements.models import Announcement
 from ..resources.assignments.models import Assignment
 from ..resources.materials.models import Material
 from ..resources.meetings.models import OnlineMeeting
-from ..resources.playlists.models import PlaylistCollection, PlaylistFolder, PlaylistVideo
+from ..resources.playlists.models import Playlist, PlaylistCollection, PlaylistFolder, PlaylistVideo
 from .models import SearchDocument
 
 _SPACE = re.compile(r"\s+")
@@ -93,7 +93,7 @@ def searchable_document(
     )
 
 
-def snapshot_for_resource(resource: AddressableResource) -> dict[str, Any] | None:
+def snapshot_for_resource(resource: AddressableResource) -> JsonObject | None:
     """Return the allow-listed resource snapshot stored beside the index."""
 
     try:
@@ -166,7 +166,7 @@ def snapshot_for_resource(resource: AddressableResource) -> dict[str, Any] | Non
     return None
 
 
-def _snapshot(resource: object, **values: Any) -> dict[str, Any]:
+def _snapshot(resource: object, **values: object) -> JsonObject:
     del resource
     return {
         key: _safe_snapshot_value(value)
@@ -175,21 +175,25 @@ def _snapshot(resource: object, **values: Any) -> dict[str, Any]:
     }
 
 
-def _safe_snapshot_value(value: Any) -> Any:
+def _safe_snapshot_value(value: object) -> JsonValue:
+    if value is None:
+        return None
     if isinstance(value, str):
         return _text(value)
-    if isinstance(value, list):
+    if isinstance(value, bool | int | float):
+        return value
+    if isinstance(value, list | tuple):
         return [_safe_snapshot_value(item) for item in value]
     if isinstance(value, dict):
-        return {key: _safe_snapshot_value(item) for key, item in value.items()}
-    return value
+        return {str(key): _safe_snapshot_value(item) for key, item in value.items()}
+    return str(value)
 
 
-def _playlist_text(playlist: Any) -> str:
+def _playlist_text(playlist: Playlist) -> str:
     return _content(
-        getattr(playlist, "title", None),
-        getattr(playlist, "description", None),
-        *(_playlist_node_text(node) for node in getattr(playlist, "nodes", [])),
+        playlist.title,
+        playlist.description,
+        *(_playlist_node_text(node) for node in playlist.nodes),
     )
 
 
@@ -199,20 +203,20 @@ def _playlist_node_text(node: PlaylistFolder | PlaylistVideo) -> str:
     return _content(node.title, node.provider, node.duration)
 
 
-def _playlist_snapshot(playlist: Any) -> dict[str, Any]:
+def _playlist_snapshot(playlist: Playlist) -> JsonObject:
     return {
         key: value
         for key, value in {
-            "playlist_id": _safe_snapshot_value(getattr(playlist, "playlist_id", None)),
-            "title": _safe_snapshot_value(getattr(playlist, "title", None)),
-            "description": _safe_snapshot_value(getattr(playlist, "description", None)),
-            "nodes": [_playlist_node_snapshot(node) for node in getattr(playlist, "nodes", [])],
+            "playlist_id": _safe_snapshot_value(playlist.playlist_id),
+            "title": _safe_snapshot_value(playlist.title),
+            "description": _safe_snapshot_value(playlist.description),
+            "nodes": [_playlist_node_snapshot(node) for node in playlist.nodes],
         }.items()
         if value is not None
     }
 
 
-def _playlist_node_snapshot(node: PlaylistFolder | PlaylistVideo) -> dict[str, Any]:
+def _playlist_node_snapshot(node: PlaylistFolder | PlaylistVideo) -> JsonObject:
     if isinstance(node, PlaylistFolder):
         return {
             key: value

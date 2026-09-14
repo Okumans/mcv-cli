@@ -25,8 +25,10 @@ def status(
 ) -> None:
     def action() -> StatusSnapshot:
         with make_api() as api:
-            options = {**semester_scope_kwargs(ctx), **progress_options(ctx)}
-            return api.aggregates.status.snapshot(**options)
+            return api.aggregates.status.snapshot(
+                **semester_scope_kwargs(ctx),
+                **progress_options(ctx),
+            )
 
     run(ctx, action, display_mode="expanded" if all_fields else "short")
 

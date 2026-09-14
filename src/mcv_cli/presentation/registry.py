@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
 
+from pydantic import BaseModel
 from rich.console import RenderableType
 
 from .resources.about import render_about
@@ -53,7 +53,7 @@ class Renderer:
     expanded_single: Callable[..., RenderableType] | None = None
 
 
-def renderer_for(value: Any) -> Renderer | None:
+def renderer_for(value: object) -> Renderer | None:
     """Find a renderer without coupling API models to Rich."""
 
     # Imports are local so this registry remains cheap to import for callers
@@ -77,7 +77,7 @@ def renderer_for(value: Any) -> Renderer | None:
     from ..api.resources.web_resources.models import WebResource
     from ..api.search.models import SearchResult
 
-    mapping: tuple[tuple[type[Any], Renderer], ...] = (
+    mapping: tuple[tuple[type[BaseModel], Renderer], ...] = (
         (Course, Renderer(render_course, render_courses)),
         (Material, Renderer(render_material, render_materials)),
         (MaterialFolder, Renderer(render_material_folder, render_material_folders)),

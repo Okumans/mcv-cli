@@ -8,7 +8,6 @@ import shlex
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
 
 from . import (
     CompletionCandidate,
@@ -198,9 +197,9 @@ _COURSE_OPTIONS = {
 @dataclass(frozen=True)
 class _CompletionContext:
     args: tuple[str, ...] = ()
-    params: Mapping[str, Any] | None = None
-    obj: Mapping[str, Any] | None = None
-    parent: Any = None
+    params: Mapping[str, object] | None = None
+    obj: Mapping[str, object] | None = None
+    parent: object | None = None
 
 
 def _static(values: Mapping[str, str], incomplete: str) -> list[CompletionCandidate]:
@@ -253,7 +252,7 @@ def _shell_position(mode: str) -> tuple[list[str], str]:
     return args, ""
 
 
-def _root_state(args: Sequence[str]) -> tuple[dict[str, Any], list[str]]:
+def _root_state(args: Sequence[str]) -> tuple[dict[str, object], list[str]]:
     semesters: list[str] = []
     all_semesters = False
     index = 0
@@ -288,7 +287,7 @@ def _root_state(args: Sequence[str]) -> tuple[dict[str, Any], list[str]]:
             continue
         break
 
-    params: dict[str, Any] = {
+    params: dict[str, object] = {
         "semesters": tuple(semesters),
         "all_semesters": all_semesters,
     }
@@ -298,7 +297,7 @@ def _root_state(args: Sequence[str]) -> tuple[dict[str, Any], list[str]]:
 
 
 def _semester_values(
-    params: Mapping[str, Any], args: Sequence[str], incomplete: str
+    params: Mapping[str, object], args: Sequence[str], incomplete: str
 ) -> list[CompletionCandidate]:
     context = _CompletionContext(args=tuple(args), params=params)
     if incomplete.startswith("--semester="):
@@ -313,14 +312,14 @@ def _semester_values(
 
 
 def _course_values(
-    params: Mapping[str, Any], args: Sequence[str], incomplete: str
+    params: Mapping[str, object], args: Sequence[str], incomplete: str
 ) -> list[CompletionCandidate]:
     context = _CompletionContext(args=tuple(args), params=params)
     return _candidates(complete_courses(context, list(args), incomplete))
 
 
 def _course_filter_values(
-    params: Mapping[str, Any], args: Sequence[str], incomplete: str
+    params: Mapping[str, object], args: Sequence[str], incomplete: str
 ) -> list[CompletionCandidate]:
     context = _CompletionContext(args=tuple(args), params=params)
     return _candidates(complete_course_filters(context, list(args), incomplete))
@@ -339,7 +338,7 @@ def _option_values(
 
 
 def _complete_auth(
-    route: Sequence[str], params: Mapping[str, Any], incomplete: str
+    route: Sequence[str], params: Mapping[str, object], incomplete: str
 ) -> list[CompletionCandidate]:
     if not route:
         return _static(_AUTH_COMMANDS, incomplete)
@@ -361,7 +360,7 @@ def _complete_auth(
 def _complete_resource_group(
     command: str,
     route: Sequence[str],
-    params: Mapping[str, Any],
+    params: Mapping[str, object],
     incomplete: str,
 ) -> list[CompletionCandidate]:
     if not route:
@@ -385,7 +384,7 @@ def _complete_resource_group(
 
 
 def _complete_courses(
-    route: Sequence[str], params: Mapping[str, Any], incomplete: str
+    route: Sequence[str], params: Mapping[str, object], incomplete: str
 ) -> list[CompletionCandidate]:
     context = _CompletionContext(args=tuple(route), params=params)
     if route and route[-1] in {"--folder", "--grouping"}:
@@ -407,7 +406,7 @@ def _complete_courses(
 
 
 def _complete_cache(
-    route: Sequence[str], params: Mapping[str, Any], incomplete: str
+    route: Sequence[str], params: Mapping[str, object], incomplete: str
 ) -> list[CompletionCandidate]:
     if not route:
         return _static(_CACHE_COMMANDS, incomplete)
@@ -429,7 +428,7 @@ def _complete_cache(
 
 
 def _complete_search(
-    route: Sequence[str], params: Mapping[str, Any], incomplete: str
+    route: Sequence[str], params: Mapping[str, object], incomplete: str
 ) -> list[CompletionCandidate]:
     if _pending_value(route, "--courses"):
         return _course_filter_values(params, route, incomplete)
@@ -443,7 +442,7 @@ def _complete_search(
 def _complete_command(
     command: str,
     route: Sequence[str],
-    params: Mapping[str, Any],
+    params: Mapping[str, object],
     incomplete: str,
 ) -> list[CompletionCandidate]:
     if command == "courses":

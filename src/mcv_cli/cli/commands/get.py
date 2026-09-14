@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
-from typing import Any
 
 import typer
 
 from ...api.core.errors import APIError
 from ...api.core.refs import ResourceRef, ResourceType
+from ...api.core.resource import Resource
+from ...api.facade import MCVAPI
 from ...presentation.json import machine_error_payload, serialize_jsonl
 from ...runtime.progress import ProgressReporter
 from ..context import (
@@ -56,14 +57,14 @@ def _get_resources(
 ) -> None:
     if not jsonl_mode(ctx):
 
-        def action() -> Any:
+        def action() -> Resource | list[Resource]:
             parsed = [_parse_reference(reference, expected_type) for reference in references]
             with make_api() as api:
                 progress = progress_for(ctx)
                 task = (
                     progress.add_task("Fetching resources", total=len(parsed)) if progress else None
                 )
-                values: list[Any] = []
+                values: list[Resource] = []
                 for reference in parsed:
                     try:
                         values.append(api.get(reference))
@@ -85,7 +86,7 @@ def _get_resources(
     failures: list[APIError] = []
     with ProgressReporter(progress_enabled(ctx)) as progress:
         task = progress.add_task("Fetching resources", total=len(parsed))
-        api = None
+        api: MCVAPI | None = None
         api_error: APIError | None = None
         if valid:
             try:

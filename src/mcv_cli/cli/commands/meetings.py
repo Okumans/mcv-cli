@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import Any
-
 import typer
 
 from ...api.core.refs import ResourceType
+from ...api.resources.meetings.models import OnlineMeeting
+from ...presentation.json import ShellIdList
 from ...runtime.completion import complete_refs_for
 from ..context import make_api, progress_options, resource_refs, run, semester_scope_kwargs
 from .get import get_typed_resources
@@ -40,7 +40,7 @@ def list_meetings(
         help="Show expanded rows with ids and canonical references.",
     ),
 ) -> None:
-    def action() -> Any:
+    def action() -> list[OnlineMeeting] | ShellIdList:
         with make_api() as api:
             values = api.aggregates.meetings.list(
                 **semester_scope_kwargs(ctx),

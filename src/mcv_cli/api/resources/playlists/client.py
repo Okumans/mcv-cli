@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from typing import Any
-
 from ...core.errors import UpstreamError
 from ...core.parsing import html_from_response
+from ...core.types import JsonValue
 from .._base import ResourceClient
 from .endpoints import detail_url, loaded_detail_url
 from .models import Playlist, PlaylistCollection
@@ -63,7 +62,7 @@ class PlaylistClient(ResourceClient):
         return self.record_result(result, detail_level="detail")
 
 
-def _successful_payload(payload: Any) -> bool:
+def _successful_payload(payload: JsonValue) -> bool:
     return isinstance(payload, dict) and payload.get("status") in (1, "1", True)
 
 

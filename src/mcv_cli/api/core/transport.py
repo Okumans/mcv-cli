@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable
-from typing import Any
 from urllib.parse import urlparse
 
 import httpx
 
 from .errors import AuthenticationRequired, TransportError, UpstreamError
+from .types import HttpParams
 
 _REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 _RETRYABLE_STATUSES = {408, 429, 500, 502, 503, 504}
@@ -36,7 +36,7 @@ class MCVTransport:
         method: str,
         url: str,
         *,
-        params: dict[str, Any] | None = None,
+        params: HttpParams | None = None,
         data: dict[str, str] | None = None,
     ) -> httpx.Response:
         for attempt in range(3):
@@ -114,9 +114,9 @@ class MCVTransport:
 
     @staticmethod
     def _raise_response_error(response: httpx.Response) -> None:
-        detail: Any = None
+        detail: object | None = None
         try:
-            payload = response.json()
+            payload: object = response.json()
             if isinstance(payload, dict):
                 detail = (
                     payload.get("error_description")

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import cast
 
 import typer
+from typer._click.core import Context as ClickContext
+from typer._click.shell_completion import CompletionItem
 from typer.core import TyperGroup
 
 from .. import __version__
@@ -51,10 +53,12 @@ class CourseAwareGroup(TyperGroup):
     """Parse the explicit ``courses COURSE RESOURCE ACTION`` grammar."""
 
     @staticmethod
-    def _show_route_help(ctx: Any, target: str, resource: str, action: str | None) -> None:
+    def _show_route_help(
+        ctx: ClickContext, target: str, resource: str, action: str | None
+    ) -> None:
         """Render a hidden implementation command using its public route."""
 
-        command = ctx.command.commands[target]
+        command = cast(TyperGroup, ctx.command).commands[target]
         route = " ".join(part for part in ("COURSE", resource, action) if part)
         help_ctx = type(ctx)(command, info_name=route, parent=ctx)
         try:
@@ -64,7 +68,7 @@ class CourseAwareGroup(TyperGroup):
         typer.echo(message)
         raise typer.Exit()
 
-    def parse_args(self, ctx: Any, args: list[str]) -> list[str]:
+    def parse_args(self, ctx: ClickContext, args: list[str]) -> list[str]:
         if not args or args[0].startswith("-") or args[0] in self.commands:
             return super().parse_args(ctx, args)
         if getattr(ctx, "resilient_parsing", False):
@@ -101,11 +105,14 @@ class CourseAwareGroup(TyperGroup):
                 args = [target, course, *(resource_args if direct_search else resource_args[1:])]
         return super().parse_args(ctx, args)
 
-    def shell_complete(self, ctx: Any, incomplete: str) -> list[Any]:
+    def shell_complete(self, ctx: ClickContext, incomplete: str) -> list[CompletionItem]:
         args = list(getattr(ctx, "args", []))
         if args and (args[0].startswith("-") or args[0] in self.commands):
             return super().shell_complete(ctx, incomplete)
-        return complete_course_group(ctx, incomplete)
+        return [
+            CompletionItem(item.value, help=item.help)
+            for item in complete_course_group(ctx, incomplete)
+        ]
 
 
 app = typer.Typer(

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import Collection
+from typing import cast
 
 from ...core.errors import AmbiguousError, NotFoundError
 from ...core.parsing import html_from_response
+from ...core.types import JsonObject, JsonValue
 from .._base import ResourceClient
 from .endpoints import course_filter_url, course_home_url
 from .models import Course
@@ -111,7 +113,7 @@ class CourseClient(ResourceClient):
 
     @staticmethod
     def _ambiguous_course(reference: str, matches: list[Course]) -> AmbiguousError:
-        candidates = [
+        candidates: list[JsonObject] = [
             {
                 "cv_cid": item.cv_cid,
                 "course_no": item.course_no,
@@ -122,12 +124,16 @@ class CourseClient(ResourceClient):
             }
             for item in matches
         ]
+        details: JsonObject = {
+            "reference": reference,
+            "matches": cast(JsonValue, candidates),
+        }
         return AmbiguousError(
             f'Course reference "{reference}" matched multiple enrolled courses; '
             "use the cv_cid to select one.",
             resource="course",
             operation="resolve",
-            details={"reference": reference, "matches": candidates},
+            details=details,
         )
 
     def _get_semester_options(self) -> tuple[list[str], str]:

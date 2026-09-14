@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import re
-from typing import Any
 from urllib.parse import unquote_plus
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from ...core.parsing import absolute_href, absolute_url, extract_id, is_assignment_page_url, text
 from ...core.rich_text import parse_rich_text
@@ -120,7 +119,7 @@ def parse_assignment_detail(
     )
 
 
-def assignment_status_column(table: Any) -> int | None:
+def assignment_status_column(table: Tag) -> int | None:
     header_cells = table.select("thead th, thead td")
     if not header_cells:
         header_row = table.select_one("thead tr") or table.select_one("tr")
@@ -132,7 +131,7 @@ def assignment_status_column(table: Any) -> int | None:
     return None
 
 
-def assignment_status_cell(row: Any, cells: list[Any], column: int | None) -> Any:
+def assignment_status_cell(row: Tag, cells: list[Tag], column: int | None) -> Tag | None:
     for cell in cells:
         if has_status_attribute(cell):
             return cell
@@ -148,7 +147,7 @@ def assignment_status_cell(row: Any, cells: list[Any], column: int | None) -> An
     return cells[-1] if cells else None
 
 
-def assignment_status_text(cell: Any) -> str | None:
+def assignment_status_text(cell: Tag | None) -> str | None:
     if cell is None:
         return None
     elements = [cell, *cell.find_all(True)]
@@ -174,7 +173,7 @@ def assignment_status_text(cell: Any) -> str | None:
     return text(cell)
 
 
-def assignment_status_marker(element: Any) -> str | None:
+def assignment_status_marker(element: Tag) -> str | None:
     values: list[str] = []
     for attribute in ("class", "id", "src", "data-status", "data-state"):
         value = element.get(attribute)
@@ -200,7 +199,7 @@ def assignment_status_marker(element: Any) -> str | None:
     return None
 
 
-def has_status_attribute(element: Any) -> bool:
+def has_status_attribute(element: Tag) -> bool:
     attributes = " ".join(
         str(element.get(name, ""))
         for name in ("class", "id", "data-col", "data-column", "data-field")
@@ -230,7 +229,7 @@ def looks_like_assignment_status(value: str) -> bool:
     )
 
 
-def assignment_submission_time(cells: list[Any]) -> str | None:
+def assignment_submission_time(cells: list[Tag]) -> str | None:
     for cell in cells:
         value = text(cell)
         if value:
@@ -240,7 +239,7 @@ def assignment_submission_time(cells: list[Any]) -> str | None:
     return None
 
 
-def assignment_submission_link(row: Any) -> Any:
+def assignment_submission_link(row: Tag) -> Tag | None:
     for anchor in row.select("a[href]"):
         metadata = " ".join(
             str(anchor.get(attribute, ""))
@@ -285,7 +284,7 @@ def assignment_status_from_text(value: str | None) -> str | None:
     return None
 
 
-def assignment_submission_links(soup: Any, detail_url: str) -> list[str]:
+def assignment_submission_links(soup: BeautifulSoup | Tag, detail_url: str) -> list[str]:
     selectors = (
         "#courseville-worksheet-work-submission-wrapper",
         "#courseville-worksheet-work-submission",
@@ -314,7 +313,7 @@ def assignment_submission_links(soup: Any, detail_url: str) -> list[str]:
 
 
 def parse_question_set_submission(
-    soup: Any,
+    soup: BeautifulSoup | Tag,
     detail_url: str,
     work_status: str | None,
     submitted_at: str | None,
@@ -386,7 +385,7 @@ def parse_question_set_submission(
     )
 
 
-def parse_question_set_questions(work_scope: Any) -> list[QuestionSetQuestion]:
+def parse_question_set_questions(work_scope: Tag) -> list[QuestionSetQuestion]:
     question_set = work_scope.select_one(
         "#courseville-worksheet-work-tabpanel-qs, .cvqs-qs-wrapper"
     )
@@ -448,7 +447,7 @@ def parse_question_set_questions(work_scope: Any) -> list[QuestionSetQuestion]:
     return questions
 
 
-def question_set_correct_answers(wrapper: Any) -> list[str]:
+def question_set_correct_answers(wrapper: Tag) -> list[str]:
     answer_list = wrapper.select_one(".cvqs-creator-answer-list")
     if answer_list is None:
         return []
@@ -460,7 +459,7 @@ def question_set_correct_answers(wrapper: Any) -> list[str]:
     return answers
 
 
-def question_set_input_value(element: Any) -> str | None:
+def question_set_input_value(element: Tag | None) -> str | None:
     if element is None:
         return None
     value = element.get("value")
@@ -477,7 +476,7 @@ def question_set_choice_correct(
     return label in correct_answers or value in correct_answers
 
 
-def question_set_question_type(answer_wrapper: Any, choices: list[QuestionSetChoice]) -> str:
+def question_set_question_type(answer_wrapper: Tag | None, choices: list[QuestionSetChoice]) -> str:
     if answer_wrapper is None:
         return "unknown"
     if answer_wrapper.select_one(".cvqs-answer-opentext, textarea") is not None:
@@ -487,7 +486,7 @@ def question_set_question_type(answer_wrapper: Any, choices: list[QuestionSetCho
     return "unknown"
 
 
-def question_set_text_answer(answer_wrapper: Any) -> str | None:
+def question_set_text_answer(answer_wrapper: Tag | None) -> str | None:
     if answer_wrapper is None:
         return None
     control = answer_wrapper.select_one("textarea, input[type='text'], input:not([type])")
@@ -505,7 +504,7 @@ def question_set_answer_value(values: list[str]) -> str | list[str] | None:
     return values[0] if len(values) == 1 else values
 
 
-def assignment_work_scope(soup: Any) -> Any | None:
+def assignment_work_scope(soup: BeautifulSoup | Tag) -> Tag | None:
     selectors = (
         "#courseville-worksheet-work-wrapper",
         "#courseville-worksheet-work",
@@ -518,9 +517,14 @@ def assignment_work_scope(soup: Any) -> Any | None:
             return element
     candidates = []
     for element in soup.find_all(True):
-        identity = " ".join(
-            [str(element.get("id", "")), " ".join(str(item) for item in element.get("class", []))]
-        ).casefold()
+        class_value = element.get("class")
+        if isinstance(class_value, list):
+            class_names = [str(item) for item in class_value]
+        elif class_value is None:
+            class_names = []
+        else:
+            class_names = [str(class_value)]
+        identity = " ".join([str(element.get("id", "")), " ".join(class_names)]).casefold()
         if "worksheet" not in identity or "work" not in identity:
             continue
         if any(marker in identity for marker in ("status", "submission", "feedback")):
@@ -535,7 +539,7 @@ def question_set_marker(value: str | None) -> bool:
     )
 
 
-def assignment_element_label(element: Any) -> str | None:
+def assignment_element_label(element: Tag | None) -> str | None:
     if element is None:
         return None
     if getattr(element, "name", None) == "input":
@@ -547,7 +551,7 @@ def assignment_element_label(element: Any) -> str | None:
     return text(element)
 
 
-def assignment_action_url(element: Any) -> str | None:
+def assignment_action_url(element: Tag | None) -> str | None:
     if element is None:
         return None
     href = absolute_href(element)

@@ -7,7 +7,7 @@ protocol.
 
 from __future__ import annotations
 
-from typing import Any
+from .types import ErrorPayload, JsonValue
 
 
 class APIError(Exception):
@@ -18,7 +18,7 @@ class APIError(Exception):
         message: str,
         *,
         code: str = "error",
-        details: Any | None = None,
+        details: JsonValue | None = None,
         resource: str | None = None,
         operation: str | None = None,
         retryable: bool | None = None,
@@ -31,8 +31,8 @@ class APIError(Exception):
         self.operation = operation
         self.retryable = retryable
 
-    def as_dict(self) -> dict[str, Any]:
-        value: dict[str, Any] = {
+    def as_dict(self) -> ErrorPayload:
+        value: ErrorPayload = {
             "code": self.code,
             "message": self.message,
             "resource": self.resource,
@@ -52,7 +52,7 @@ class ValidationError(APIError):
         message: str,
         *,
         code: str = "validation_error",
-        details: Any | None = None,
+        details: JsonValue | None = None,
         resource: str | None = None,
         operation: str | None = None,
     ) -> None:
@@ -103,7 +103,7 @@ class TransportError(APIError):
         self,
         message: str,
         *,
-        details: Any | None = None,
+        details: JsonValue | None = None,
         resource: str | None = "mycourseville",
         operation: str | None = "request",
         retryable: bool | None = None,
@@ -139,7 +139,7 @@ class AuthenticationError(APIError):
         self,
         message: str,
         *,
-        details: Any | None = None,
+        details: JsonValue | None = None,
         operation: str | None = None,
     ) -> None:
         super().__init__(
@@ -157,7 +157,7 @@ class UpstreamError(APIError):
         self,
         message: str,
         *,
-        details: Any | None = None,
+        details: JsonValue | None = None,
         resource: str | None = None,
         operation: str | None = None,
         retryable: bool | None = None,
@@ -179,7 +179,7 @@ class ParseError(APIError):
         *,
         resource: str | None = None,
         operation: str | None = None,
-        details: Any | None = None,
+        details: JsonValue | None = None,
     ) -> None:
         super().__init__(
             message,
@@ -198,7 +198,7 @@ class NotFoundError(APIError):
         *,
         resource: str | None = None,
         operation: str | None = None,
-        details: Any | None = None,
+        details: JsonValue | None = None,
     ) -> None:
         super().__init__(
             message,
@@ -217,7 +217,7 @@ class AmbiguousError(APIError):
         *,
         resource: str | None = None,
         operation: str | None = None,
-        details: Any | None = None,
+        details: JsonValue | None = None,
     ) -> None:
         super().__init__(
             message,
@@ -234,7 +234,7 @@ class DownloadError(APIError):
         self,
         message: str,
         *,
-        details: Any | None = None,
+        details: JsonValue | None = None,
         operation: str | None = None,
     ) -> None:
         super().__init__(

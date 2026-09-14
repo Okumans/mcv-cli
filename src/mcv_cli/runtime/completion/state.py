@@ -13,7 +13,6 @@ import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 _VERSION = 1
 _DEFAULT_PROFILE = "default"
@@ -80,7 +79,7 @@ def _disabled_state() -> CompletionState:
     )
 
 
-def _parse_state(payload: Any) -> CompletionState:
+def _parse_state(payload: object) -> CompletionState:
     if not isinstance(payload, dict):
         raise ValueError("completion state must be an object")
     if payload.get("version") != _VERSION:

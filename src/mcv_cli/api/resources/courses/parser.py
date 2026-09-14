@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from typing import Any
-
 from ...core.errors import UpstreamError
+from ...core.types import JsonObject, JsonValue
 from .models import Course
 
 
-def normalize_course(raw_course: dict[str, Any], semester: str) -> Course:
+def normalize_course(raw_course: JsonObject, semester: str) -> Course:
     raw = dict(raw_course)
     raw["cv_cid"] = raw.get("cv_cid") or raw.get("course_id") or raw.get("id")
     raw.setdefault("course_no", raw.get("courseno"))
@@ -26,7 +25,7 @@ def normalize_course(raw_course: dict[str, Any], semester: str) -> Course:
         ) from exc
 
 
-def list_payload(data: Any) -> list[dict[str, Any]]:
+def list_payload(data: JsonValue) -> list[JsonObject]:
     if isinstance(data, list):
         return [item for item in data if isinstance(item, dict)]
     if isinstance(data, dict):

@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import html as html_lib
 import re
-from typing import Any
 from urllib.parse import parse_qs, urljoin, urlparse
+
+import httpx
+from bs4 import BeautifulSoup, Tag
 
 from .constants import BASE_URL
 
 
-def text(element: Any) -> str | None:
+def text(element: Tag | BeautifulSoup | None) -> str | None:
     if element is None:
         return None
     value = " ".join(element.get_text(" ", strip=True).split())
@@ -35,7 +37,7 @@ def absolute_url(value: str) -> str | None:
     return urljoin(f"{BASE_URL}/", value)
 
 
-def absolute_href(element: Any) -> str | None:
+def absolute_href(element: Tag | None) -> str | None:
     if element is None:
         return None
     href = element.get("href")
@@ -48,9 +50,9 @@ def decode_html(value: str) -> str:
     return html_lib.unescape(value).replace('\\"', '"').replace("\\/", "/")
 
 
-def html_from_response(response: Any) -> str:
+def html_from_response(response: httpx.Response) -> str:
     try:
-        payload = response.json()
+        payload: object = response.json()
     except (ValueError, TypeError):
         return decode_html(response.text)
     if isinstance(payload, str):
@@ -65,7 +67,7 @@ def html_from_response(response: Any) -> str:
     return decode_html(response.text)
 
 
-def html_from_payload(payload: Any) -> str:
+def html_from_payload(payload: object) -> str:
     if isinstance(payload, str):
         return decode_html(payload)
     if isinstance(payload, dict):
@@ -112,7 +114,7 @@ def extract_id(value: str, fallback: int = 0) -> int:
     return int(path_matches[-1]) if path_matches else fallback
 
 
-def external_links(element: Any) -> list[str]:
+def external_links(element: Tag | BeautifulSoup | None) -> list[str]:
     if element is None:
         return []
     links: list[str] = []

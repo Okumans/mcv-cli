@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from typing import Any
 
 from rich import box
 from rich.table import Table
@@ -11,7 +10,7 @@ from .common import human_value
 
 def table_for(
     columns: Sequence[str],
-    rows: Iterable[Sequence[Any]],
+    rows: Iterable[Sequence[object]],
     *,
     overflow_columns: set[str] | None = None,
     no_wrap_columns: set[str] | None = None,

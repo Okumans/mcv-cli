@@ -7,11 +7,12 @@ import sqlite3
 from collections.abc import Collection, Iterable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 from platformdirs import user_cache_dir
 
 from ..api.core.refs import ResourceRef, ResourceType, ref_for_resource
+from ..api.core.resource import AddressableResource
+from ..api.core.types import JsonObject, SQLiteValue
 from ..api.resources.announcements.models import Announcement
 from ..api.resources.assignments.models import Assignment
 from ..api.resources.courses.models import Course
@@ -24,7 +25,15 @@ from ..api.search.documents import searchable_document, snapshot_for_resource
 from ..api.search.models import SearchCandidate, SearchDocument
 from .config import DEFAULT_PROFILE
 from .errors import CacheSchemaError
-from .models import AuthProvider
+from .models import (
+    AuthProvider,
+    CacheCompletionPayload,
+    CacheCountsPayload,
+    CacheSearchPayload,
+    CacheStatusPayload,
+    CompletionCandidatePayload,
+    SearchCountsPayload,
+)
 
 _CACHE_SCHEMA_VERSION = 3
 _SAFE_COMPONENT = re.compile(r"[^A-Za-z0-9_.-]+")
@@ -71,7 +80,7 @@ def _is_corrupt_cache(error: CacheSchemaError) -> bool:
 
 def _append_course_condition(
     conditions: list[str],
-    params: list[Any],
+    params: list[SQLiteValue],
     column: str,
     cv_cid: int | None,
     cv_cids: Collection[int] | None,
@@ -117,9 +126,9 @@ def _semester_sort_key(value: str) -> tuple[int, str]:
 
 def _semester_condition(
     values: Collection[str], *, prefix: str = ""
-) -> tuple[str, list[Any]]:
+) -> tuple[str, list[SQLiteValue]]:
     clauses: list[str] = []
-    params: list[Any] = []
+    params: list[SQLiteValue] = []
     for value in _normalized_semesters(values):
         year, separator, term = value.partition("/")
         if separator and year and term:
@@ -407,8 +416,8 @@ class CacheStore:
                 pass
         return connection
 
-    def status(self) -> dict[str, Any]:
-        empty_completion_counts = {
+    def status(self) -> CacheStatusPayload:
+        empty_completion_counts: CacheCountsPayload = {
             "courses": 0,
             "folders": 0,
             "materials": 0,
@@ -421,7 +430,7 @@ class CacheStore:
             "groupings": 0,
             "semesters": 0,
         }
-        empty_search_counts = {
+        empty_search_counts: SearchCountsPayload = {
             "resource_snapshots": 0,
             "search_documents": 0,
             "search_scopes": 0,
@@ -447,7 +456,7 @@ class CacheStore:
         connection = self._connect(read_only=True)
         try:
             schema_version = self._read_schema_version(connection)
-            counts = {
+            counts: CacheCountsPayload = {
                 "courses": self._count(connection, "courses"),
                 "folders": self._count(connection, "folders"),
                 "materials": self._count_resource(connection, ResourceType.MATERIAL),
@@ -466,13 +475,23 @@ class CacheStore:
             search_row = connection.execute(
                 "SELECT value FROM metadata WHERE key = 'search_last_refresh'"
             ).fetchone()
-            search_counts = {
+            search_counts: SearchCountsPayload = {
                 "resource_snapshots": self._count(connection, "resource_cache"),
                 "search_documents": self._count(connection, "search_documents"),
                 "search_scopes": self._count(connection, "search_scopes"),
             }
-            last_refresh = row[0] if row else None
-            search_last_refresh = search_row[0] if search_row else None
+            last_refresh = str(row[0]) if row and row[0] is not None else None
+            search_last_refresh = (
+                str(search_row[0]) if search_row and search_row[0] is not None else None
+            )
+            completion: CacheCompletionPayload = {
+                "last_refresh": last_refresh,
+                "counts": counts,
+            }
+            search: CacheSearchPayload = {
+                "last_refresh": search_last_refresh,
+                "counts": search_counts,
+            }
             return {
                 "path": str(self.path),
                 "profile": self.profile_name,
@@ -481,11 +500,8 @@ class CacheStore:
                 "schema_version": schema_version,
                 "last_refresh": last_refresh,
                 "counts": counts,
-                "completion": {"last_refresh": last_refresh, "counts": counts},
-                "search": {
-                    "last_refresh": search_last_refresh,
-                    "counts": search_counts,
-                },
+                "completion": completion,
+                "search": search,
             }
         finally:
             connection.close()
@@ -831,7 +847,7 @@ class CacheStore:
         finally:
             connection.close()
 
-    def record_value(self, value: Any, *, detail_level: str = "summary") -> None:
+    def record_value(self, value: object, *, detail_level: str = "summary") -> None:
         """Persist a successful API result in both local-store namespaces.
 
         This method is used by the injected API cache sink.  Callers should
@@ -871,7 +887,7 @@ class CacheStore:
 
     def record_searchable_resource(
         self,
-        resource: Any,
+        resource: AddressableResource,
         *,
         course_no: str | None = None,
         detail_level: str = "summary",
@@ -901,7 +917,7 @@ class CacheStore:
         cv_cid: int,
         *,
         course_no: str | None,
-        resources: Mapping[ResourceType, Iterable[Any]],
+        resources: Mapping[ResourceType, Iterable[AddressableResource]],
         availability: Mapping[ResourceType, bool] | None = None,
     ) -> dict[str, int]:
         """Atomically replace all searchable types for one course.
@@ -986,7 +1002,7 @@ class CacheStore:
         connection: sqlite3.Connection,
         *,
         document: SearchDocument,
-        snapshot: dict[str, Any],
+        snapshot: JsonObject,
         detail_level: str,
         now: str,
     ) -> None:
@@ -1090,7 +1106,7 @@ class CacheStore:
                 return []
             fts_query = " AND ".join(f'"{token.replace(chr(34), "")}"*' for token in tokens)
             conditions = ["search_fts MATCH ?"]
-            params: list[Any] = [fts_query]
+            params: list[SQLiteValue] = [fts_query]
             _append_course_condition(conditions, params, "d.cv_cid", cv_cid, cv_cids)
             type_values = _resource_type_values(resource_types)
             if type_values:
@@ -1178,7 +1194,7 @@ class CacheStore:
             return []
         try:
             conditions = ["item_id = ?"]
-            params: list[Any] = [item_id]
+            params: list[SQLiteValue] = [item_id]
             _append_course_condition(conditions, params, "cv_cid", cv_cid, cv_cids)
             type_values = _resource_type_values(resource_types)
             if type_values:
@@ -1221,7 +1237,7 @@ class CacheStore:
             return []
         try:
             conditions: list[str] = []
-            params: list[Any] = []
+            params: list[SQLiteValue] = []
             _append_course_condition(conditions, params, "cv_cid", cv_cid, cv_cids)
             type_values = _resource_type_values(resource_types)
             if type_values:
@@ -1270,7 +1286,7 @@ class CacheStore:
         semesters: Collection[str] | None,
         all_semesters: bool,
         prefix: str = "",
-    ) -> tuple[str | None, list[Any]]:
+    ) -> tuple[str | None, list[SQLiteValue]]:
         if all_semesters:
             return None, []
 
@@ -1314,7 +1330,7 @@ class CacheStore:
         cv_cid: int | None = None,
         semesters: Collection[str] | None = None,
         all_semesters: bool = False,
-    ) -> list[dict[str, Any]]:
+    ) -> list[CompletionCandidatePayload]:
         """Return completion records without ever opening a network client."""
 
         connection = self._connect(read_only=True)
@@ -1341,7 +1357,10 @@ class CacheStore:
                 rows = connection.execute(
                     "SELECT value FROM semesters ORDER BY value DESC"
                 ).fetchall()
-                return [{"value": row[0], "help": row[0]} for row in rows]
+                return [
+                    {"value": _stored_text(row[0]), "help": _stored_text(row[0])}
+                    for row in rows
+                ]
             if kind == "folders":
                 if cv_cid is None:
                     return []
@@ -1355,8 +1374,16 @@ class CacheStore:
                         names[str(row[1])] = names.get(str(row[1]), 0) + 1
                 return [
                     {
-                        "value": row[1] if names.get(str(row[1]), 0) == 1 else row[0],
-                        "help": row[0] if names.get(str(row[1]), 0) == 1 else row[1],
+                        "value": (
+                            _stored_text(row[1])
+                            if names.get(str(row[1]), 0) == 1
+                            else _stored_text(row[0])
+                        ),
+                        "help": (
+                            _stored_text(row[0])
+                            if names.get(str(row[1]), 0) == 1
+                            else _stored_text(row[1])
+                        ),
                     }
                     for row in rows
                 ]
@@ -1370,7 +1397,10 @@ class CacheStore:
                     """,
                     (cv_cid,),
                 ).fetchall()
-                return [{"value": str(row[0]), "help": row[1] or str(row[0])} for row in rows]
+                return [
+                    {"value": str(row[0]), "help": _stored_text(row[1]) or str(row[0])}
+                    for row in rows
+                ]
             if kind == "refs":
                 semester_condition, semester_params = self._completion_semester_condition(
                     connection,
@@ -1379,7 +1409,7 @@ class CacheStore:
                     prefix="scoped_courses.",
                 )
                 resource_conditions: list[str] = []
-                resource_params: list[Any] = []
+                resource_params: list[SQLiteValue] = []
                 if cv_cid is not None:
                     resource_conditions.append("resources.cv_cid = ?")
                     resource_params.append(cv_cid)
@@ -1418,7 +1448,7 @@ class CacheStore:
                     "collection_status.collection_type = 'playlist'",
                     "collection_status.available = 1",
                 ]
-                playlist_params: list[Any] = []
+                playlist_params: list[SQLiteValue] = []
                 if cv_cid is not None:
                     playlist_conditions.append("courses.cv_cid = ?")
                     playlist_params.append(cv_cid)
@@ -1502,7 +1532,7 @@ class CacheStore:
                     "lower(course_no) = ?",
                     "lower(title) = ?",
                 ]
-                params: list[Any] = [reference.strip(), normalized, normalized]
+                params: list[SQLiteValue] = [reference.strip(), normalized, normalized]
                 if semester_condition is not None:
                     conditions.append(f"({semester_condition})")
                     params.extend(semester_params)
@@ -1543,14 +1573,14 @@ class CacheStore:
             connection.close()
 
     @staticmethod
-    def _course_candidates(rows: list[sqlite3.Row]) -> list[dict[str, Any]]:
+    def _course_candidates(rows: list[sqlite3.Row]) -> list[CompletionCandidatePayload]:
         by_number: dict[str, set[int]] = {}
         for row in rows:
             number = str(row[1] or "")
             if number:
                 by_number.setdefault(number, set()).add(int(row[0]))
 
-        candidates: list[dict[str, Any]] = []
+        candidates: list[CompletionCandidatePayload] = []
         seen: set[str] = set()
         for row in rows:
             number = str(row[1] or "")

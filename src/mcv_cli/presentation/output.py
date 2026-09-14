@@ -5,13 +5,14 @@ from __future__ import annotations
 import json
 import sys
 from collections.abc import Mapping
-from typing import Any, Literal
+from typing import Literal, cast
 
 from pydantic import BaseModel
 from rich import box
-from rich.console import Console
+from rich.console import Console, RenderableType
 from rich.table import Table
 
+from ..api.core.errors import APIError
 from .common import human_value
 from .json import (
     MACHINE_SCHEMA_VERSION,
@@ -28,7 +29,7 @@ DisplayMode = Literal["collection", "detail", "short", "expanded"]
 
 
 def emit(
-    value: Any,
+    value: object,
     *,
     json_mode: bool,
     jsonl_mode: bool = False,
@@ -47,7 +48,7 @@ def emit(
 
 
 def emit_error(
-    error: Any,
+    error: APIError,
     *,
     json_mode: bool,
     jsonl_mode: bool = False,
@@ -76,7 +77,7 @@ def emit_error(
 
 
 def display_resource(
-    value: Any,
+    value: object,
     console: Console,
     *,
     display_mode: DisplayMode = "collection",
@@ -94,7 +95,7 @@ def display_resource(
 
 
 def _display_resources(
-    items: list[Any],
+    items: list[object],
     console: Console,
     *,
     display_mode: DisplayMode,
@@ -130,7 +131,7 @@ def _display_resources(
 
 
 def _display_one(
-    value: Any,
+    value: object,
     console: Console,
     *,
     display_mode: DisplayMode,
@@ -141,14 +142,14 @@ def _display_one(
     elif isinstance(value, BaseModel):
         _display_model_fields(value, console)
     elif isinstance(value, Mapping):
-        _display_mapping(value, console)
+        _display_mapping(cast(Mapping[str, object], value), console)
     elif value is None:
         console.print("No result.")
     else:
         console.print(value)
 
 
-def _render(renderer: Renderer, value: Any, display_mode: DisplayMode) -> Any:
+def _render(renderer: Renderer, value: object, display_mode: DisplayMode) -> RenderableType:
     if display_mode == "short":
         method = renderer.short or renderer.single
         return method(value, detail=False)
@@ -160,17 +161,17 @@ def _render(renderer: Renderer, value: Any, display_mode: DisplayMode) -> Any:
 def _display_model_fields(model: BaseModel, console: Console) -> None:
     data = to_jsonable(model)
     if isinstance(data, Mapping):
-        _display_mapping(data, console)
+        _display_mapping(cast(Mapping[str, object], data), console)
     else:
         console.print(human_value(data))
 
 
-def _display_mapping(values: Mapping[object, Any], console: Console) -> None:
+def _display_mapping(values: Mapping[str, object], console: Console) -> None:
     _display_fields([(str(key), value) for key, value in values.items()], console)
 
 
-def _display_mapping_list(items: list[Any], console: Console) -> None:
-    mappings = [item for item in items if isinstance(item, Mapping)]
+def _display_mapping_list(items: list[object], console: Console) -> None:
+    mappings = [cast(Mapping[str, object], item) for item in items if isinstance(item, Mapping)]
     keys: list[str] = []
     for item in mappings:
         for key in item:
@@ -193,7 +194,7 @@ def _display_mapping_list(items: list[Any], console: Console) -> None:
     console.print(table)
 
 
-def _display_fields(fields: list[tuple[str, Any]], console: Console) -> None:
+def _display_fields(fields: list[tuple[str, object]], console: Console) -> None:
     table = Table(show_header=False, box=None)
     table.add_column(style="bold cyan")
     table.add_column()

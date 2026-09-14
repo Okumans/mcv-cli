@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import difflib
 import re
-from collections.abc import Collection, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
-from typing import Any
 
 from .index import CompletionIndex, CompletionRecord
 from .state import active_cache_path
@@ -30,16 +29,16 @@ class _CompletionScope:
     all_semesters: bool = False
 
 
-def _context_mapping(ctx: Any) -> dict[str, Any]:
-    contexts: list[Any] = []
-    current = ctx
+def _context_mapping(ctx: object) -> dict[str, object]:
+    contexts: list[object] = []
+    current: object | None = ctx
     seen: set[int] = set()
     while current is not None and id(current) not in seen:
         seen.add(id(current))
         contexts.append(current)
         current = getattr(current, "parent", None)
 
-    merged: dict[str, Any] = {}
+    merged: dict[str, object] = {}
     for context in reversed(contexts):
         params = getattr(context, "params", None)
         if isinstance(params, Mapping):
@@ -50,8 +49,10 @@ def _context_mapping(ctx: Any) -> dict[str, Any]:
     return merged
 
 
-def _merge_context_values(target: dict[str, Any], values: Mapping[str, Any]) -> None:
+def _merge_context_values(target: dict[str, object], values: Mapping[object, object]) -> None:
     for key, value in values.items():
+        if not isinstance(key, str):
+            continue
         if key in {"semester", "semesters"}:
             if value or key not in target:
                 target[key] = value
@@ -102,7 +103,7 @@ def _scope_from_args(args: Collection[str]) -> _CompletionScope:
     return _CompletionScope(tuple(dict.fromkeys(semesters)), all_semesters)
 
 
-def _completion_scope(ctx: Any, args: Collection[str] = ()) -> _CompletionScope:
+def _completion_scope(ctx: object, args: Collection[str] = ()) -> _CompletionScope:
     mapping = _context_mapping(ctx)
     semesters: list[str] = []
     for key in ("semesters", "semester"):
@@ -251,7 +252,7 @@ def _completion_course_id(
     return int(reference) if reference.isdigit() else _NO_MATCHING_COURSE
 
 
-def _context_course_id(ctx: Any, scope: _CompletionScope) -> int | None:
+def _context_course_id(ctx: object, scope: _CompletionScope) -> int | None:
     params = _context_mapping(ctx)
     if "course" not in params:
         return None
@@ -261,7 +262,7 @@ def _context_course_id(ctx: Any, scope: _CompletionScope) -> int | None:
     return _completion_course_id(reference, _active_index(), scope=scope)
 
 
-def complete_courses(ctx: Any, args: list[str], incomplete: str) -> list[tuple[str, str | None]]:
+def complete_courses(ctx: object, args: list[str], incomplete: str) -> list[tuple[str, str | None]]:
     scope = _completion_scope(ctx, args)
     return [
         (item.value, item.help)
@@ -275,7 +276,7 @@ def complete_courses(ctx: Any, args: list[str], incomplete: str) -> list[tuple[s
 
 
 def complete_course_filters(
-    ctx: Any,
+    ctx: object,
     args: list[str],
     incomplete: str,
 ) -> list[tuple[str, str | None]]:
@@ -299,7 +300,7 @@ def complete_course_filters(
 
 
 def complete_semesters(
-    ctx: Any,
+    ctx: object,
     args: list[str],
     incomplete: str,
 ) -> list[tuple[str, str | None]]:
@@ -310,7 +311,7 @@ def complete_semesters(
     ]
 
 
-def complete_folders(ctx: Any, args: list[str], incomplete: str) -> list[tuple[str, str | None]]:
+def complete_folders(ctx: object, args: list[str], incomplete: str) -> list[tuple[str, str | None]]:
     scope = _completion_scope(ctx, args)
     return [
         (item.value, item.help)
@@ -325,7 +326,7 @@ def complete_folders(ctx: Any, args: list[str], incomplete: str) -> list[tuple[s
 
 
 def complete_groupings(
-    ctx: Any,
+    ctx: object,
     args: list[str],
     incomplete: str,
 ) -> list[tuple[str, str | None]]:
@@ -342,7 +343,7 @@ def complete_groupings(
     ]
 
 
-def complete_refs(ctx: Any, args: list[str], incomplete: str) -> list[tuple[str, str | None]]:
+def complete_refs(ctx: object, args: list[str], incomplete: str) -> list[tuple[str, str | None]]:
     scope = _completion_scope(ctx, args)
     return [
         (item.value, item.help)
@@ -356,8 +357,10 @@ def complete_refs(ctx: Any, args: list[str], incomplete: str) -> list[tuple[str,
     ]
 
 
-def complete_refs_for(resource_type: str) -> Any:
-    def complete(ctx: Any, args: list[str], incomplete: str) -> list[tuple[str, str | None]]:
+def complete_refs_for(
+    resource_type: str,
+) -> Callable[[object, list[str], str], list[tuple[str, str | None]]]:
+    def complete(ctx: object, args: list[str], incomplete: str) -> list[tuple[str, str | None]]:
         scope = _completion_scope(ctx, args)
         return [
             (item.value, item.help)
@@ -376,7 +379,7 @@ def complete_refs_for(resource_type: str) -> Any:
 
 def complete_static(
     values: Mapping[str, str],
-    ctx: Any,
+    ctx: object,
     args: list[str],
     incomplete: str,
 ) -> list[CompletionCandidate]:
@@ -389,7 +392,7 @@ def complete_static(
     ]
 
 
-def complete_course_group(ctx: Any, incomplete: str) -> list[CompletionCandidate]:
+def complete_course_group(ctx: object, incomplete: str) -> list[CompletionCandidate]:
     raw_args = [
         *list(getattr(ctx, "_protected_args", [])),
         *list(getattr(ctx, "args", [])),

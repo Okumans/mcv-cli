@@ -1,5 +1,4 @@
-from typing import Any
-
+from ._protocols import AggregateAPI
 from .announcements import AnnouncementsAggregate, AnnouncementService
 from .assignments import AssignmentsAggregate, AssignmentService
 from .meetings import MeetingsAggregate, MeetingService
@@ -9,7 +8,7 @@ from .status import StatusAggregate, StatusService, StatusSnapshot
 class AggregateClients:
     """Cross-course API operations grouped separately from resource clients."""
 
-    def __init__(self, api: Any) -> None:
+    def __init__(self, api: AggregateAPI) -> None:
         self.assignments = AssignmentsAggregate(api)
         self.announcements = AnnouncementsAggregate(api)
         self.meetings = MeetingsAggregate(api)

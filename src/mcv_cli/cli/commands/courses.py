@@ -1,12 +1,27 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import typer
 
 from ...api.core.refs import ResourceType, ref_for_resource
-from ...api.resources.materials.models import ArchiveFormat, Material
+from ...api.resources.about.models import CourseAbout
+from ...api.resources.announcements.models import Announcement
+from ...api.resources.assignments.models import Assignment
+from ...api.resources.courses.models import Course
+from ...api.resources.groups.models import StudentGroup
+from ...api.resources.materials.models import (
+    ArchiveFormat,
+    ArchiveResult,
+    DownloadResult,
+    Material,
+    MaterialFolder,
+)
+from ...api.resources.meetings.models import MeetingCollection, OnlineMeeting
+from ...api.resources.playlists.models import PlaylistCollection
+from ...api.resources.portfolio.models import Portfolio
+from ...api.resources.schedule.models import ScheduleCollection
+from ...api.resources.web_resources.models import WebResource
 from ...presentation.json import ShellIdList
 from ...runtime.completion import (
     complete_courses,
@@ -74,7 +89,7 @@ def list_courses(
         help="Show expanded course columns including section and role.",
     ),
 ) -> None:
-    def action() -> list[Any]:
+    def action() -> list[Course]:
         with make_api() as api:
             return api.courses.list(**semester_scope_kwargs(ctx))
 
@@ -85,7 +100,7 @@ def show_course(
     ctx: typer.Context,
     course: str = typer.Argument(..., autocompletion=complete_courses),
 ) -> None:
-    def action() -> Any:
+    def action() -> Course:
         semester = selected_semester(ctx)
         with make_api() as api:
             return api.courses.resolve(course, semester=semester)
@@ -127,7 +142,7 @@ def materials_list(
         help="Show expanded rows with ids and canonical references.",
     ),
 ) -> None:
-    def action() -> Any:
+    def action() -> ShellIdList | list[Material] | list[dict[str, object]]:
         if sum((ids, refs, select_fields is not None)) > 1:
             raise UsageError("Choose only one of --ids, --refs, or --select.")
         semester = selected_semester(ctx)
@@ -183,7 +198,7 @@ def materials_show(
         autocompletion=complete_refs_for(ResourceType.MATERIAL),
     ),
 ) -> None:
-    def action() -> Any:
+    def action() -> Material | list[Material]:
         semester = selected_semester(ctx)
         with make_api() as api:
             cv_cid = course_id(api, course, semester=semester)
@@ -206,7 +221,7 @@ def materials_show(
 def materials_folders(
     ctx: typer.Context, course: str = typer.Argument(..., autocompletion=complete_courses)
 ) -> None:
-    def action() -> Any:
+    def action() -> list[MaterialFolder]:
         semester = selected_semester(ctx)
         with make_api() as api:
             return api.materials.folders(
@@ -231,7 +246,7 @@ def materials_archive(
     ),
     force: bool = typer.Option(False, "--force"),
 ) -> None:
-    def action() -> Any:
+    def action() -> ArchiveResult:
         semester = selected_semester(ctx)
         with make_api() as api:
             return api.materials.archive(
@@ -262,7 +277,7 @@ def materials_download(
     ),
     force: bool = typer.Option(False, "--force"),
 ) -> None:
-    def action() -> Any:
+    def action() -> DownloadResult:
         semester = selected_semester(ctx)
         with make_api() as api:
             cv_cid = course_id(api, course, semester=semester)
@@ -295,7 +310,7 @@ def assignments_list(
         help="Show expanded rows with ids and canonical references.",
     ),
 ) -> None:
-    def action() -> Any:
+    def action() -> ShellIdList | list[Assignment]:
         if ids and refs:
             raise UsageError("Choose either --ids or --refs.")
         semester = selected_semester(ctx)
@@ -320,7 +335,7 @@ def assignments_show(
         False, "--full", help="Show full assignment and question-set details."
     ),
 ) -> None:
-    def action() -> Any:
+    def action() -> Assignment | list[Assignment]:
         semester = selected_semester(ctx)
         with make_api() as api:
             cv_cid = course_id(api, course, semester=semester)
@@ -357,7 +372,7 @@ def announcements_list(
         help="Show expanded rows with ids and canonical references.",
     ),
 ) -> None:
-    def action() -> Any:
+    def action() -> ShellIdList | list[Announcement]:
         if ids and refs:
             raise UsageError("Choose either --ids or --refs.")
         semester = selected_semester(ctx)
@@ -379,7 +394,7 @@ def announcements_show(
         autocompletion=complete_refs_for(ResourceType.ANNOUNCEMENT),
     ),
 ) -> None:
-    def action() -> Any:
+    def action() -> Announcement | list[Announcement]:
         semester = selected_semester(ctx)
         with make_api() as api:
             cv_cid = course_id(api, course, semester=semester)
@@ -421,7 +436,7 @@ def meetings_list(
         help="Show expanded rows with ids and canonical references.",
     ),
 ) -> None:
-    def action() -> Any:
+    def action() -> ShellIdList | MeetingCollection:
         if ids and refs:
             raise UsageError("Choose either --ids or --refs.")
         semester = selected_semester(ctx)
@@ -448,7 +463,7 @@ def meetings_show(
         autocompletion=complete_refs_for(ResourceType.MEETING),
     ),
 ) -> None:
-    def action() -> Any:
+    def action() -> OnlineMeeting | list[OnlineMeeting]:
         semester = selected_semester(ctx)
         with make_api() as api:
             cv_cid = course_id(api, course, semester=semester)
@@ -471,7 +486,7 @@ def meetings_show(
 def schedule_list(
     ctx: typer.Context, course: str = typer.Argument(..., autocompletion=complete_courses)
 ) -> None:
-    def action() -> Any:
+    def action() -> ScheduleCollection:
         semester = selected_semester(ctx)
         with make_api() as api:
             return api.schedule.list(course_id(api, course, semester=semester))
@@ -482,7 +497,7 @@ def schedule_list(
 def about_show(
     ctx: typer.Context, course: str = typer.Argument(..., autocompletion=complete_courses)
 ) -> None:
-    def action() -> Any:
+    def action() -> CourseAbout:
         semester = selected_semester(ctx)
         with make_api() as api:
             return api.about.get(course_id(api, course, semester=semester))
@@ -497,7 +512,7 @@ def groups_list(
         None, "--grouping", help="Grouping id.", autocompletion=complete_groupings
     ),
 ) -> None:
-    def action() -> Any:
+    def action() -> list[StudentGroup]:
         semester = selected_semester(ctx)
         with make_api() as api:
             return api.groups.list(
@@ -510,7 +525,7 @@ def groups_list(
 def portfolio_show(
     ctx: typer.Context, course: str = typer.Argument(..., autocompletion=complete_courses)
 ) -> None:
-    def action() -> Any:
+    def action() -> Portfolio:
         semester = selected_semester(ctx)
         with make_api() as api:
             return api.portfolio.get(course_id(api, course, semester=semester))
@@ -521,7 +536,7 @@ def portfolio_show(
 def playlists_show(
     ctx: typer.Context, course: str = typer.Argument(..., autocompletion=complete_courses)
 ) -> None:
-    def action() -> Any:
+    def action() -> PlaylistCollection:
         semester = selected_semester(ctx)
         with make_api() as api:
             return api.playlists.list(course_id(api, course, semester=semester))
@@ -532,7 +547,7 @@ def playlists_show(
 def web_resources_list(
     ctx: typer.Context, course: str = typer.Argument(..., autocompletion=complete_courses)
 ) -> None:
-    def action() -> Any:
+    def action() -> list[WebResource]:
         semester = selected_semester(ctx)
         with make_api() as api:
             return api.web_resources.list(course_id(api, course, semester=semester))

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -84,7 +84,7 @@ class User(BaseModel):
     username: str | None = None
     name: str | None = None
     email: str | None = None
-    account: dict[str, Any] | None = None
+    account: dict[str, object] | None = None
 
 
 class OperationResult(BaseModel):

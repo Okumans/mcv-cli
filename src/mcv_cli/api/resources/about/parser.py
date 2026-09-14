@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import re
-from typing import Any
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from ...core.parsing import text
 from .models import CourseAbout
@@ -44,12 +43,14 @@ def parse_about(html_doc: str, cv_cid: int) -> CourseAbout:
     )
 
 
-def values_after_heading(root: Any, heading: str) -> list[str]:
+def values_after_heading(root: BeautifulSoup | Tag, heading: str) -> list[str]:
     for title in root.select(".cvui-section-title"):
         if (title.get_text(" ", strip=True) or "").casefold() != heading.casefold():
             continue
         values: list[str] = []
         for sibling in title.find_next_siblings():
+            if not isinstance(sibling, Tag):
+                continue
             if "cvui-section-title" in (sibling.get("class") or []):
                 break
             value = " ".join(sibling.get_text(" ", strip=True).split())
@@ -59,7 +60,7 @@ def values_after_heading(root: Any, heading: str) -> list[str]:
     return []
 
 
-def outcome_values(root: Any, element_id: str) -> list[str]:
+def outcome_values(root: BeautifulSoup | Tag, element_id: str) -> list[str]:
     element = root.select_one(f"#{element_id}")
     if element is None:
         return []
@@ -67,7 +68,7 @@ def outcome_values(root: Any, element_id: str) -> list[str]:
     return [value] if value else []
 
 
-def _attribute_value(element: Any, name: str) -> str | None:
+def _attribute_value(element: Tag | None, name: str) -> str | None:
     if element is None:
         return None
     value = element.get(name)

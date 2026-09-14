@@ -41,6 +41,9 @@ jobs:
       - name: Check formatting and lint
         run: uv run ruff check .
 
+      - name: Reject explicit Any in production source
+        run: python scripts/check_no_explicit_any.py
+
       - name: Type check
         run: uv run pyright
 

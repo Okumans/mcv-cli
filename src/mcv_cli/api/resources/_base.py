@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from typing import Any, Protocol
+from typing import Protocol, TypeVar, cast
 
 import httpx
 
@@ -10,12 +10,14 @@ from ..core.constants import BASE_URL
 from ..core.errors import UpstreamError
 from ..core.parsing import html_from_payload, html_from_response
 from ..core.transport import MCVTransport
+from ..core.types import HttpParams, JsonValue
 
 
 class SessionProvider(Protocol):
-    settings: Any
-
     def get_session_cookies(self) -> dict[str, str]: ...
+
+
+_ResultT = TypeVar("_ResultT")
 
 
 class ResourceClient:
@@ -26,13 +28,13 @@ class ResourceClient:
         transport: MCVTransport,
         http_client: httpx.Client,
         *,
-        cache_sink: Callable[[Any, str], None] | None = None,
+        cache_sink: Callable[[object, str], None] | None = None,
     ) -> None:
         self.transport = transport
         self.http_client = http_client
         self._cache_sink = cache_sink
 
-    def record_result(self, value: Any, *, detail_level: str = "summary") -> Any:
+    def record_result(self, value: _ResultT, *, detail_level: str = "summary") -> _ResultT:
         """Send a successful parsed result to the optional local cache."""
 
         if self._cache_sink is not None:
@@ -44,15 +46,15 @@ class ResourceClient:
         method: str,
         url: str,
         *,
-        params: dict[str, Any] | None = None,
+        params: HttpParams | None = None,
         data: dict[str, str] | None = None,
     ) -> httpx.Response:
         return self.transport.request(method, url, params=params, data=data)
 
-    def post_json(self, url: str, *, data: dict[str, str]) -> Any:
+    def post_json(self, url: str, *, data: dict[str, str]) -> JsonValue:
         response = self.request("POST", url, data=data)
         try:
-            return response.json()
+            return cast(JsonValue, response.json())
         except (json.JSONDecodeError, ValueError) as exc:
             raise UpstreamError(
                 "MyCourseVille returned a non-JSON response.",
@@ -79,7 +81,7 @@ class ResourceClient:
         return html_from_response(response)
 
     @staticmethod
-    def html_payload(payload: Any) -> str:
+    def html_payload(payload: object) -> str:
         return html_from_payload(payload)
 
 
@@ -91,9 +93,11 @@ def make_http_client(
 ) -> tuple[httpx.Client, bool]:
     cookies = auth.get_session_cookies()
     if http_client is None:
+        configured_timeout = getattr(getattr(auth, "settings", None), "timeout", 20.0)
+        client_timeout = timeout or configured_timeout
         client = httpx.Client(
             base_url=BASE_URL,
-            timeout=timeout or getattr(getattr(auth, "settings", None), "timeout", 20.0),
+            timeout=client_timeout,
             follow_redirects=False,
             headers={"Accept": "text/html, application/json"},
             cookies=cookies,
@@ -113,9 +117,11 @@ def make_download_client(
 
     if http_client is not None:
         return http_client, False
+    configured_timeout = getattr(getattr(auth, "settings", None), "timeout", 20.0)
+    client_timeout = timeout or configured_timeout
     return (
         httpx.Client(
-            timeout=timeout or getattr(getattr(auth, "settings", None), "timeout", 20.0),
+            timeout=client_timeout,
             follow_redirects=False,
             headers={"Accept": "*/*"},
         ),

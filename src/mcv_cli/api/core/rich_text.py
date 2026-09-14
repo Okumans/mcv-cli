@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from bs4 import BeautifulSoup, Tag
 
 from .parsing import absolute_href, external_links, text
 
 
-def parse_rich_text(element: Any) -> tuple[str | None, list[str]]:
+def parse_rich_text(element: Tag | BeautifulSoup | None) -> tuple[str | None, list[str]]:
     if element is None:
         return None, []
     links = external_links(element)

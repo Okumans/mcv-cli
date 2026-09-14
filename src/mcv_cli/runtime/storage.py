@@ -7,7 +7,7 @@ import os
 import secrets
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import cast
 
 import keyring
 from cryptography.exceptions import InvalidTag
@@ -17,7 +17,7 @@ from platformdirs import user_config_dir
 
 from .config import DEFAULT_PROFILE, STORE_SERVICE, Settings
 from .errors import StorageError
-from .models import StoredProfile
+from .models import CredentialEnvelope, StoredProfile
 
 
 class CredentialStore:
@@ -157,7 +157,10 @@ class CredentialStore:
 
     def _load_file(self) -> StoredProfile:
         try:
-            envelope: dict[str, Any] = json.loads(self.file_path.read_text(encoding="utf-8"))
+            raw_envelope: object = json.loads(self.file_path.read_text(encoding="utf-8"))
+            if not isinstance(raw_envelope, dict):
+                raise TypeError("credential envelope must be an object")
+            envelope = cast(CredentialEnvelope, raw_envelope)
             if envelope.get("version") != 1 or envelope.get("kdf") != "scrypt":
                 raise StorageError("Unsupported encrypted credential-file version.")
             salt = base64.b64decode(envelope["salt"])

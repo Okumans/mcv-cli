@@ -5,8 +5,9 @@ import os
 import tarfile
 import tempfile
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import BinaryIO, Protocol
 from urllib.parse import urljoin, urlparse
 
 import httpx
@@ -14,6 +15,7 @@ import httpx
 from ...core.constants import BASE_URL
 from ...core.errors import AuthenticationRequired, DownloadError, NotFoundError
 from ...core.parsing import html_from_response
+from ...core.progress import ProgressLike
 from ...core.transport import MCVTransport
 from .._base import ResourceClient
 from .archive import (
@@ -26,6 +28,10 @@ from .models import ArchiveFormat, ArchiveResult, DownloadResult, Material, Mate
 from .parser import parse_material_detail, parse_materials
 
 
+class _Digest(Protocol):
+    def update(self, data: bytes, /) -> None: ...
+
+
 class MaterialsClient(ResourceClient):
     def __init__(
         self,
@@ -33,7 +39,7 @@ class MaterialsClient(ResourceClient):
         http_client: httpx.Client,
         *,
         download_client: httpx.Client,
-        cache_sink=None,
+        cache_sink: Callable[[object, str], None] | None = None,
     ) -> None:
         super().__init__(transport, http_client, cache_sink=cache_sink)
         self.download_client = download_client
@@ -130,7 +136,7 @@ class MaterialsClient(ResourceClient):
         *,
         archive_format: ArchiveFormat | None = None,
         force: bool = False,
-        progress: Any | None = None,
+        progress: ProgressLike | None = None,
     ) -> ArchiveResult:
         selected = next(
             (
@@ -226,7 +232,12 @@ class MaterialsClient(ResourceClient):
             if temporary_path is not None:
                 temporary_path.unlink(missing_ok=True)
 
-    def _download_url(self, url: str, destination: Any, digest: Any | None) -> int:
+    def _download_url(
+        self,
+        url: str,
+        destination: BinaryIO,
+        digest: _Digest | None,
+    ) -> int:
         current_url = url
         total = 0
         for _ in range(6):

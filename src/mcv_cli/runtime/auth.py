@@ -20,6 +20,7 @@ from ..api.core.constants import (
     PUBLIC_REDIRECT_URI,
 )
 from ..api.core.errors import AuthenticationError, AuthenticationRequired
+from ..api.core.types import JsonObject
 from .completion.state import activate, deactivate
 from .config import Settings
 from .errors import ConfigurationError
@@ -139,7 +140,7 @@ def _authentication_http_error(prefix: str, response: httpx.Response) -> Authent
     detail = _response_detail(response)
     if detail:
         message = f"{message} Server message: {detail}"
-    details: dict[str, object] = {
+    details: JsonObject = {
         "status_code": response.status_code,
         "endpoint": response.url.path,
     }

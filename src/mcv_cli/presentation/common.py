@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import date, datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any
 
 from rich.table import Table
 
 from ..api.core.refs import ref_for_resource
+from ..api.resources.assignments.models import QuestionSetChoice
 
 
-def human_value(value: Any) -> str:
+def human_value(value: object) -> str:
     if isinstance(value, Enum):
         return str(value.value)
     if isinstance(value, (datetime, date, Path)):
@@ -23,7 +23,7 @@ def human_value(value: Any) -> str:
     return str(value)
 
 
-def fields_table(fields: list[tuple[str, Any]]) -> Table | str:
+def fields_table(fields: Iterable[tuple[str, object]]) -> Table | str:
     table = Table(show_header=False, box=None)
     table.add_column(style="bold cyan")
     table.add_column()
@@ -34,7 +34,7 @@ def fields_table(fields: list[tuple[str, Any]]) -> Table | str:
     return table if table.rows else "No details available."
 
 
-def resource_ref(value: Any) -> str | None:
+def resource_ref(value: object) -> str | None:
     try:
         return str(ref_for_resource(value))
     except (TypeError, ValueError):
@@ -59,7 +59,7 @@ def question_points_label(points: str | None) -> str | None:
     return f"{normalized} point" if lowered in {"1", "1.0"} else f"{normalized} points"
 
 
-def question_choice_label(choice: Any) -> str:
+def question_choice_label(choice: QuestionSetChoice) -> str:
     markers: list[str] = []
     if choice.selected:
         markers.append("selected")

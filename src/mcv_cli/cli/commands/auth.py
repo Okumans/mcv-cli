@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import sys
-from typing import Any
 
 import typer
 
-from ...runtime.models import AuthProvider
+from ...runtime.models import AuthLoginPayload, AuthProvider, AuthStatusPayload, LogoutPayload
 from ..context import make_manager, run
 from ..errors import UsageError
 
@@ -31,7 +30,7 @@ def login(
         help="Read the password from stdin without echoing it (for automation).",
     ),
 ) -> None:
-    def action() -> dict[str, Any]:
+    def action() -> AuthLoginPayload:
         selected = provider
         if selected is AuthProvider.GOOGLE:
             raise UsageError(
@@ -66,7 +65,7 @@ def login(
 
 
 def status(ctx: typer.Context) -> None:
-    def action() -> dict[str, Any]:
+    def action() -> AuthStatusPayload:
         manager = make_manager()
         profile = manager.profile()
         if profile is None or not profile.cookies:
@@ -92,7 +91,7 @@ def status(ctx: typer.Context) -> None:
 
 
 def logout(ctx: typer.Context) -> None:
-    def action() -> dict[str, bool]:
+    def action() -> LogoutPayload:
         make_manager().logout()
         return {"logged_out": True}
 

@@ -1,15 +1,25 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
-from typing import Any
+from collections.abc import Callable, Iterable
+from typing import TypeVar, cast
 
 import typer
 
 from ...api.core.errors import APIError, NotFoundError
 from ...api.core.refs import ResourceType
+from ...api.core.types import JsonValue
+from ...api.facade import MCVAPI
+from ...api.resources.courses.models import Course
 from ...runtime.cache_access import active_cache
 from ...runtime.completion import complete_courses
 from ...runtime.errors import CacheError
+from ...runtime.models import (
+    CacheClearPayload,
+    CacheRefreshFailurePayload,
+    CacheRefreshItemPayload,
+    CacheRefreshPayload,
+    CacheStatusPayload,
+)
 from ..context import (
     cache_namespace,
     course_semester,
@@ -20,6 +30,8 @@ from ..context import (
 )
 from ..errors import UsageError
 
+_DetailResult = TypeVar("_DetailResult")
+
 
 def register(app: typer.Typer) -> None:
     app.command("status")(status)
@@ -28,7 +40,7 @@ def register(app: typer.Typer) -> None:
 
 
 def status(ctx: typer.Context) -> None:
-    def action() -> dict[str, Any]:
+    def action() -> CacheStatusPayload:
         try:
             return cache_namespace().status()
         except Exception as error:
@@ -46,7 +58,7 @@ def clear(
         help="Namespace to clear: completion, search, or all.",
     ),
 ) -> None:
-    def action() -> dict[str, Any]:
+    def action() -> CacheClearPayload:
         if target not in {"completion", "search", "all"}:
             raise UsageError('Choose a cache target: "completion", "search", or "all".')
         cache = cache_namespace()
@@ -74,7 +86,7 @@ def refresh(
         help="Index courses from every available semester instead of the current one.",
     ),
 ) -> None:
-    def action() -> dict[str, Any]:
+    def action() -> CacheRefreshPayload:
         return _refresh_cache(
             ctx,
             course_references=course_references,
@@ -114,7 +126,7 @@ def _refresh_cache(
     course_references: Iterable[str],
     all_semesters: bool,
     search_only: bool,
-) -> dict[str, Any]:
+) -> CacheRefreshPayload:
     references = list(course_references)
     if all_semesters and references:
         raise UsageError("Do not pass course references with --all-semesters.")
@@ -166,8 +178,8 @@ def _refresh_cache(
             if progress
             else None
         )
-        failures: list[dict[str, Any]] = []
-        refreshed: list[dict[str, Any]] = []
+        failures: list[CacheRefreshFailurePayload] = []
+        refreshed: list[CacheRefreshItemPayload] = []
         for course in courses:
             try:
                 folders = _call_with_detail(api.materials.folders, course.cv_cid)
@@ -249,13 +261,13 @@ def _refresh_cache(
             raise CacheError(
                 "The local cache refresh had failed course scopes.",
                 operation="refresh",
-                details={"refreshed": refreshed, "failed": failures},
+                details=cast(JsonValue, {"refreshed": refreshed, "failed": failures}),
             )
         cache.mark_refresh()
         return {"refreshed": refreshed, "failed": [], "count": len(refreshed)}
 
 
-def _make_refresh_api() -> Any:
+def _make_refresh_api() -> MCVAPI:
     try:
         return make_api(cache_store=None)
     except TypeError as error:
@@ -266,7 +278,7 @@ def _make_refresh_api() -> Any:
         return make_api()
 
 
-def _call_with_detail(method: Any, cv_cid: int) -> Any:
+def _call_with_detail(method: Callable[..., _DetailResult], cv_cid: int) -> _DetailResult:
     try:
         return method(cv_cid, detail=True)
     except TypeError as error:
@@ -275,8 +287,8 @@ def _call_with_detail(method: Any, cv_cid: int) -> Any:
         return method(cv_cid)
 
 
-def _select_courses(courses: list[Any], references: list[str]) -> list[Any]:
-    selected: list[Any] = []
+def _select_courses(courses: list[Course], references: list[str]) -> list[Course]:
+    selected: list[Course] = []
     seen: set[int] = set()
     for reference in references:
         normalized = " ".join(reference.split()).casefold()
@@ -308,8 +320,8 @@ def _select_courses(courses: list[Any], references: list[str]) -> list[Any]:
     return selected
 
 
-def _unique_courses(courses: list[Any]) -> list[Any]:
-    result: list[Any] = []
+def _unique_courses(courses: list[Course]) -> list[Course]:
+    result: list[Course] = []
     seen: set[int] = set()
     for course in courses:
         if course.cv_cid not in seen:
