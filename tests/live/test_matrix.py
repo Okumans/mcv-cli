@@ -359,7 +359,16 @@ def _run_cache_and_search_matrix(adapter: LiveAdapter, config: FixtureConfig) ->
             query,
             courses=[primary],
         )
-        for reference in assert_search_results(adapter, aggregate_results, query=query):
+        # The default search mode permits fuzzy title suggestions.  The
+        # configured query is calibrated against the course as a whole, so a
+        # type-scoped aggregate may legitimately contain suggestions without
+        # the literal query in its visible title/body.
+        for reference in assert_search_results(
+            adapter,
+            aggregate_results,
+            query=query,
+            require_visible_match=False,
+        ):
             parsed = ResourceRef.parse(reference)
             if parsed.resource_type is not resource_type:
                 raise AssertionError(f"aggregate {feature} search returned another resource type")
@@ -373,7 +382,12 @@ def _run_cache_and_search_matrix(adapter: LiveAdapter, config: FixtureConfig) ->
             query,
             config.semester,
         )
-        for reference in assert_search_results(adapter, scoped_results, query=query):
+        for reference in assert_search_results(
+            adapter,
+            scoped_results,
+            query=query,
+            require_visible_match=False,
+        ):
             parsed = ResourceRef.parse(reference)
             if primary.cv_cid is not None and parsed.cv_cid != primary.cv_cid:
                 raise AssertionError(f"course {feature} search returned another course")

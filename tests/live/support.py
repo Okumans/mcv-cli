@@ -1365,7 +1365,13 @@ def assert_ref_and_url(adapter: LiveAdapter, value: Any, *, url: str | None = No
             raise AssertionError("official URL did not return the same resource")
 
 
-def assert_search_results(adapter: LiveAdapter, results: Any, *, query: str) -> list[str]:
+def assert_search_results(
+    adapter: LiveAdapter,
+    results: Any,
+    *,
+    query: str,
+    require_visible_match: bool = True,
+) -> list[str]:
     values = results if isinstance(results, list) else []
     refs: list[str] = []
     matched_query = False
@@ -1384,7 +1390,7 @@ def assert_search_results(adapter: LiveAdapter, results: Any, *, query: str) -> 
         matched_query = matched_query or _contains_query_terms(data, query_terms)
         matched_query = matched_query or _contains_query_terms(resource, query_terms)
         refs.append(ref)
-    if values and not matched_query:
+    if require_visible_match and values and not matched_query:
         raise AssertionError("search results contain no visible matched text")
     return refs
 
