@@ -13,7 +13,7 @@ from ..presentation.json import ShellIdList
 from ..presentation.output import DisplayMode, emit, emit_error
 from ..runtime.auth import AuthManager
 from ..runtime.cache import CacheStore
-from ..runtime.completion import active_cache
+from ..runtime.cache_access import active_cache
 from ..runtime.config import Settings
 from ..runtime.progress import ProgressReporter
 from .errors import (

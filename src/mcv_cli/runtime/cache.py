@@ -65,6 +65,10 @@ def _resource_type_values(
     return sorted({item.value for item in resource_types})
 
 
+def _is_corrupt_cache(error: CacheSchemaError) -> bool:
+    return isinstance(error.details, Mapping) and error.details.get("reason") == "corrupt"
+
+
 def _append_course_condition(
     conditions: list[str],
     params: list[Any],
@@ -127,22 +131,8 @@ def _semester_condition(
     return " OR ".join(clauses), params
 
 
-def _ignore_search_schema_error(error: CacheSchemaError) -> bool:
-    """Keep corrupt/old local search empty, but never hide a future schema."""
-
-    return not isinstance(error.details, Mapping) or error.details.get("reason") != "future"
-
-
-def _table_exists(connection: sqlite3.Connection, table: str) -> bool:
-    row = connection.execute(
-        "SELECT 1 FROM sqlite_master WHERE type IN ('table', 'view') AND name = ?",
-        (table,),
-    ).fetchone()
-    return row is not None
-
-
-def _create_schema_v1(connection: sqlite3.Connection) -> None:
-    """Create the schema shipped by the first cache-aware release."""
+def _create_current_schema(connection: sqlite3.Connection) -> None:
+    """Create the only cache schema supported by this release."""
 
     connection.executescript(
         """
@@ -188,31 +178,13 @@ def _create_schema_v1(connection: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS resources_by_course
             ON resources (cv_cid, resource_type);
-        """
-    )
-
-
-def _migrate_schema_1_to_2(connection: sqlite3.Connection) -> None:
-    """Add typed availability for optional course collections."""
-
-    connection.execute(
-        """
         CREATE TABLE IF NOT EXISTS collection_status (
             collection_type TEXT NOT NULL,
             cv_cid INTEGER NOT NULL,
             available INTEGER NOT NULL,
             updated_at TEXT NOT NULL,
             PRIMARY KEY (collection_type, cv_cid)
-        )
-        """
-    )
-
-
-def _migrate_schema_2_to_3(connection: sqlite3.Connection) -> None:
-    """Add allow-listed resource snapshots and the local search namespace."""
-
-    connection.executescript(
-        """
+        );
         CREATE TABLE IF NOT EXISTS resource_cache (
             ref TEXT PRIMARY KEY,
             resource_type TEXT NOT NULL,
@@ -337,82 +309,60 @@ class CacheStore:
                 pass
 
     def _initialize(self, connection: sqlite3.Connection) -> None:
-        """Create a new store or migrate a known store one version at a time."""
+        """Create a current store or reject an incompatible existing one."""
 
-        metadata_exists = _table_exists(connection, "metadata")
-        if metadata_exists:
-            version = self._read_schema_version(connection, infer_legacy=True)
-        elif _table_exists(connection, "courses"):
-            # Very early cache files had the completion tables but no metadata
-            # row.  Treat those files as the first version and add the marker
-            # only after checking that no future schema is present.
-            version = 1
-        else:
-            version = 0
-        if version > _CACHE_SCHEMA_VERSION:
-            raise CacheSchemaError(
-                "The local cache was created by a newer mcv version; refusing to modify it.",
-                operation="open",
-                details={
-                    "reason": "future",
-                    "schema_version": version,
-                    "supported_version": _CACHE_SCHEMA_VERSION,
-                },
-            )
+        tables = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type IN ('table', 'view')"
+        ).fetchall()
+        if tables:
+            version = self._read_schema_version(connection)
+            if version != _CACHE_SCHEMA_VERSION:
+                reason = "future" if version > _CACHE_SCHEMA_VERSION else "unsupported"
+                message = (
+                    "The local cache was created by a newer mcv version; refusing to modify it."
+                    if reason == "future"
+                    else "The local cache schema is no longer supported; clear it and refresh."
+                )
+                raise CacheSchemaError(
+                    message,
+                    operation="open",
+                    details={
+                        "reason": reason,
+                        "schema_version": version,
+                        "supported_version": _CACHE_SCHEMA_VERSION,
+                    },
+                )
 
         connection.execute("PRAGMA journal_mode = DELETE")
-        if not metadata_exists:
+        if not tables:
             connection.execute(
                 "CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
             )
+            _create_current_schema(connection)
+            connection.execute(
+                "INSERT INTO metadata(key, value) VALUES('schema_version', ?)",
+                (str(_CACHE_SCHEMA_VERSION),),
+            )
             connection.commit()
-        if version < 1:
-            self._migrate(connection, 0, 1, _create_schema_v1)
-            version = 1
-        migrations = {
-            1: _migrate_schema_1_to_2,
-            2: _migrate_schema_2_to_3,
-        }
-        while version < _CACHE_SCHEMA_VERSION:
-            migration = migrations.get(version)
-            if migration is None:
-                raise CacheSchemaError(
-                    f"The local cache schema version {version} is not supported.",
-                    operation="migrate",
-                    details={"schema_version": version},
-                )
-            next_version = version + 1
-            self._migrate(connection, version, next_version, migration)
-            version = next_version
 
     @staticmethod
-    def _read_schema_version(
-        connection: sqlite3.Connection,
-        *,
-        infer_legacy: bool = False,
-    ) -> int:
+    def _read_schema_version(connection: sqlite3.Connection) -> int:
         try:
             row = connection.execute(
                 "SELECT value FROM metadata WHERE key = 'schema_version'"
             ).fetchone()
         except sqlite3.DatabaseError as error:
-            if infer_legacy:
-                try:
-                    if not _table_exists(connection, "metadata") and _table_exists(
-                        connection, "courses"
-                    ):
-                        return 1
-                except sqlite3.DatabaseError:
-                    pass
             raise CacheSchemaError(
                 "The local cache metadata is unreadable.",
                 operation="inspect",
                 details={"reason": "corrupt"},
             ) from error
         if row is None:
-            if infer_legacy and _table_exists(connection, "courses"):
-                return 1
-            return 0
+            raise CacheSchemaError(
+                "The local cache schema marker is missing.",
+                operation="inspect",
+                details={"reason": "invalid"},
+            )
         try:
             version = int(row[0])
         except (TypeError, ValueError) as error:
@@ -431,43 +381,17 @@ class CacheStore:
 
     @staticmethod
     def _assert_supported_schema(connection: sqlite3.Connection) -> None:
-        version = CacheStore._read_schema_version(connection, infer_legacy=True)
-        if version == 0:
+        version = CacheStore._read_schema_version(connection)
+        if version != _CACHE_SCHEMA_VERSION:
             raise CacheSchemaError(
-                "The local cache has no recognized schema; refusing to read it.",
-                operation="inspect",
-                details={"reason": "invalid"},
-            )
-        if version > _CACHE_SCHEMA_VERSION:
-            raise CacheSchemaError(
-                "The local cache was created by a newer mcv version; refusing to read it.",
+                "The local cache schema is no longer supported; clear it and refresh.",
                 operation="inspect",
                 details={
-                    "reason": "future",
+                    "reason": "future" if version > _CACHE_SCHEMA_VERSION else "unsupported",
                     "schema_version": version,
                     "supported_version": _CACHE_SCHEMA_VERSION,
                 },
             )
-
-    @staticmethod
-    def _migrate(
-        connection: sqlite3.Connection,
-        current_version: int,
-        next_version: int,
-        migration: Any,
-    ) -> None:
-        try:
-            connection.execute("BEGIN")
-            migration(connection)
-            connection.execute(
-                "INSERT INTO metadata(key, value) VALUES('schema_version', ?) "
-                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                (str(next_version),),
-            )
-            connection.commit()
-        except Exception:
-            connection.rollback()
-            raise
 
     def _open(self) -> sqlite3.Connection:
         connection = self._connect()
@@ -522,7 +446,7 @@ class CacheStore:
             }
         connection = self._connect(read_only=True)
         try:
-            schema_version = self._read_schema_version(connection, infer_legacy=True)
+            schema_version = self._read_schema_version(connection)
             counts = {
                 "courses": self._count(connection, "courses"),
                 "folders": self._count(connection, "folders"),
@@ -543,9 +467,9 @@ class CacheStore:
                 "SELECT value FROM metadata WHERE key = 'search_last_refresh'"
             ).fetchone()
             search_counts = {
-                "resource_snapshots": self._safe_count(connection, "resource_cache"),
-                "search_documents": self._safe_count(connection, "search_documents"),
-                "search_scopes": self._safe_count(connection, "search_scopes"),
+                "resource_snapshots": self._count(connection, "resource_cache"),
+                "search_documents": self._count(connection, "search_documents"),
+                "search_scopes": self._count(connection, "search_scopes"),
             }
             last_refresh = row[0] if row else None
             search_last_refresh = search_row[0] if search_row else None
@@ -572,13 +496,6 @@ class CacheStore:
         return int(row[0]) if row is not None else 0
 
     @staticmethod
-    def _safe_count(connection: sqlite3.Connection, table: str) -> int:
-        try:
-            return CacheStore._count(connection, table)
-        except sqlite3.OperationalError:
-            return 0
-
-    @staticmethod
     def _count_resource(connection: sqlite3.Connection, resource_type: ResourceType) -> int:
         row = connection.execute(
             "SELECT COUNT(*) FROM resources WHERE resource_type = ?",
@@ -588,14 +505,11 @@ class CacheStore:
 
     @staticmethod
     def _count_collection(connection: sqlite3.Connection, collection_type: str) -> int:
-        try:
-            row = connection.execute(
-                "SELECT COUNT(*) FROM collection_status "
-                "WHERE collection_type = ? AND available = 1",
-                (collection_type,),
-            ).fetchone()
-        except sqlite3.OperationalError:
-            return 0
+        row = connection.execute(
+            "SELECT COUNT(*) FROM collection_status "
+            "WHERE collection_type = ? AND available = 1",
+            (collection_type,),
+        ).fetchone()
         return int(row[0]) if row is not None else 0
 
     def clear(self, target: str) -> bool:
@@ -1165,9 +1079,9 @@ class CacheStore:
         try:
             connection = self._connect(read_only=True)
         except CacheSchemaError as error:
-            if not _ignore_search_schema_error(error):
-                raise
-            return []
+            if _is_corrupt_cache(error):
+                return []
+            raise
         except sqlite3.Error:
             return []
         try:
@@ -1199,8 +1113,6 @@ class CacheStore:
             ).fetchall()
             return [self._search_candidate(row) for row in rows]
         except sqlite3.Error:
-            # A cache created by an older version may not have the search
-            # namespace yet.  Local search should simply have no results.
             return []
         finally:
             connection.close()
@@ -1227,9 +1139,9 @@ class CacheStore:
         try:
             connection = self._connect(read_only=True)
         except CacheSchemaError as error:
-            if not _ignore_search_schema_error(error):
-                raise
-            return []
+            if _is_corrupt_cache(error):
+                return []
+            raise
         except sqlite3.Error:
             return []
         try:
@@ -1259,9 +1171,9 @@ class CacheStore:
         try:
             connection = self._connect(read_only=True)
         except CacheSchemaError as error:
-            if not _ignore_search_schema_error(error):
-                raise
-            return []
+            if _is_corrupt_cache(error):
+                return []
+            raise
         except sqlite3.Error:
             return []
         try:
@@ -1302,9 +1214,9 @@ class CacheStore:
         try:
             connection = self._connect(read_only=True)
         except CacheSchemaError as error:
-            if not _ignore_search_schema_error(error):
-                raise
-            return []
+            if _is_corrupt_cache(error):
+                return []
+            raise
         except sqlite3.Error:
             return []
         try:
@@ -1529,16 +1441,10 @@ class CacheStore:
                     + " AND ".join(playlist_conditions)
                     + " ORDER BY courses.title, courses.cv_cid"
                 )
-                try:
-                    playlist_rows = connection.execute(
-                        playlist_query,
-                        playlist_params,
-                    ).fetchall()
-                except sqlite3.OperationalError:
-                    # A pre-v2 cache has no collection_status table.  It is
-                    # safer to omit unverified playlist references until the
-                    # cache is refreshed than to suggest every course.
-                    playlist_rows = []
+                playlist_rows = connection.execute(
+                    playlist_query,
+                    playlist_params,
+                ).fetchall()
                 seen_playlist_courses: set[int] = set()
                 for row in playlist_rows:
                     course_id = int(row[0])

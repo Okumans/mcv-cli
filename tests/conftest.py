@@ -10,7 +10,10 @@ from mcv_cli.runtime.storage import CredentialStore
 @pytest.fixture
 def file_store(tmp_path):
     return CredentialStore(
-        settings=Settings(storage_passphrase="test-passphrase"),
+        settings=Settings(
+            storage_passphrase="test-passphrase",
+            config_dir=tmp_path / "config",
+        ),
         file_path=tmp_path / "credentials.enc",
         prefer_keyring=False,
     )

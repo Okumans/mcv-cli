@@ -14,6 +14,7 @@ from mcv_cli.api.core.constants import (
 )
 from mcv_cli.api.core.errors import AuthenticationError
 from mcv_cli.runtime.auth import AuthManager, build_public_authorization_url
+from mcv_cli.runtime.completion_state import read_state
 from mcv_cli.runtime.errors import ConfigurationError
 from mcv_cli.runtime.models import AuthProvider
 
@@ -81,6 +82,10 @@ def test_chula_login_posts_credentials_and_persists_session(file_store) -> None:
         "SESS_example": "session-key",
     }
     assert file_store.load() == profile
+    state = read_state(file_store.settings.config_dir)
+    assert state is not None
+    assert state.enabled is True
+    assert state.provider == "chula"
 
 
 @respx.mock
@@ -187,3 +192,6 @@ def test_logout_deletes_the_stored_profile(file_store, profile) -> None:
 
     assert file_store.load() is None
     assert not file_store.file_path.exists()
+    state = read_state(file_store.settings.config_dir)
+    assert state is not None
+    assert state.enabled is False

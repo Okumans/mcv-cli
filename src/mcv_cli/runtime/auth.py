@@ -20,6 +20,7 @@ from ..api.core.constants import (
     PUBLIC_REDIRECT_URI,
 )
 from ..api.core.errors import AuthenticationError, AuthenticationRequired
+from .completion_state import activate, deactivate
 from .config import Settings
 from .errors import ConfigurationError
 from .models import AuthProvider, StoredProfile
@@ -230,6 +231,16 @@ class AuthManager:
             )
         profile = StoredProfile(provider=selected, cookies=cookies)
         self.store.save(profile)
+        try:
+            activate(
+                profile_name=self.store.profile_name,
+                provider=profile.provider.value,
+                config_dir=self.settings.config_dir,
+            )
+        except OSError:
+            # Authentication remains successful if the optional completion
+            # marker cannot be written.
+            pass
         return profile
 
     def check_session(self) -> None:
@@ -255,6 +266,10 @@ class AuthManager:
         profile = self.store.load()
         if profile is not None:
             self.store.delete()
+        try:
+            deactivate(self.settings.config_dir)
+        except OSError:
+            pass
 
     def _load_login_form(self, client: httpx.Client, provider: AuthProvider) -> LoginForm:
         response = client.get(

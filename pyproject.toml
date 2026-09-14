@@ -27,7 +27,7 @@ fzf = [
 ]
 
 [project.scripts]
-mcv = "mcv_cli.cli.app:app"
+mcv = "mcv_cli.entrypoint:main"
 
 [dependency-groups]
 dev = [

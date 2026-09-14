@@ -8,7 +8,7 @@ from mcv_cli.api.resources.courses.models import Course
 from mcv_cli.api.resources.materials.models import Material, MaterialFolder
 from mcv_cli.api.resources.playlists.models import PlaylistCollection
 from mcv_cli.runtime.cache import CacheStore
-from mcv_cli.runtime.completion import (
+from mcv_cli.runtime.fast_completion import (
     complete_course_filters,
     complete_course_group,
     complete_courses,
@@ -31,7 +31,7 @@ def test_completion_uses_readable_courses_and_canonical_refs(tmp_path, monkeypat
     )
     cache.upsert_resources([Assignment(itemid=2160997, cv_cid=86428, title="Homework")])
     cache.record_collection_status(PlaylistCollection(cv_cid=86428, title="IoT"))
-    monkeypatch.setattr("mcv_cli.runtime.completion.active_cache", lambda: cache)
+    monkeypatch.setattr("mcv_cli.runtime.fast_completion.active_cache_path", lambda: cache.path)
 
     assert "list" in [item.value for item in complete_course_group(SimpleNamespace(args=[]), "")]
     assert "search" in [
@@ -66,7 +66,7 @@ def test_completion_matches_course_aliases_and_small_typos(tmp_path, monkeypatch
             )
         ]
     )
-    monkeypatch.setattr("mcv_cli.runtime.completion.active_cache", lambda: cache)
+    monkeypatch.setattr("mcv_cli.runtime.fast_completion.active_cache_path", lambda: cache.path)
 
     expected_help = "FAULT TOLERANT COMPUTING [Section 21 & 51] | 2026/1 | cv_cid=85386"
     for query in ("fault", "fualt", "fault-tolerant", "0473", "2026/1", "85386"):
@@ -101,7 +101,7 @@ def test_completion_respects_default_selected_and_all_semester_scopes(
         ]
     )
     cache.record_semesters(("2026/1", "2025/2"), current="2026/1")
-    monkeypatch.setattr("mcv_cli.runtime.completion.active_cache", lambda: cache)
+    monkeypatch.setattr("mcv_cli.runtime.fast_completion.active_cache_path", lambda: cache.path)
 
     default = complete_courses(SimpleNamespace(params={}), [], "")
     selected = complete_courses(
@@ -157,7 +157,7 @@ def test_aggregate_reference_completion_uses_the_same_semester_scope(
             Assignment(itemid=2, cv_cid=85386, title="Historical assignment"),
         ]
     )
-    monkeypatch.setattr("mcv_cli.runtime.completion.active_cache", lambda: cache)
+    monkeypatch.setattr("mcv_cli.runtime.fast_completion.active_cache_path", lambda: cache.path)
     completer = complete_refs_for(ResourceType.ASSIGNMENT)
 
     hidden_historical = completer(
@@ -206,7 +206,7 @@ def test_completion_preserves_comma_scoped_course_filters(tmp_path, monkeypatch)
             Course(cv_cid=86428, course_no="2110575", title="Container Systems"),
         ]
     )
-    monkeypatch.setattr("mcv_cli.runtime.completion.active_cache", lambda: cache)
+    monkeypatch.setattr("mcv_cli.runtime.fast_completion.active_cache_path", lambda: cache.path)
 
     matches = complete_course_filters(SimpleNamespace(), [], "2110575,fault")
     option_matches = complete_course_filters(SimpleNamespace(), [], "--courses=2110575,fault")
@@ -239,7 +239,7 @@ def test_typed_reference_completion_filters_by_resource_type(tmp_path, monkeypat
             Assignment(itemid=4, cv_cid=85386, title="Other assignment"),
         ]
     )
-    monkeypatch.setattr("mcv_cli.runtime.completion.active_cache", lambda: cache)
+    monkeypatch.setattr("mcv_cli.runtime.fast_completion.active_cache_path", lambda: cache.path)
 
     completer = complete_refs_for(ResourceType.ASSIGNMENT)
     matches = completer(SimpleNamespace(params={"course": "2110575"}), [], "mcv:")
@@ -271,7 +271,7 @@ def test_course_group_completion_filters_resource_and_course(tmp_path, monkeypat
             Assignment(itemid=4, cv_cid=85386, title="Other assignment"),
         ]
     )
-    monkeypatch.setattr("mcv_cli.runtime.completion.active_cache", lambda: cache)
+    monkeypatch.setattr("mcv_cli.runtime.fast_completion.active_cache_path", lambda: cache.path)
 
     assignment_matches = complete_course_group(
         SimpleNamespace(args=["2110575", "assignments", "show"]),
@@ -293,7 +293,7 @@ def test_course_group_completion_filters_resource_and_course(tmp_path, monkeypat
 
 def test_completion_does_not_need_the_network(tmp_path, monkeypatch) -> None:
     cache = CacheStore(profile_name="default", provider="chula", root=tmp_path)
-    monkeypatch.setattr("mcv_cli.runtime.completion.active_cache", lambda: cache)
+    monkeypatch.setattr("mcv_cli.runtime.fast_completion.active_cache_path", lambda: cache.path)
 
     assert completion_items("courses", "") == []
 
@@ -302,7 +302,7 @@ def test_completion_hides_known_unavailable_optional_collections(tmp_path, monke
     cache = CacheStore(profile_name="default", provider="chula", root=tmp_path)
     cache.upsert_courses([Course(cv_cid=86428, course_no="2110575", title="IoT")])
     cache.record_collection_status(PlaylistCollection(cv_cid=86428, available=False))
-    monkeypatch.setattr("mcv_cli.runtime.completion.active_cache", lambda: cache)
+    monkeypatch.setattr("mcv_cli.runtime.fast_completion.active_cache_path", lambda: cache.path)
 
     resources = [
         item.value

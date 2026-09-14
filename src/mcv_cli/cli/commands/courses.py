@@ -8,7 +8,7 @@ import typer
 from ...api.core.refs import ResourceType, ref_for_resource
 from ...api.resources.materials.models import ArchiveFormat, Material
 from ...presentation.json import ShellIdList
-from ...runtime.completion import (
+from ...runtime.fast_completion import (
     complete_courses,
     complete_folders,
     complete_groupings,
