@@ -14,6 +14,23 @@ The client is read-only against MyCourseVille. It can download files and create
 local archives, but it must not be treated as a submission, assessment, meeting
 join, Kaltura, or attendance-control interface.
 
+## Host execution boundary
+
+When this skill is used from an isolated coding sandbox, run authenticated or
+live `mcv` commands in the host environment, outside the sandbox. The host
+OS keyring and host MCV configuration contain the authenticated session; a
+sandboxed `mcv` process has a separate home directory, keyring, and config and
+will commonly report `authenticated False` even when the host session works.
+
+In Codex, use the approved host/unsandboxed execution path for commands such
+as `mcv auth status`, `mcv auth login`, course discovery, live probes, and live
+resource reads. Do not use a sandboxed authentication result as evidence that
+the account is logged out, and do not copy keyring databases, cookies,
+passphrases, or raw credentials into the workspace. Sandbox execution is
+appropriate only for offline tests, mocks, and deliberately isolated local
+cache checks. If host execution is unavailable, report that boundary instead
+of attempting to authenticate against the sandbox.
+
 ## Invocation
 
 When working in this repository, prefer:
