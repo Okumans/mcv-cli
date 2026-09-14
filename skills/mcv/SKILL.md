@@ -313,14 +313,16 @@ scopes. Search itself is local and performs no network requests:
  mcv courses 2110575 search "docker"
  mcv search "docker" --type material --type assignment --limit 20
  mcv search "docker" --refs
+ mcv search "docker compose" --exact
  mcv --json search "docker"
  mcv --jsonl search "docker"
 ```
 
 Use `--refresh` when the search command should fetch the relevant scope before
-searching. Human search tables highlight matched terms in titles and snippets;
-machine output remains unstyled. Search results have canonical refs that can
-be passed to `mcv get`.
+searching. Use `--exact` to match a complete query phrase literally and disable
+fuzzy matching. Human search tables highlight matched terms in titles and
+snippets; machine output remains unstyled. Search results have canonical refs
+that can be passed to `mcv get`.
 
 Course-scoped schedule and meeting calls also return typed collections with an
 `available` flag. The completion index records those flags so playlist

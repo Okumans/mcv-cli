@@ -24,6 +24,11 @@ def search(
         help="Restrict results to a resource type; repeat the option to combine types.",
     ),
     limit: int = typer.Option(20, "--limit", min=1, max=100, help="Maximum results to return."),
+    exact: bool = typer.Option(
+        False,
+        "--exact",
+        help="Match the complete query phrase literally; disable fuzzy matching.",
+    ),
     refs: bool = typer.Option(False, "--refs", help="Print canonical references one per line."),
     all_fields: bool = typer.Option(
         False,
@@ -45,6 +50,7 @@ def search(
             query,
             resource_types=resource_types,
             limit=limit,
+            exact=exact,
         )
         return _refs_or_results(results, refs=refs)
 
@@ -61,6 +67,11 @@ def search_course(
         help="Restrict results to a resource type; repeat the option to combine types.",
     ),
     limit: int = typer.Option(20, "--limit", min=1, max=100, help="Maximum results to return."),
+    exact: bool = typer.Option(
+        False,
+        "--exact",
+        help="Match the complete query phrase literally; disable fuzzy matching.",
+    ),
     refs: bool = typer.Option(False, "--refs", help="Print canonical references one per line."),
     all_fields: bool = typer.Option(
         False,
@@ -86,6 +97,7 @@ def search_course(
             cv_cid=cv_cid,
             resource_types=resource_types,
             limit=limit,
+            exact=exact,
         )
         return _refs_or_results(results, refs=refs)
 

@@ -334,6 +334,7 @@ mcv search "docker" --type material --type assignment --limit 20
 mcv search "docker" --refs
 mcv --json search "docker"
 mcv --jsonl search "docker"
+mcv search "docker compose" --exact
 ```
 
 Top-level local search does not accept global semester scope. Use a
@@ -352,7 +353,8 @@ mcv courses 2110575 search "docker" --refresh
 Search results are compact summaries with canonical references. Human output
 highlights matched text in titles and snippets, including the actual title
 word rescued by typo-tolerant matching. Pass a result reference to `mcv get`
-when the full resource is needed.
+when the full resource is needed. Use `--exact` to match the complete query
+phrase literally and disable fuzzy matching.
 
 ## Downloads and archives
 

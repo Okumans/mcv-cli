@@ -185,6 +185,7 @@ uv run mcv search "docker" --all
 uv run mcv courses "$MCV_COURSE" search "docker" --all
 uv run mcv search "docker" --type material --type assignment --limit 20
 uv run mcv search "docker" --refs
+uv run mcv search "docker compose" --exact
 uv run mcv --json search "docker"
 uv run mcv --jsonl search "docker"
 uv run mcv search "docker" --refresh
@@ -197,7 +198,8 @@ semesters and global `--all` remain reserved for semester-wide collections.
 Every v1 result is a dereferenceable summary with a canonical `ref`. Human
 tables highlight matched query terms in the title and match snippet; machine
 output keeps those strings plain. `--refresh` fetches the relevant course
-scope first and then executes the same local search.
+scope first and then executes the same local search. Use `--exact` to match a
+complete query phrase literally and disable fuzzy matching.
 
 ## 4. Output contracts for Unix tools
 

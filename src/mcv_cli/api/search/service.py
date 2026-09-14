@@ -34,6 +34,7 @@ class SearchClient:
         cv_cid: int | None = None,
         resource_types: Collection[ResourceType | str] | None = None,
         limit: int = 20,
+        exact: bool = False,
     ) -> list[SearchResult]:
         if self.repository is None:
             raise SearchUnavailableError()
@@ -63,6 +64,23 @@ class SearchClient:
                 _result(document, score=10000.0, query=normalized)
                 for document in documents[:limit]
             ]
+
+        if exact:
+            documents = self.repository.search_documents(
+                cv_cid=cv_cid,
+                resource_types=selected_types,
+                limit=1000,
+            )
+            return [
+                _result(
+                    document,
+                    score=10000.0,
+                    snippet=_exact_snippet(document, normalized),
+                    query=normalized,
+                )
+                for document in documents
+                if _contains_exact_query(document, normalized)
+            ][:limit]
 
         candidates = list(
             self.repository.search_candidates(
@@ -155,6 +173,27 @@ def _exact_ref_query(query: str) -> ResourceRef | None:
         return ResourceRef.parse(query)
     except InvalidReferenceError:
         raise
+
+
+def _contains_exact_query(document: SearchDocument, query: str) -> bool:
+    return _contains_exact_phrase(document.title, query) or _contains_exact_phrase(
+        document.content, query
+    )
+
+
+def _contains_exact_phrase(value: str, query: str) -> bool:
+    folded_value = _fold(value)
+    folded_query = _fold(query)
+    if not folded_value or not folded_query:
+        return False
+    pattern = rf"(?<!\w){re.escape(folded_query)}(?!\w)"
+    return re.search(pattern, folded_value) is not None
+
+
+def _exact_snippet(document: SearchDocument, query: str) -> str | None:
+    if _contains_exact_phrase(document.content, query):
+        return _snippet(document.content, _tokens(_fold(query)))
+    return None
 
 
 def _rank(query: str, candidate: SearchCandidate) -> tuple[float, str | None] | None:

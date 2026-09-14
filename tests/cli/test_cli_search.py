@@ -90,6 +90,26 @@ def test_search_all_shows_refs_and_scores(monkeypatch, tmp_path) -> None:
     assert "mcv:assignment:86428:2160997" in result.stdout
 
 
+def test_search_exact_matches_literal_phrases(monkeypatch, tmp_path) -> None:
+    cache = _cache(tmp_path)
+    monkeypatch.setattr("mcv_cli.cli.commands.search.cache_namespace", lambda: cache)
+
+    result = runner.invoke(
+        app,
+        ["--quiet", "--json", "search", "dockre", "--exact"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == []
+
+
+def test_search_help_exposes_exact_matching() -> None:
+    result = runner.invoke(app, ["search", "--help"])
+
+    assert result.exit_code == 0, result.output
+    assert "--exact" in result.stdout
+
+
 def test_course_search_rejects_unknown_course_without_refresh(monkeypatch, tmp_path) -> None:
     cache = _cache(tmp_path)
     monkeypatch.setattr("mcv_cli.cli.commands.search.cache_namespace", lambda: cache)

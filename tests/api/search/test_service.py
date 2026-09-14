@@ -148,6 +148,16 @@ def test_identifier_queries_are_exact(search_cache: CacheStore) -> None:
     ]
 
 
+def test_exact_text_queries_match_literal_phrases_only(search_cache: CacheStore) -> None:
+    phrase = SearchClient(search_cache).search("docker compose", exact=True)
+    typo = SearchClient(search_cache).search("dockre", exact=True)
+
+    assert [str(result.ref) for result in phrase] == [
+        "mcv:assignment:86428:2160997"
+    ]
+    assert typo == []
+
+
 def test_search_result_accepts_string_refs_without_serializing_private_query(
     search_cache: CacheStore,
 ) -> None:
