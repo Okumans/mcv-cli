@@ -33,6 +33,7 @@ class AssignmentsAggregate:
         all_semesters: bool = False,
         pending: bool = False,
         due: bool = False,
+        progress: Any | None = None,
     ) -> list[Assignment]:
         results: list[Assignment] = []
         courses = sorted(
@@ -45,14 +46,23 @@ class AssignmentsAggregate:
             ),
             key=_course_sort_key,
         )
+        task = (
+            progress.add_task("Fetching assignments", total=len(courses))
+            if progress is not None
+            else None
+        )
         for course in courses:
-            for assignment in self.api.assignments.list(course.cv_cid):
-                assignment = _with_course_context(assignment, course)
-                if pending and not is_pending(assignment):
-                    continue
-                if due and assignment.duedate is None and assignment.duetime is None:
-                    continue
-                results.append(assignment)
+            try:
+                for assignment in self.api.assignments.list(course.cv_cid):
+                    assignment = _with_course_context(assignment, course)
+                    if pending and not is_pending(assignment):
+                        continue
+                    if due and assignment.duedate is None and assignment.duetime is None:
+                        continue
+                    results.append(assignment)
+            finally:
+                if progress is not None:
+                    progress.advance(task)
         return sorted(
             results,
             key=lambda item: (

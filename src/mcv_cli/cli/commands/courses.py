@@ -16,7 +16,9 @@ from ...runtime.completion import (
 )
 from ..context import (
     course_id,
+    fetch_many,
     make_api,
+    progress_options,
     project_records,
     resource_item_id_for_course,
     resource_refs,
@@ -168,15 +170,17 @@ def materials_show(
         semester = selected_semester(ctx)
         with make_api() as api:
             cv_cid = course_id(api, course, semester=semester)
-            values = [
-                api.materials.get(
+            values = fetch_many(
+                ctx,
+                item_ids,
+                lambda value: api.materials.get(
                     cv_cid,
                     resource_item_id_for_course(
                         value, cv_cid=cv_cid, resource_type=ResourceType.MATERIAL
                     ),
-                )
-                for value in item_ids
-            ]
+                ),
+                description="Fetching materials",
+            )
             return values[0] if len(values) == 1 else values
 
     run(ctx, action)
@@ -219,6 +223,7 @@ def materials_archive(
                 output,
                 archive_format=archive_format,
                 force=force,
+                **progress_options(ctx),
             )
 
     run(ctx, action)
@@ -295,15 +300,17 @@ def assignments_show(
         semester = selected_semester(ctx)
         with make_api() as api:
             cv_cid = course_id(api, course, semester=semester)
-            values = [
-                api.assignments.get(
+            values = fetch_many(
+                ctx,
+                item_ids,
+                lambda value: api.assignments.get(
                     cv_cid,
                     resource_item_id_for_course(
                         value, cv_cid=cv_cid, resource_type=ResourceType.ASSIGNMENT
                     ),
-                )
-                for value in item_ids
-            ]
+                ),
+                description="Fetching assignments",
+            )
             return values[0] if len(values) == 1 else values
 
     run(ctx, action, display_mode="detail" if full else "short")
@@ -347,15 +354,17 @@ def announcements_show(
         semester = selected_semester(ctx)
         with make_api() as api:
             cv_cid = course_id(api, course, semester=semester)
-            values = [
-                api.announcements.get(
+            values = fetch_many(
+                ctx,
+                item_ids,
+                lambda value: api.announcements.get(
                     cv_cid,
                     resource_item_id_for_course(
                         value, cv_cid=cv_cid, resource_type=ResourceType.ANNOUNCEMENT
                     ),
-                )
-                for value in item_ids
-            ]
+                ),
+                description="Fetching announcements",
+            )
             return values[0] if len(values) == 1 else values
 
     run(ctx, action)
@@ -409,15 +418,17 @@ def meetings_show(
         semester = selected_semester(ctx)
         with make_api() as api:
             cv_cid = course_id(api, course, semester=semester)
-            values = [
-                api.meetings.get(
+            values = fetch_many(
+                ctx,
+                item_ids,
+                lambda value: api.meetings.get(
                     cv_cid,
                     resource_item_id_for_course(
                         value, cv_cid=cv_cid, resource_type=ResourceType.MEETING
                     ),
-                )
-                for value in item_ids
-            ]
+                ),
+                description="Fetching meetings",
+            )
             return values[0] if len(values) == 1 else values
 
     run(ctx, action)

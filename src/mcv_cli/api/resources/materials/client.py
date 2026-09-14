@@ -130,6 +130,7 @@ class MaterialsClient(ResourceClient):
         *,
         archive_format: ArchiveFormat | None = None,
         force: bool = False,
+        progress: Any | None = None,
     ) -> ArchiveResult:
         selected = next(
             (
@@ -163,6 +164,11 @@ class MaterialsClient(ResourceClient):
         used_names: set[str] = set()
         skipped: list[str] = []
         file_count = 0
+        task = (
+            progress.add_task("Downloading materials", total=len(selected.materials))
+            if progress is not None
+            else None
+        )
         try:
             if resolved_format == "zip":
                 archive: zipfile.ZipFile | tarfile.TarFile = zipfile.ZipFile(
@@ -174,32 +180,36 @@ class MaterialsClient(ResourceClient):
                 archive = tarfile.open(temporary_path, "w")
             with archive:
                 for material in selected.materials:
-                    current = material
-                    if current.detail_url and not current.filepath:
-                        current = self._detail(current)
-                    if not current.filepath:
-                        skipped.append(current.title or str(current.itemid))
-                        continue
-                    filename = unique_archive_name(archive_filename(current), used_names)
-                    material_fd, material_name = tempfile.mkstemp(
-                        prefix=".mcv-material.", suffix=".part", dir=output.parent
-                    )
-                    os.close(material_fd)
-                    material_path = Path(material_name)
                     try:
-                        with material_path.open("wb") as destination:
-                            self._download_url(current.filepath, destination, None)
-                        if resolved_format == "zip":
-                            assert isinstance(archive, zipfile.ZipFile)
-                            archive.write(material_path, arcname=filename)
-                        else:
-                            assert isinstance(archive, tarfile.TarFile)
-                            archive.add(material_path, arcname=filename)
-                        file_count += 1
-                    except (AuthenticationRequired, DownloadError):
-                        skipped.append(current.title or str(current.itemid))
+                        current = material
+                        if current.detail_url and not current.filepath:
+                            current = self._detail(current)
+                        if not current.filepath:
+                            skipped.append(current.title or str(current.itemid))
+                            continue
+                        filename = unique_archive_name(archive_filename(current), used_names)
+                        material_fd, material_name = tempfile.mkstemp(
+                            prefix=".mcv-material.", suffix=".part", dir=output.parent
+                        )
+                        os.close(material_fd)
+                        material_path = Path(material_name)
+                        try:
+                            with material_path.open("wb") as destination:
+                                self._download_url(current.filepath, destination, None)
+                            if resolved_format == "zip":
+                                assert isinstance(archive, zipfile.ZipFile)
+                                archive.write(material_path, arcname=filename)
+                            else:
+                                assert isinstance(archive, tarfile.TarFile)
+                                archive.add(material_path, arcname=filename)
+                            file_count += 1
+                        except (AuthenticationRequired, DownloadError):
+                            skipped.append(current.title or str(current.itemid))
+                        finally:
+                            material_path.unlink(missing_ok=True)
                     finally:
-                        material_path.unlink(missing_ok=True)
+                        if progress is not None:
+                            progress.advance(task)
             if file_count == 0:
                 raise DownloadError(f'Material folder "{selected.name}" has no downloadable files.')
             os.replace(temporary_path, output)

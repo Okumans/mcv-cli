@@ -118,7 +118,7 @@ def test_status_dashboard_has_a_human_and_machine_contract(monkeypatch) -> None:
 
     monkeypatch.setattr("mcv_cli.cli.commands.status.make_api", lambda: FakeAPI())
 
-    human = runner.invoke(app, ["--quiet", "status"])
+    human = runner.invoke(app, ["status"])
     machine = runner.invoke(app, ["--quiet", "--json", "status"])
 
     assert human.exit_code == 0, human.output
@@ -128,7 +128,9 @@ def test_status_dashboard_has_a_human_and_machine_contract(monkeypatch) -> None:
     assert machine.exit_code == 0, machine.output
     assert machine.stdout.strip().startswith("{")
     assert '"assignments_due": []' in machine.stdout
-    assert calls == [{}, {}]
+    assert len(calls) == 2
+    assert calls[0]["progress"] is not None
+    assert calls[1] == {}
 
 
 def test_login_requires_the_type_option() -> None:
@@ -576,6 +578,42 @@ def test_assignment_show_uses_short_display_by_default_and_full_on_request(monke
     assert short_result.exit_code == 0, short_result.output
     assert full_result.exit_code == 0, full_result.output
     assert modes == ["short", "detail"]
+
+
+def test_course_scoped_multi_id_show_uses_progress(monkeypatch) -> None:
+    calls: list[int] = []
+
+    class FakeCourses:
+        def resolve(self, _reference, *, semester=None):
+            assert semester is None
+            return Course(cv_cid=86428, course_no="2110575", title="Networks")
+
+    class FakeAssignments:
+        def get(self, cv_cid: int, item_id: int) -> Assignment:
+            calls.append(item_id)
+            return Assignment(itemid=item_id, cv_cid=cv_cid, title=f"Assignment {item_id}")
+
+    class FakeAPI:
+        courses = FakeCourses()
+        assignments = FakeAssignments()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+    monkeypatch.setattr("mcv_cli.cli.commands.courses.make_api", lambda: FakeAPI())
+
+    result = runner.invoke(
+        app,
+        ["courses", "2110575", "assignments", "show", "1", "2"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls == [1, 2]
+    assert "Assignment 1" in result.stdout
+    assert "Assignment 2" in result.stdout
 
 
 def test_singular_course_resources_do_not_require_show() -> None:

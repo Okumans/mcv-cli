@@ -4,7 +4,7 @@ from typing import Any
 
 import typer
 
-from ..context import make_api, resource_refs, run, semester_scope_kwargs
+from ..context import make_api, progress_options, resource_refs, run, semester_scope_kwargs
 
 
 def register(app: typer.Typer) -> None:
@@ -32,6 +32,7 @@ def list_meetings(
         with make_api() as api:
             values = api.aggregates.meetings.list(
                 **semester_scope_kwargs(ctx),
+                **progress_options(ctx),
                 include_past=include_past,
             )
             return resource_refs(values) if refs else values

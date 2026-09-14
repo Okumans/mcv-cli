@@ -4,7 +4,7 @@ from typing import Any
 
 import typer
 
-from ..context import make_api, resource_refs, run, semester_scope_kwargs
+from ..context import make_api, progress_options, resource_refs, run, semester_scope_kwargs
 
 
 def register(app: typer.Typer) -> None:
@@ -39,6 +39,7 @@ def list_assignments(
         with make_api() as api:
             values = api.aggregates.assignments.list(
                 **semester_scope_kwargs(ctx),
+                **progress_options(ctx),
                 pending=pending,
                 due=due,
             )

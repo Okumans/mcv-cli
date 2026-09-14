@@ -57,6 +57,7 @@ class MeetingsAggregate:
         include_past: bool = False,
         today_only: bool = True,
         now: datetime | None = None,
+        progress: Any | None = None,
     ) -> list[OnlineMeeting]:
         results: list[OnlineMeeting] = []
         courses = sorted(
@@ -69,11 +70,20 @@ class MeetingsAggregate:
             ),
             key=_course_sort_key,
         )
+        task = (
+            progress.add_task("Fetching meetings", total=len(courses))
+            if progress is not None
+            else None
+        )
         for course in courses:
-            results.extend(
-                _with_course_context(item, course)
-                for item in self.api.meetings.list(course.cv_cid).meetings
-            )
+            try:
+                results.extend(
+                    _with_course_context(item, course)
+                    for item in self.api.meetings.list(course.cv_cid).meetings
+                )
+            finally:
+                if progress is not None:
+                    progress.advance(task)
         return self._filter(
             results,
             include_past=include_past,

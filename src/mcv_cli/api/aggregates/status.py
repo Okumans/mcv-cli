@@ -39,6 +39,7 @@ class StatusAggregate:
         assignment_window_days: int = 7,
         announcement_window_days: int = 7,
         now: datetime | None = None,
+        progress: Any | None = None,
     ) -> StatusSnapshot:
         if assignment_window_days < 1 or announcement_window_days < 1:
             raise ValueError("Status windows must be at least one day.")
@@ -59,28 +60,37 @@ class StatusAggregate:
             ),
             key=_course_sort_key,
         )
+        task = (
+            progress.add_task("Checking course status", total=len(courses))
+            if progress is not None
+            else None
+        )
 
         for course in courses:
-            for assignment in self.api.assignments.list(course.cv_cid):
-                assignment = _with_course_context(assignment, course)
-                if is_pending(assignment) and _assignment_in_window(
-                    assignment,
-                    current=current,
-                    deadline=assignment_deadline,
-                ):
-                    assignments.append(assignment)
+            try:
+                for assignment in self.api.assignments.list(course.cv_cid):
+                    assignment = _with_course_context(assignment, course)
+                    if is_pending(assignment) and _assignment_in_window(
+                        assignment,
+                        current=current,
+                        deadline=assignment_deadline,
+                    ):
+                        assignments.append(assignment)
 
-            collection = self.api.meetings.list(course.cv_cid)
-            meetings.extend(
-                _with_course_context(item, course)
-                for item in collection.meetings
-                if _meeting_is_today(item, current)
-            )
+                collection = self.api.meetings.list(course.cv_cid)
+                meetings.extend(
+                    _with_course_context(item, course)
+                    for item in collection.meetings
+                    if _meeting_is_today(item, current)
+                )
 
-            for announcement in self.api.announcements.list(course.cv_cid):
-                announcement = _with_course_context(announcement, course)
-                if _announcement_in_window(announcement, announcement_cutoff):
-                    announcements.append(announcement)
+                for announcement in self.api.announcements.list(course.cv_cid):
+                    announcement = _with_course_context(announcement, course)
+                    if _announcement_in_window(announcement, announcement_cutoff):
+                        announcements.append(announcement)
+            finally:
+                if progress is not None:
+                    progress.advance(task)
 
         assignments.sort(key=_assignment_sort_key)
         meetings.sort(key=_meeting_sort_key)

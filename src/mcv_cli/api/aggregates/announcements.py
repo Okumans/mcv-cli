@@ -17,6 +17,7 @@ class AnnouncementsAggregate:
         semester: str | None = None,
         semesters: Collection[str] | None = None,
         all_semesters: bool = False,
+        progress: Any | None = None,
     ) -> list[Announcement]:
         results: list[Announcement] = []
         courses = sorted(
@@ -29,11 +30,20 @@ class AnnouncementsAggregate:
             ),
             key=_course_sort_key,
         )
+        task = (
+            progress.add_task("Fetching announcements", total=len(courses))
+            if progress is not None
+            else None
+        )
         for course in courses:
-            results.extend(
-                _with_course_context(item, course)
-                for item in self.api.announcements.list(course.cv_cid)
-            )
+            try:
+                results.extend(
+                    _with_course_context(item, course)
+                    for item in self.api.announcements.list(course.cv_cid)
+                )
+            finally:
+                if progress is not None:
+                    progress.advance(task)
         return sorted(
             results, key=lambda item: (item.course_no or "", item.posted or "", item.itemid)
         )

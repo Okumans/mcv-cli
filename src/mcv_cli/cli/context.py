@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
+from collections.abc import Callable, Iterable
+from typing import Any, TypeVar
 
 import typer
 
@@ -24,6 +24,9 @@ from .errors import (
     as_cli_error,
     exit_code_for,
 )
+
+_FetchInput = TypeVar("_FetchInput")
+_FetchOutput = TypeVar("_FetchOutput")
 
 
 def object_for(ctx: typer.Context) -> dict[str, Any]:
@@ -94,6 +97,37 @@ def progress_for(ctx: typer.Context) -> ProgressReporter | None:
 
 def progress_enabled(ctx: typer.Context) -> bool:
     return not quiet_mode(ctx) and not json_mode(ctx) and not jsonl_mode(ctx)
+
+
+def progress_options(ctx: typer.Context) -> dict[str, Any]:
+    if not progress_enabled(ctx):
+        return {}
+    progress = progress_for(ctx)
+    return {"progress": progress} if progress is not None else {}
+
+
+def fetch_many(
+    ctx: typer.Context,
+    values: Iterable[_FetchInput],
+    fetch: Callable[[_FetchInput], _FetchOutput],
+    *,
+    description: str,
+) -> list[_FetchOutput]:
+    items = list(values)
+    progress = progress_for(ctx) if progress_enabled(ctx) else None
+    task = (
+        progress.add_task(description, total=len(items))
+        if progress is not None and len(items) > 1
+        else None
+    )
+    results: list[_FetchOutput] = []
+    for item in items:
+        try:
+            results.append(fetch(item))
+        finally:
+            if progress is not None and task is not None:
+                progress.advance(task)
+    return results
 
 
 def make_manager() -> AuthManager:
@@ -252,6 +286,7 @@ __all__ = [
     "course_id",
     "course_semester",
     "envelope_mode",
+    "fetch_many",
     "json_mode",
     "jsonl_mode",
     "make_api",
@@ -259,6 +294,7 @@ __all__ = [
     "parse_resource_ref",
     "project_records",
     "progress_enabled",
+    "progress_options",
     "progress_for",
     "quiet_mode",
     "resource_item_id_for_course",

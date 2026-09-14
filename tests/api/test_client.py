@@ -564,7 +564,20 @@ def test_question_set_submission_extracts_questions_choices_and_answers() -> Non
 
 
 def test_client_downloads_material_folder_as_zip_and_tar(tmp_path: Path) -> None:
+    class RecordingProgress:
+        def __init__(self) -> None:
+            self.tasks: list[tuple[str, int | None]] = []
+            self.advances: list[tuple[object, int]] = []
+
+        def add_task(self, description: str, *, total: int | None = None) -> str:
+            self.tasks.append((description, total))
+            return "archive-task"
+
+        def advance(self, task_id: object, amount: int = 1) -> None:
+            self.advances.append((task_id, amount))
+
     transport = httpx.MockTransport(resource_response_for)
+    progress = RecordingProgress()
     with httpx.Client(
         base_url=BASE_URL,
         transport=transport,
@@ -582,12 +595,14 @@ def test_client_downloads_material_folder_as_zip_and_tar(tmp_path: Path) -> None
         tar_path = tmp_path / "materials.tar"
         tar_gz_path = tmp_path / "materials.tar.gz"
         fallback_path = tmp_path / "materials.archive"
-        zip_result = client.materials.archive(123, "Week 1", zip_path)
+        zip_result = client.materials.archive(123, "Week 1", zip_path, progress=progress)
         tar_result = client.materials.archive(123, "folder-1", tar_path)
         tar_gz_result = client.materials.archive(123, "folder-1", tar_gz_path)
         fallback_result = client.materials.archive(123, "folder-1", fallback_path)
 
     assert zip_result.files == 1
+    assert progress.tasks == [("Downloading materials", 1)]
+    assert progress.advances == [("archive-task", 1)]
     with zipfile.ZipFile(zip_path) as archive:
         assert archive.read("notes.pdf") == b"notes"
     assert tar_result.files == 1

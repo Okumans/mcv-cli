@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import cast
 from zoneinfo import ZoneInfo
 
+from mcv_cli.api.aggregates.announcements import AnnouncementsAggregate
 from mcv_cli.api.aggregates.assignments import AssignmentService
 from mcv_cli.api.aggregates.meetings import MeetingService
 from mcv_cli.api.aggregates.status import StatusAggregate, StatusSnapshot
@@ -255,12 +256,28 @@ def test_status_service_builds_a_typed_current_work_snapshot() -> None:
         announcements = StatusAnnouncements()
         meetings = StatusMeetings()
 
+    class StatusProgress:
+        def __init__(self) -> None:
+            self.tasks: list[tuple[str, int | None]] = []
+            self.advances: list[tuple[object, int]] = []
+
+        def add_task(self, description: str, *, total: int | None = None) -> str:
+            self.tasks.append((description, total))
+            return "status-task"
+
+        def advance(self, task_id: object, amount: int = 1) -> None:
+            self.advances.append((task_id, amount))
+
+    progress = StatusProgress()
     snapshot = StatusAggregate(cast(object, StatusAPI())).snapshot(
         semester="2026/1",
         now=now,
+        progress=progress,
     )
 
     assert isinstance(snapshot, StatusSnapshot)
+    assert progress.tasks == [("Checking course status", 1)]
+    assert progress.advances == [("status-task", 1)]
     assert [item.itemid for item in snapshot.assignments_due] == [1, 3, 2]
     assert [item.course_no for item in snapshot.assignments_due] == ["2110575"] * 3
     assert [item.itemid for item in snapshot.meetings_today] == [20, 22]
@@ -279,6 +296,40 @@ def test_status_service_rejects_invalid_windows() -> None:
         assert str(error) == "Status windows must be at least one day."
     else:
         raise AssertionError("invalid status window was accepted")
+
+
+def test_cross_course_resource_aggregates_report_progress_per_course() -> None:
+    class EmptyAnnouncements:
+        def list(self, _cv_cid: int) -> list[Announcement]:
+            return []
+
+    class RecordingProgress:
+        def __init__(self) -> None:
+            self.tasks: list[tuple[str, int | None]] = []
+            self.advances: list[tuple[object, int]] = []
+
+        def add_task(self, description: str, *, total: int | None = None) -> str:
+            self.tasks.append((description, total))
+            return description
+
+        def advance(self, task_id: object, amount: int = 1) -> None:
+            self.advances.append((task_id, amount))
+
+    class AggregateAPI:
+        courses = FakeCourses()
+        assignments = FakeAssignments()
+        announcements = EmptyAnnouncements()
+        meetings = FakeMeetings()
+
+    for service, description in (
+        (AssignmentService(cast(object, AggregateAPI())), "Fetching assignments"),
+        (AnnouncementsAggregate(cast(object, AggregateAPI())), "Fetching announcements"),
+        (MeetingService(cast(object, AggregateAPI())), "Fetching meetings"),
+    ):
+        progress = RecordingProgress()
+        service.list(progress=progress)
+        assert progress.tasks == [(description, 2)]
+        assert progress.advances == [(description, 1), (description, 1)]
 
 
 def test_aggregate_services_forward_semester_scope() -> None:

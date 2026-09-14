@@ -3,7 +3,7 @@ from __future__ import annotations
 import typer
 
 from ...api.aggregates.status import StatusSnapshot
-from ..context import make_api, run, semester_scope_kwargs
+from ..context import make_api, progress_options, run, semester_scope_kwargs
 
 
 def register(app: typer.Typer) -> None:
@@ -17,7 +17,8 @@ def register(app: typer.Typer) -> None:
 def status(ctx: typer.Context) -> None:
     def action() -> StatusSnapshot:
         with make_api() as api:
-            return api.aggregates.status.snapshot(**semester_scope_kwargs(ctx))
+            options = {**semester_scope_kwargs(ctx), **progress_options(ctx)}
+            return api.aggregates.status.snapshot(**options)
 
     run(ctx, action, display_mode="detail")
 
