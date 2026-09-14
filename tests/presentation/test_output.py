@@ -240,8 +240,8 @@ def test_meeting_human_list_includes_link() -> None:
 
     rendered = console.export_text()
     assert "Link" in rendered
-    assert "https://zoom.example/meetin" in rendered
-    assert "g/29632" in rendered
+    assert "https://zoom.example/meeting/" in rendered
+    assert "29632" in rendered
 
 
 def test_assignment_human_detail_separates_submission_page_and_files() -> None:

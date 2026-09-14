@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from typing import Any
 
+from rich import box
 from rich.table import Table
 
 from .common import human_value
@@ -17,7 +18,12 @@ def table_for(
 ) -> Table:
     overflow_columns = overflow_columns or set()
     no_wrap_columns = no_wrap_columns or set()
-    table = Table(show_header=True, header_style="bold cyan")
+    table = Table(
+        show_header=True,
+        show_edge=False,
+        header_style="bold cyan",
+        box=box.ASCII,
+    )
     for column in columns:
         table.add_column(
             column,

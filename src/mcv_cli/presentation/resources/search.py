@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 
+from rich import box
 from rich.console import RenderableType
 from rich.table import Table
 from rich.text import Text
@@ -30,7 +31,12 @@ def _highlight(
 
 def render_search_result(result: SearchResult, *, detail: bool = False) -> Table:
     del detail
-    table = Table(show_header=True, header_style="bold cyan")
+    table = Table(
+        show_header=True,
+        show_edge=False,
+        header_style="bold cyan",
+        box=box.ASCII,
+    )
     table.add_column("Field")
     table.add_column("Value")
     table.add_row("Type", result.resource_type.value)
@@ -50,7 +56,12 @@ def render_search_result(result: SearchResult, *, detail: bool = False) -> Table
 
 
 def render_search_results(results: Iterable[SearchResult], *, detail: bool = False) -> Table:
-    table = Table(show_header=True, header_style="bold cyan")
+    table = Table(
+        show_header=True,
+        show_edge=False,
+        header_style="bold cyan",
+        box=box.ASCII,
+    )
     table.add_column("Type")
     table.add_column("Course")
     if detail:

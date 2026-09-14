@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from typing import Any, Literal
 
 from pydantic import BaseModel
+from rich import box
 from rich.console import Console
 from rich.table import Table
 
@@ -179,7 +180,12 @@ def _display_mapping_list(items: list[Any], console: Console) -> None:
     if not keys:
         console.print("No results.")
         return
-    table = Table(show_header=True, header_style="bold cyan")
+    table = Table(
+        show_header=True,
+        show_edge=False,
+        header_style="bold cyan",
+        box=box.ASCII,
+    )
     for key in keys:
         table.add_column(key)
     for item in mappings:
