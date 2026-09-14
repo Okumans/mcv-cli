@@ -291,8 +291,10 @@ def test_status_dashboard_renders_all_sections() -> None:
     assert "Assignments due in the next 7 days" in rendered
     assert "Meetings today" in rendered
     assert "Recent announcements (last 7 days)" in rendered
-    assert rendered.count("─") >= 3
-    assert "\n\n" in rendered
+    assert "# Assignments due in the next 7 days" in rendered
+    assert "# Meetings today" in rendered
+    assert "# Recent announcements (last 7 days)" in rendered
+    assert rendered.count("\n\n") >= 3
 
 
 def test_assignment_human_detail_separates_submission_page_and_files() -> None:

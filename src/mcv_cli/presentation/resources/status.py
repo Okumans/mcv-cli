@@ -4,7 +4,6 @@ from collections.abc import Iterable
 from datetime import datetime
 
 from rich.console import Group, RenderableType
-from rich.rule import Rule
 from rich.text import Text
 
 from ...api.aggregates.status import StatusSnapshot
@@ -17,25 +16,25 @@ from ..tables import table_for
 def render_status(snapshot: StatusSnapshot, *, detail: bool = False) -> RenderableType:
     del detail
     return Group(
-        Text(f"Status as of {_format_datetime(snapshot.generated_at)}", style="bold cyan"),
-        Text(),
         _section_rule(
-            f"Assignments due in the next {snapshot.assignment_window_days} days"
+            f"# Assignments due in the next {snapshot.assignment_window_days} days"
         ),
         _render_assignments(snapshot.assignments_due),
         Text(),
-        _section_rule("Meetings today"),
+        Text(),
+        _section_rule("# Meetings today"),
         _render_meetings(snapshot.meetings_today),
         Text(),
+        Text(),
         _section_rule(
-            f"Recent announcements (last {snapshot.announcement_window_days} days)"
+            f"# Recent announcements (last {snapshot.announcement_window_days} days)"
         ),
         _render_announcements(snapshot.announcements_recent),
     )
 
 
-def _section_rule(title: str) -> Rule:
-    return Rule(title, characters="─", style="cyan")
+def _section_rule(title: str) -> Text:
+    return Text(title, end="\n\n", style="bold")
 
 
 def _render_assignments(items: list[Assignment]) -> RenderableType:
