@@ -69,6 +69,7 @@ def _run_mcv(
             "MCV_CONFIG_DIR": str(installed_cli.config_dir),
             "MCV_CACHE_DIR": str(installed_cli.cache_dir),
             "NO_COLOR": "1",
+            "_TYPER_FORCE_DISABLE_TERMINAL": "1",
         }
     )
     process_environment.pop("FORCE_COLOR", None)
