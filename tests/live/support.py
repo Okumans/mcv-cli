@@ -1368,6 +1368,8 @@ def assert_ref_and_url(adapter: LiveAdapter, value: Any, *, url: str | None = No
 def assert_search_results(adapter: LiveAdapter, results: Any, *, query: str) -> list[str]:
     values = results if isinstance(results, list) else []
     refs: list[str] = []
+    matched_query = False
+    query_terms = tuple(term.casefold() for term in query.split() if term)
     for item in values:
         data = payload(item)
         if not isinstance(data, Mapping):
@@ -1375,30 +1377,27 @@ def assert_search_results(adapter: LiveAdapter, results: Any, *, query: str) -> 
         ref = data.get("ref")
         if not isinstance(ref, str):
             raise AssertionError("search result has no ref")
-        parsed = ResourceRef.parse(ref)
-        if parsed.resource_type is ResourceType.PLAYLIST:
-            adapter.get(ref)
-        else:
-            adapter.get(ref)
+        ResourceRef.parse(ref)
+        resource = payload(adapter.get(ref))
         if not str(data.get("title", "")).strip():
             raise AssertionError("search result has a blank title")
+        matched_query = matched_query or _contains_query_terms(data, query_terms)
+        matched_query = matched_query or _contains_query_terms(resource, query_terms)
         refs.append(ref)
-    query_terms = tuple(term.casefold() for term in query.split() if term)
-    if values and not any(
-        any(
-            term in " ".join(
-                (
-                    str(data.get("title", "")),
-                    str(data.get("snippet", "")),
-                )
-            ).casefold()
-            for term in query_terms
-        )
-        for data in (payload(item) for item in values)
-        if isinstance(data, Mapping)
-    ):
+    if values and not matched_query:
         raise AssertionError("search results contain no visible matched text")
     return refs
+
+
+def _contains_query_terms(value: Any, query_terms: tuple[str, ...]) -> bool:
+    if isinstance(value, str):
+        folded = value.casefold()
+        return any(term in folded for term in query_terms)
+    if isinstance(value, Mapping):
+        return any(_contains_query_terms(item, query_terms) for item in value.values())
+    if isinstance(value, list):
+        return any(_contains_query_terms(item, query_terms) for item in value)
+    return False
 
 
 def configured_ref(fixture: CourseFixture, feature: str) -> str | None:
