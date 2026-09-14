@@ -21,6 +21,11 @@ _COMPLETION_SPACE = re.compile(r"\s+")
 _COMPLETION_SEPARATOR = re.compile(r"[^\w]+", flags=re.UNICODE)
 _FUZZY_TOKEN_MIN_LENGTH = 3
 _FUZZY_TOKEN_THRESHOLD = 75.0
+# Course/resource completion must fail closed when an explicit course selector
+# cannot be resolved.  ``None`` means that the command is intentionally
+# cross-course; this sentinel means that it is course-scoped but has no safe
+# cached course id to query.
+_NO_MATCHING_COURSE = -1
 
 
 def active_cache() -> CacheStore | None:
@@ -133,18 +138,34 @@ def _fuzzy_token_match(query: str, candidate: str) -> bool:
 
 def _context_course_id(ctx: Any) -> int | None:
     params = getattr(ctx, "params", {})
+    if "course" not in params:
+        return None
     reference = params.get("course")
     if not isinstance(reference, str):
-        return None
+        return _NO_MATCHING_COURSE
     cache = active_cache()
+    return _completion_course_id(reference, cache)
+
+
+def _completion_course_id(reference: str, cache: CacheStore | None) -> int:
+    """Resolve an explicit course selector without widening its scope.
+
+    Completion is best-effort and cache-only.  A missing or ambiguous cached
+    selector therefore produces no resource candidates instead of silently
+    falling back to every course's resources.  A numeric selector remains a
+    usable raw ``cv_cid`` when there is no matching cached course row.
+    """
+
     if cache is not None:
         try:
-            resolved = cache.resolve_course(reference)
-            if resolved is not None:
-                return resolved
+            matches = cache.resolve_course_ids(reference)
         except Exception:
-            pass
-    return int(reference) if reference.isdigit() else None
+            matches = ()
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            return _NO_MATCHING_COURSE
+    return int(reference) if reference.isdigit() else _NO_MATCHING_COURSE
 
 
 def complete_courses(ctx: Any, args: list[str], incomplete: str) -> list[tuple[str, str | None]]:
@@ -255,11 +276,8 @@ def complete_course_group(ctx: Any, incomplete: str) -> list[CompletionItem]:
         cache = active_cache()
         cached_course_id: int | None = None
         if cache is not None:
-            try:
-                cached_course_id = cache.resolve_course(course)
-            except Exception:
-                cached_course_id = None
-        if cached_course_id is None and course.isdigit():
+            cached_course_id = _completion_course_id(course, cache)
+        elif course.isdigit():
             cached_course_id = int(course)
         optional_collections = {
             "playlists": "playlist",
@@ -322,15 +340,8 @@ def complete_course_group(ctx: Any, incomplete: str) -> list[CompletionItem]:
             if value.casefold().startswith(prefix)
         ]
 
-    cv_cid = None
     cache = active_cache()
-    if cache is not None:
-        try:
-            cv_cid = cache.resolve_course(course)
-        except Exception:
-            cv_cid = None
-    if cv_cid is None and course.isdigit():
-        cv_cid = int(course)
+    cv_cid = _completion_course_id(course, cache)
     if "--folder" in args:
         return completion_items("folders", incomplete, cv_cid=cv_cid)
     if "--grouping" in args:

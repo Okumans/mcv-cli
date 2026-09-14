@@ -96,19 +96,78 @@ def test_completion_preserves_comma_scoped_course_filters(tmp_path, monkeypatch)
 
 def test_typed_reference_completion_filters_by_resource_type(tmp_path, monkeypatch) -> None:
     cache = CacheStore(profile_name="default", provider="chula", root=tmp_path)
-    cache.upsert_courses([Course(cv_cid=86428, course_no="2110575", title="Containers")])
+    cache.upsert_courses(
+        [
+            Course(cv_cid=86428, course_no="2110575", title="Containers"),
+            Course(cv_cid=85386, course_no="2110473", title="Fault Tolerant Computing"),
+        ]
+    )
     cache.replace_resources(
         ResourceType.MATERIAL,
         86428,
         [Material(itemid=1, cv_cid=86428, title="Material")],
     )
-    cache.upsert_resources([Assignment(itemid=2, cv_cid=86428, title="Assignment")])
+    cache.replace_resources(
+        ResourceType.MATERIAL,
+        85386,
+        [Material(itemid=3, cv_cid=85386, title="Other material")],
+    )
+    cache.upsert_resources(
+        [
+            Assignment(itemid=2, cv_cid=86428, title="Assignment"),
+            Assignment(itemid=4, cv_cid=85386, title="Other assignment"),
+        ]
+    )
     monkeypatch.setattr("mcv_cli.runtime.completion.active_cache", lambda: cache)
 
     completer = complete_refs_for(ResourceType.ASSIGNMENT)
     matches = completer(SimpleNamespace(params={"course": "2110575"}), [], "mcv:")
 
     assert [value for value, _help in matches] == ["mcv:assignment:86428:2"]
+
+
+def test_course_group_completion_filters_resource_and_course(tmp_path, monkeypatch) -> None:
+    cache = CacheStore(profile_name="default", provider="chula", root=tmp_path)
+    cache.upsert_courses(
+        [
+            Course(cv_cid=86428, course_no="2110575", title="Containers"),
+            Course(cv_cid=85386, course_no="2110473", title="Fault Tolerant Computing"),
+        ]
+    )
+    cache.replace_resources(
+        ResourceType.MATERIAL,
+        86428,
+        [Material(itemid=1, cv_cid=86428, title="Material")],
+    )
+    cache.replace_resources(
+        ResourceType.MATERIAL,
+        85386,
+        [Material(itemid=3, cv_cid=85386, title="Other material")],
+    )
+    cache.upsert_resources(
+        [
+            Assignment(itemid=2, cv_cid=86428, title="Assignment"),
+            Assignment(itemid=4, cv_cid=85386, title="Other assignment"),
+        ]
+    )
+    monkeypatch.setattr("mcv_cli.runtime.completion.active_cache", lambda: cache)
+
+    assignment_matches = complete_course_group(
+        SimpleNamespace(args=["2110575", "assignments", "show"]),
+        "mcv:",
+    )
+    material_matches = complete_course_group(
+        SimpleNamespace(args=["2110575", "materials", "show"]),
+        "mcv:",
+    )
+    unknown_course_matches = complete_course_group(
+        SimpleNamespace(args=["not-a-course", "assignments", "show"]),
+        "mcv:",
+    )
+
+    assert [item.value for item in assignment_matches] == ["mcv:assignment:86428:2"]
+    assert [item.value for item in material_matches] == ["mcv:material:86428:1"]
+    assert unknown_course_matches == []
 
 
 def test_completion_does_not_need_the_network(tmp_path, monkeypatch) -> None:

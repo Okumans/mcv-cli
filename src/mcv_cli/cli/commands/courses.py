@@ -12,7 +12,7 @@ from ...runtime.completion import (
     complete_courses,
     complete_folders,
     complete_groupings,
-    complete_refs,
+    complete_refs_for,
 )
 from ..context import (
     course_id,
@@ -175,7 +175,9 @@ def materials_show(
     ctx: typer.Context,
     course: str = typer.Argument(..., autocompletion=complete_courses),
     item_ids: list[str] = typer.Argument(
-        ..., help="One or more material ids or canonical refs.", autocompletion=complete_refs
+        ...,
+        help="One or more material ids or canonical refs.",
+        autocompletion=complete_refs_for(ResourceType.MATERIAL),
     ),
 ) -> None:
     def action() -> Any:
@@ -245,7 +247,9 @@ def materials_download(
     ctx: typer.Context,
     course: str = typer.Argument(..., autocompletion=complete_courses),
     item_id: str = typer.Argument(
-        ..., help="Material id or canonical ref.", autocompletion=complete_refs
+        ...,
+        help="Material id or canonical ref.",
+        autocompletion=complete_refs_for(ResourceType.MATERIAL),
     ),
     output: Path | None = typer.Option(
         None,
@@ -302,7 +306,9 @@ def assignments_show(
     ctx: typer.Context,
     course: str = typer.Argument(..., autocompletion=complete_courses),
     item_ids: list[str] = typer.Argument(
-        ..., help="One or more assignment ids or canonical refs.", autocompletion=complete_refs
+        ...,
+        help="One or more assignment ids or canonical refs.",
+        autocompletion=complete_refs_for(ResourceType.ASSIGNMENT),
     ),
     full: bool = typer.Option(
         False, "--full", help="Show full assignment and question-set details."
@@ -359,7 +365,9 @@ def announcements_show(
     ctx: typer.Context,
     course: str = typer.Argument(..., autocompletion=complete_courses),
     item_ids: list[str] = typer.Argument(
-        ..., help="One or more announcement ids or canonical refs.", autocompletion=complete_refs
+        ...,
+        help="One or more announcement ids or canonical refs.",
+        autocompletion=complete_refs_for(ResourceType.ANNOUNCEMENT),
     ),
 ) -> None:
     def action() -> Any:
@@ -423,7 +431,9 @@ def meetings_show(
     ctx: typer.Context,
     course: str = typer.Argument(..., autocompletion=complete_courses),
     item_ids: list[str] = typer.Argument(
-        ..., help="One or more meeting ids or canonical refs.", autocompletion=complete_refs
+        ...,
+        help="One or more meeting ids or canonical refs.",
+        autocompletion=complete_refs_for(ResourceType.MEETING),
     ),
 ) -> None:
     def action() -> Any:

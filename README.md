@@ -373,6 +373,11 @@ Shell completion matches course numbers and readable aliases such as title
 words, semester, and `cv_cid`. Matching ignores case and punctuation and allows
 small spelling mistakes, so a fragment such as `fault` can select a course
 titled `FAULT TOLERANT COMPUTING` while still inserting its course number.
+Resource arguments are scope-aware: course-scoped `show`, `download`, folder,
+and grouping completions only suggest values from the selected course and the
+resource type accepted by that command. Cross-course typed commands such as
+`mcv assignments show` remain limited to assignments but may span cached
+courses; the generic `mcv get` command intentionally remains mixed-resource.
 
 Search is local by default and never performs hidden network requests:
 
