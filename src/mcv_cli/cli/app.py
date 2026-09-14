@@ -7,6 +7,11 @@ from typer.core import TyperGroup
 
 from .. import __version__
 from ..runtime.completion import complete_course_group, complete_semesters
+from .help import install_minimal_rich_help
+
+install_minimal_rich_help()
+
+_HELP_CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
 
 _COURSE_RESOURCE_ACTIONS = {
     "materials": {
@@ -94,8 +99,13 @@ app = typer.Typer(
     help="Access MyCourseVille from a Unix command line.",
     no_args_is_help=False,
     invoke_without_command=True,
+    context_settings=_HELP_CONTEXT_SETTINGS,
 )
-auth_app = typer.Typer(help="Log in and manage MyCourseVille authentication.", no_args_is_help=True)
+auth_app = typer.Typer(
+    help="Log in and manage MyCourseVille authentication.",
+    no_args_is_help=True,
+    context_settings=_HELP_CONTEXT_SETTINGS,
+)
 courses_app = typer.Typer(
     cls=CourseAwareGroup,
     help=(
@@ -105,13 +115,28 @@ courses_app = typer.Typer(
         "Direct course pages: playlists, about, portfolio, search."
     ),
     no_args_is_help=True,
+    context_settings=_HELP_CONTEXT_SETTINGS,
 )
-assignments_app = typer.Typer(help="List assignments across current courses.", no_args_is_help=True)
+assignments_app = typer.Typer(
+    help="List assignments across current courses.",
+    no_args_is_help=True,
+    context_settings=_HELP_CONTEXT_SETTINGS,
+)
 announcements_app = typer.Typer(
-    help="List announcements across current courses.", no_args_is_help=True
+    help="List announcements across current courses.",
+    no_args_is_help=True,
+    context_settings=_HELP_CONTEXT_SETTINGS,
 )
-meetings_app = typer.Typer(help="List meetings across current courses.", no_args_is_help=True)
-cache_app = typer.Typer(help="Manage the local completion and search cache.", no_args_is_help=True)
+meetings_app = typer.Typer(
+    help="List meetings across current courses.",
+    no_args_is_help=True,
+    context_settings=_HELP_CONTEXT_SETTINGS,
+)
+cache_app = typer.Typer(
+    help="Manage the local completion and search cache.",
+    no_args_is_help=True,
+    context_settings=_HELP_CONTEXT_SETTINGS,
+)
 
 app.add_typer(auth_app, name="auth")
 app.add_typer(courses_app, name="courses")
@@ -143,9 +168,16 @@ def main(
     all_semesters: bool = typer.Option(
         False,
         "--all",
+        "-a",
         help="Select every available semester for supported collection commands.",
     ),
-    version: bool = typer.Option(False, "--version", is_eager=True, help="Show the version."),
+    version: bool = typer.Option(
+        False,
+        "--version",
+        "-v",
+        is_eager=True,
+        help="Show the version.",
+    ),
 ) -> None:
     ctx.ensure_object(dict)
     if json_output and jsonl_output:

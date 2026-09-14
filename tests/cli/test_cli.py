@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+from io import StringIO
+
+from rich.console import Console
+from rich.table import Table
 from typer.testing import CliRunner
 
 from mcv_cli.api.resources.assignments.models import Assignment
 from mcv_cli.api.resources.courses.models import Course
 from mcv_cli.api.resources.playlists.models import Playlist, PlaylistCollection, PlaylistVideo
 from mcv_cli.cli.app import app
+from mcv_cli.cli.help import _minimal_panel
 
 # Help and error assertions intentionally inspect plain text.  Remove any
 # inherited FORCE_COLOR setting so CI terminal preferences cannot split option
@@ -25,12 +30,47 @@ def test_help_lists_command_groups() -> None:
     assert "announcements" in result.stdout
     assert "meetings" in result.stdout
     assert "cache" in result.stdout
+    assert "Search cached course content" in result.stdout
+    assert "Fetch resources by canonical reference" in result.stdout
     assert "--jsonl" in result.stdout
     assert "--envelope" in result.stdout
-    assert "--quiet" in result.stdout
+    assert "-q, --quiet" in result.stdout
     assert "--semester" in result.stdout
-    assert "--all" in result.stdout
+    assert "<SEMESTER>" in result.stdout
+    assert "<str>" not in result.stdout
+    assert "-a, --all" in result.stdout
+    assert "-v, --version" in result.stdout
+    assert "-h, --help" in result.stdout
     assert "--yearsem" not in result.stdout
+
+    json_line = next(line for line in result.stdout.splitlines() if "--json" in line)
+    quiet_line = next(line for line in result.stdout.splitlines() if "--quiet" in line)
+    assert json_line.index("--json") == quiet_line.index("--quiet")
+
+
+def test_help_uses_colored_borderless_sections() -> None:
+    result = runner.invoke(app, ["--help"])
+
+    assert result.exit_code == 0
+    assert "Options:" in result.stdout
+    assert "Commands:" in result.stdout
+    assert "  --json" in result.stdout
+    assert "  search" in result.stdout
+    assert not any(marker in result.stdout for marker in ("╭", "╮", "╰", "╯"))
+    assert not result.stdout.startswith(" \n")
+
+
+def test_help_keeps_rich_colors() -> None:
+    stream = StringIO()
+    table = Table(box=None)
+    table.add_column()
+    table.add_row("--json")
+    Console(file=stream, force_terminal=True).print(_minimal_panel(table, title="Options"))
+    output = stream.getvalue()
+
+    assert "\x1b[" in output
+    assert "Options:" in output
+    assert not any(marker in output for marker in ("╭", "╮", "╰", "╯"))
 
 
 def test_version() -> None:
@@ -38,6 +78,16 @@ def test_version() -> None:
 
     assert result.exit_code == 0
     assert result.stdout.strip() == "0.3.0"
+
+
+def test_short_help_and_version_aliases() -> None:
+    help_result = runner.invoke(app, ["-h"])
+    version_result = runner.invoke(app, ["-v"])
+
+    assert help_result.exit_code == 0
+    assert "Usage: root" in help_result.stdout
+    assert version_result.exit_code == 0
+    assert version_result.stdout.strip() == "0.3.0"
 
 
 def test_login_requires_the_type_option() -> None:
@@ -446,7 +496,7 @@ def test_course_scoped_archive_keeps_command_options_after_verb() -> None:
     assert "--format" in result.stdout
     assert "tar.gz" in result.stdout
     assert "--output" in result.stdout
-    assert "folder name" in result.stdout
+    assert "folder name" in " ".join(result.stdout.split())
 
 
 def test_course_scoped_download_output_is_optional() -> None:

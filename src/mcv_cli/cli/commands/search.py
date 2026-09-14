@@ -12,7 +12,10 @@ from .cache import refresh_course_for_search, refresh_for_search
 
 
 def register(app: typer.Typer) -> None:
-    app.command("search")(search)
+    app.command(
+        "search",
+        help="Search cached course content and return matching resources.",
+    )(search)
 
 
 def search(

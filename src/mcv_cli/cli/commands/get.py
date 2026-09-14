@@ -22,7 +22,10 @@ from ..errors import as_cli_error, exit_code_for
 
 
 def register(app: typer.Typer) -> None:
-    app.command("get")(get_resources)
+    app.command(
+        "get",
+        help="Fetch resources by canonical reference or official MyCourseVille URL.",
+    )(get_resources)
 
 
 def get_resources(
