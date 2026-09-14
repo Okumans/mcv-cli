@@ -37,6 +37,22 @@ def _cache(tmp_path) -> CacheStore:
     return cache
 
 
+def _multi_course_cache(tmp_path) -> CacheStore:
+    cache = _cache(tmp_path)
+    cache.upsert_courses(
+        [Course(cv_cid=86429, course_no="2110521", title="Distributed Systems")]
+    )
+    cache.record_value(
+        Assignment(
+            itemid=2160998,
+            cv_cid=86429,
+            title="Docker deployment assignment",
+            instruction="Deploy a service with Docker.",
+        )
+    )
+    return cache
+
+
 def test_search_is_local_and_supports_refs(monkeypatch, tmp_path) -> None:
     cache = _cache(tmp_path)
     monkeypatch.setattr("mcv_cli.cli.commands.search.cache_namespace", lambda: cache)
@@ -48,6 +64,93 @@ def test_search_is_local_and_supports_refs(monkeypatch, tmp_path) -> None:
         "mcv:assignment:86428:2160997",
         "mcv:material:86428:2160993",
     }
+
+
+def test_search_accepts_comma_and_repeated_course_filters(monkeypatch, tmp_path) -> None:
+    cache = _multi_course_cache(tmp_path)
+    monkeypatch.setattr("mcv_cli.cli.commands.search.cache_namespace", lambda: cache)
+
+    comma = runner.invoke(
+        app,
+        [
+            "--quiet",
+            "search",
+            "docker",
+            "--refs",
+            "--courses=2110575,2110521",
+        ],
+    )
+    repeated = runner.invoke(
+        app,
+        [
+            "--quiet",
+            "search",
+            "docker",
+            "--refs",
+            "--courses",
+            "2110575",
+            "--courses",
+            "2110521",
+        ],
+    )
+
+    expected = {
+        "mcv:assignment:86428:2160997",
+        "mcv:material:86428:2160993",
+        "mcv:assignment:86429:2160998",
+    }
+    assert comma.exit_code == 0, comma.output
+    assert repeated.exit_code == 0, repeated.output
+    assert set(comma.stdout.splitlines()) == expected
+    assert set(repeated.stdout.splitlines()) == expected
+
+
+def test_search_course_filters_accept_titles_and_cv_cids(monkeypatch, tmp_path) -> None:
+    cache = _multi_course_cache(tmp_path)
+    monkeypatch.setattr("mcv_cli.cli.commands.search.cache_namespace", lambda: cache)
+
+    title = runner.invoke(
+        app,
+        ["--quiet", "search", "docker", "--refs", "--courses", "Distributed Systems"],
+    )
+    cv_cid = runner.invoke(
+        app,
+        ["--quiet", "search", "docker", "--refs", "--courses", "86429"],
+    )
+
+    assert title.exit_code == 0, title.output
+    assert cv_cid.exit_code == 0, cv_cid.output
+    assert title.stdout.strip() == "mcv:assignment:86429:2160998"
+    assert cv_cid.stdout.strip() == "mcv:assignment:86429:2160998"
+
+
+def test_aggregate_and_course_resource_search_aliases_are_typed(monkeypatch, tmp_path) -> None:
+    cache = _cache(tmp_path)
+    monkeypatch.setattr("mcv_cli.cli.commands.search.cache_namespace", lambda: cache)
+
+    aggregate = runner.invoke(
+        app,
+        ["--quiet", "assignments", "search", "docker", "--refs"],
+    )
+    scoped = runner.invoke(
+        app,
+        ["--quiet", "courses", "2110575", "materials", "search", "docker", "--refs"],
+    )
+
+    assert aggregate.exit_code == 0, aggregate.output
+    assert scoped.exit_code == 0, scoped.output
+    assert aggregate.stdout.strip() == "mcv:assignment:86428:2160997"
+    assert scoped.stdout.strip() == "mcv:material:86428:2160993"
+
+
+def test_aggregate_show_rejects_a_reference_of_another_type() -> None:
+    result = runner.invoke(
+        app,
+        ["--quiet", "assignments", "show", "mcv:material:86428:2160993"],
+    )
+
+    assert result.exit_code == 2
+    assert "Expected a assignment reference" in result.stderr
 
 
 def test_search_machine_output_contains_refs_and_plain_matched_text(monkeypatch, tmp_path) -> None:

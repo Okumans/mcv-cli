@@ -356,6 +356,37 @@ def test_search_scope_replacement_removes_stale_rows_only_in_that_course(
     ]
 
 
+def test_search_queries_accept_multiple_course_ids_and_resolve_aliases(
+    tmp_path: Path,
+) -> None:
+    cache = CacheStore(profile_name="default", provider="chula", root=tmp_path)
+    cache.upsert_courses(
+        [
+            Course(cv_cid=86428, course_no="2110575", title="Containers"),
+            Course(cv_cid=86429, course_no="2110521", title="Distributed Systems"),
+        ]
+    )
+    cache.record_value(Assignment(itemid=1, cv_cid=86428, title="Docker one"))
+    cache.record_value(Assignment(itemid=2, cv_cid=86429, title="Docker two"))
+
+    assert {item.cv_cid for item in cache.search_documents(cv_cids=[86428, 86429])} == {
+        86428,
+        86429,
+    }
+    assert [
+        item.document.cv_cid
+        for item in cache.search_candidates("docker", cv_cids=[86429])
+    ] == [86429]
+    assert [item.cv_cid for item in cache.search_by_item_id(2, cv_cids=[86429])] == [
+        86429
+    ]
+    assert cache.resolve_course_ids("2110575") == (86428,)
+    assert cache.resolve_course_ids("Containers") == (86428,)
+
+    with pytest.raises(ValueError, match="either cv_cid or cv_cids"):
+        cache.search_documents(cv_cid=86428, cv_cids=[86429])
+
+
 def test_search_and_completion_namespaces_can_be_cleared_independently(
     tmp_path: Path,
 ) -> None:

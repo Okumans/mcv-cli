@@ -10,6 +10,9 @@ This release adds a host-calibrated, authenticated read-only release gate.
 - Added the shared CLI/API semantic matrix for course resources, aggregate
   queries, canonical and official-URL dereferencing, cache namespaces, search,
   and explicitly configured material downloads/archives.
+- Added typed aggregate `show`/`search` aliases, course-resource search
+  aliases, multi-course `--courses` filters, and fuzzy course/reference
+  completion for search pipelines.
 - Added explicit SQLite cache migrations for schemas 1, 2, and 3, with safe
   rejection of invalid or future schemas.
 - Added isolated `MCV_CACHE_DIR`, `MCV_CONFIG_DIR`, and

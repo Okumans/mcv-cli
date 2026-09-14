@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from mcv_cli.api.core.refs import ResourceRef
+from mcv_cli.api.core.refs import ResourceRef, ResourceType
 from mcv_cli.api.core.urls import parse_mcv_url
 
 from .support import (
@@ -253,6 +253,17 @@ def _run_aggregate_matrix(adapter: LiveAdapter, semester: str) -> None:
     _validate_aggregate("assignments", pending)
     _validate_aggregate("announcements", announcements)
     _validate_aggregate("meetings", meetings)
+    for feature, values in (
+        ("assignments", assignments),
+        ("announcements", announcements),
+        ("meetings", meetings),
+    ):
+        records = collection_items(feature, values)
+        if records:
+            reference = _record_ref(records[0])
+            shown = adapter.aggregate_show(feature, reference)
+            if identity(shown)[1] != reference:
+                raise AssertionError(f"aggregate {feature} show changed resource identity")
     all_assignment_refs = {_record_ref(item) for item in assignments}
     if not {_record_ref(item) for item in pending} <= all_assignment_refs:
         raise AssertionError(
@@ -337,6 +348,35 @@ def _run_cache_and_search_matrix(adapter: LiveAdapter, config: FixtureConfig) ->
             raise AssertionError("human search output does not contain matched text")
         if "\x1b[" not in human:
             raise AssertionError("human search output did not highlight matched text")
+
+    for feature, resource_type in (
+        ("assignments", ResourceType.ASSIGNMENT),
+        ("announcements", ResourceType.ANNOUNCEMENT),
+        ("meetings", ResourceType.MEETING),
+    ):
+        aggregate_results = adapter.aggregate_search(
+            feature,
+            query,
+            courses=[primary],
+        )
+        for reference in assert_search_results(adapter, aggregate_results, query=query):
+            parsed = ResourceRef.parse(reference)
+            if parsed.resource_type is not resource_type:
+                raise AssertionError(f"aggregate {feature} search returned another resource type")
+            if primary.cv_cid is not None and parsed.cv_cid != primary.cv_cid:
+                raise AssertionError(f"aggregate {feature} search ignored --courses")
+
+    for feature in ("materials", "assignments", "announcements", "meetings", "playlists"):
+        scoped_results = adapter.course_resource_search(
+            primary,
+            feature,
+            query,
+            config.semester,
+        )
+        for reference in assert_search_results(adapter, scoped_results, query=query):
+            parsed = ResourceRef.parse(reference)
+            if primary.cv_cid is not None and parsed.cv_cid != primary.cv_cid:
+                raise AssertionError(f"course {feature} search returned another course")
 
 
 def _cache_status(adapter: LiveAdapter) -> dict[str, int]:

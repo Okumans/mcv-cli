@@ -116,6 +116,61 @@ def test_search_filters_by_course_and_resource_type(search_cache: CacheStore, tm
     assert {result.cv_cid for result in results} == {86428}
 
 
+def test_search_supports_multiple_course_ids_for_every_query_mode(
+    search_cache: CacheStore,
+) -> None:
+    search_cache.upsert_courses(
+        [Course(cv_cid=86429, course_no="2110521", title="Distributed Systems")]
+    )
+    search_cache.record_value(
+        Assignment(
+            itemid=2160998,
+            cv_cid=86429,
+            title="Docker deployment assignment",
+            instruction="Deploy a service with Docker.",
+        )
+    )
+    client = SearchClient(search_cache)
+
+    fuzzy = client.search("docker", cv_cids=[86429])
+    exact = client.search("docker deployment", cv_cids=[86429], exact=True)
+    by_item_id = client.search("2160998", cv_cids=[86429])
+    wrong_course_ref = client.search(
+        "mcv:assignment:86428:2160997",
+        cv_cids=[86429],
+    )
+    both_courses = client.search(
+        "docker",
+        cv_cids=[86428, 86429],
+        resource_types=[ResourceType.ASSIGNMENT],
+    )
+
+    assert {result.cv_cid for result in fuzzy} == {86429}
+    assert [str(result.ref) for result in exact] == [
+        "mcv:assignment:86429:2160998"
+    ]
+    assert [str(result.ref) for result in by_item_id] == [
+        "mcv:assignment:86429:2160998"
+    ]
+    assert wrong_course_ref == []
+    assert {result.cv_cid for result in both_courses} == {86428, 86429}
+
+
+def test_search_rejects_conflicting_or_invalid_course_scopes(
+    search_cache: CacheStore,
+) -> None:
+    client = SearchClient(search_cache)
+
+    with pytest.raises(ValidationError, match="either cv_cid or cv_cids"):
+        client.search("docker", cv_cid=86428, cv_cids=[86429])
+    with pytest.raises(ValidationError, match="positive integers"):
+        client.search("docker", cv_cids=[])
+    with pytest.raises(ValidationError, match="positive integers"):
+        client.search("docker", cv_cids=[0])
+    with pytest.raises(ValidationError, match="positive integers"):
+        client.search("docker", cv_cids=[True])
+
+
 def test_search_uses_fuzzy_title_fallback_for_small_typos(search_cache: CacheStore) -> None:
     results = SearchClient(search_cache).search("dockre")
 

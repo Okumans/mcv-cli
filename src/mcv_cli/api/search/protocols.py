@@ -13,6 +13,7 @@ class SearchRepository(Protocol):
         query: str,
         *,
         cv_cid: int | None = None,
+        cv_cids: Collection[int] | None = None,
         resource_types: Collection[ResourceType] | None = None,
         limit: int = 100,
     ) -> Sequence[SearchCandidate]: ...
@@ -21,6 +22,7 @@ class SearchRepository(Protocol):
         self,
         *,
         cv_cid: int | None = None,
+        cv_cids: Collection[int] | None = None,
         resource_types: Collection[ResourceType] | None = None,
         limit: int = 1000,
     ) -> Sequence[SearchDocument]: ...
@@ -32,6 +34,7 @@ class SearchRepository(Protocol):
         item_id: int,
         *,
         cv_cid: int | None = None,
+        cv_cids: Collection[int] | None = None,
         resource_types: Collection[ResourceType] | None = None,
     ) -> Sequence[SearchDocument]: ...
 

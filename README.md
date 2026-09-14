@@ -174,19 +174,32 @@ mcv courses 2110575 assignments list
 mcv courses 2110575 assignments list --all
 mcv courses 2110575 assignments show 2160997
 mcv courses 2110575 assignments show --full 2160997
+mcv courses 2110575 assignments search "docker"
 mcv courses 2110575 announcements list
 mcv courses 2110575 announcements show 2177455
+mcv courses 2110575 announcements search "deadline"
 
 # Meetings, schedule, and course pages
 mcv courses 2110575 meetings list
 mcv courses 2110575 meetings list --all
 mcv courses 2110575 meetings list --include-past
+mcv courses 2110575 meetings search "zoom"
 mcv courses 2110575 schedule list
 mcv courses 2110575 playlists
+mcv courses 2110575 playlists search "lecture"
 mcv courses 2110575 about
 mcv courses 2110575 groups list
 mcv courses 2110575 portfolio
 mcv courses 2110575 web-resources list
+
+# Cross-course collections and typed aliases
+mcv assignments list
+mcv assignments show mcv:assignment:86428:2160997
+mcv assignments search "docker" --courses=2110575,2110521
+mcv announcements show mcv:announcement:86428:2177455
+mcv announcements search "deadline" --courses 2110575 --courses 2110521
+mcv meetings show mcv:meeting:86428:29632
+mcv meetings search "zoom" --courses=2110575
 
 # Cross-course collections across every available semester
 mcv --all assignments list
@@ -196,7 +209,19 @@ mcv --all meetings list
 
 Course-level pages such as `playlists`, `about`, and `portfolio` are direct
 actions. Other collections generally use `list`, while identifier-bearing
-resources use `show`.
+resources use `show`. Aggregate `show` commands accept canonical references or
+supported official MyCourseVille URLs, so an id is always tied to its course.
+The indexed resource groups also expose `search` aliases. They share the
+central local search engine, while keeping the resource type in the command:
+
+```bash
+mcv assignments search "docker" --courses=2110575,2110521
+mcv courses 2110575 materials search "docker"
+mcv courses 2110575 assignments search "docker"
+mcv courses 2110575 announcements search "deadline"
+mcv courses 2110575 meetings search "zoom"
+mcv courses 2110575 playlists search "lecture"
+```
 
 There are two intentionally different uses of `--all`:
 
@@ -354,6 +379,8 @@ Search is local by default and never performs hidden network requests:
 ```bash
 mcv search "docker"
 mcv courses 2110575 search "docker"
+mcv search "docker" --courses=2110575,2110521
+mcv search "docker" --courses 2110575 --courses 2110521
 mcv search "docker" --all
 mcv courses 2110575 search "docker" --all
 mcv search "docker" --type material --type assignment --limit 20
@@ -375,6 +402,10 @@ same local search runs:
 mcv search "docker" --refresh
 mcv courses 2110575 search "docker" --refresh
 ```
+
+`--courses` accepts exact cached course numbers, titles, or `cv_cid` values.
+Repeat it or provide a comma-separated value; all selected courses are treated
+as one OR scope. A course-scoped search uses its positional course selector.
 
 Search results are compact summaries with canonical references. Human output
 highlights matched text in titles and snippets, including the actual title

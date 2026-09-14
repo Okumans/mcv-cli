@@ -65,6 +65,30 @@ def _resource_type_values(
     return sorted({item.value for item in resource_types})
 
 
+def _append_course_condition(
+    conditions: list[str],
+    params: list[Any],
+    column: str,
+    cv_cid: int | None,
+    cv_cids: Collection[int] | None,
+) -> None:
+    if cv_cid is not None and cv_cids is not None:
+        raise ValueError("Use either cv_cid or cv_cids, not both.")
+    if cv_cid is not None:
+        conditions.append(f"{column} = ?")
+        params.append(cv_cid)
+        return
+    if cv_cids is None:
+        return
+    values = tuple(dict.fromkeys(cv_cids))
+    if not values:
+        conditions.append(f"{column} IN (NULL)")
+        return
+    placeholders = ", ".join("?" for _ in values)
+    conditions.append(f"{column} IN ({placeholders})")
+    params.extend(values)
+
+
 def _ignore_search_schema_error(error: CacheSchemaError) -> bool:
     """Keep corrupt/old local search empty, but never hide a future schema."""
 
@@ -1084,6 +1108,7 @@ class CacheStore:
         query: str,
         *,
         cv_cid: int | None = None,
+        cv_cids: Collection[int] | None = None,
         resource_types: Collection[ResourceType] | None = None,
         limit: int = 100,
     ) -> list[SearchCandidate]:
@@ -1104,9 +1129,7 @@ class CacheStore:
             fts_query = " AND ".join(f'"{token.replace(chr(34), "")}"*' for token in tokens)
             conditions = ["search_fts MATCH ?"]
             params: list[Any] = [fts_query]
-            if cv_cid is not None:
-                conditions.append("d.cv_cid = ?")
-                params.append(cv_cid)
+            _append_course_condition(conditions, params, "d.cv_cid", cv_cid, cv_cids)
             type_values = _resource_type_values(resource_types)
             if type_values:
                 placeholders = ", ".join("?" for _ in type_values)
@@ -1138,11 +1161,13 @@ class CacheStore:
         self,
         *,
         cv_cid: int | None = None,
+        cv_cids: Collection[int] | None = None,
         resource_types: Collection[ResourceType] | None = None,
         limit: int = 1000,
     ) -> list[SearchDocument]:
         rows = self._search_rows(
             cv_cid=cv_cid,
+            cv_cids=cv_cids,
             resource_types=resource_types,
             limit=limit,
         )
@@ -1178,6 +1203,7 @@ class CacheStore:
         item_id: int,
         *,
         cv_cid: int | None = None,
+        cv_cids: Collection[int] | None = None,
         resource_types: Collection[ResourceType] | None = None,
     ) -> list[SearchDocument]:
         if not self.path.exists():
@@ -1193,9 +1219,7 @@ class CacheStore:
         try:
             conditions = ["item_id = ?"]
             params: list[Any] = [item_id]
-            if cv_cid is not None:
-                conditions.append("cv_cid = ?")
-                params.append(cv_cid)
+            _append_course_condition(conditions, params, "cv_cid", cv_cid, cv_cids)
             type_values = _resource_type_values(resource_types)
             if type_values:
                 placeholders = ", ".join("?" for _ in type_values)
@@ -1221,6 +1245,7 @@ class CacheStore:
         self,
         *,
         cv_cid: int | None,
+        cv_cids: Collection[int] | None,
         resource_types: Collection[ResourceType] | None,
         limit: int,
     ) -> list[sqlite3.Row]:
@@ -1237,9 +1262,7 @@ class CacheStore:
         try:
             conditions: list[str] = []
             params: list[Any] = []
-            if cv_cid is not None:
-                conditions.append("cv_cid = ?")
-                params.append(cv_cid)
+            _append_course_condition(conditions, params, "cv_cid", cv_cid, cv_cids)
             type_values = _resource_type_values(resource_types)
             if type_values:
                 placeholders = ", ".join("?" for _ in type_values)
@@ -1401,11 +1424,17 @@ class CacheStore:
             connection.close()
 
     def resolve_course(self, reference: str) -> int | None:
+        values = self.resolve_course_ids(reference)
+        return next(iter(values)) if len(values) == 1 else None
+
+    def resolve_course_ids(self, reference: str) -> tuple[int, ...]:
+        """Return every cached course id matching an exact course selector."""
+
         normalized = " ".join(reference.split()).casefold()
         try:
             connection = self._connect(read_only=True)
         except sqlite3.Error:
-            return None
+            return ()
         try:
             try:
                 rows = connection.execute(
@@ -1418,9 +1447,8 @@ class CacheStore:
                     (reference.strip(), normalized, normalized),
                 ).fetchall()
             except sqlite3.Error:
-                return None
-            values = {int(row[0]) for row in rows}
-            return next(iter(values)) if len(values) == 1 else None
+                return ()
+            return tuple(sorted({int(row[0]) for row in rows}))
         finally:
             connection.close()
 

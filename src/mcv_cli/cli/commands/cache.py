@@ -93,9 +93,15 @@ def refresh_for_search(ctx: typer.Context) -> None:
 def refresh_course_for_search(ctx: typer.Context, course_reference: str) -> None:
     """Refresh searchable data for one course before a course-scoped search."""
 
+    refresh_courses_for_search(ctx, (course_reference,))
+
+
+def refresh_courses_for_search(ctx: typer.Context, course_references: Iterable[str]) -> None:
+    """Refresh searchable data for selected courses before a search."""
+
     _refresh_cache(
         ctx,
-        course_references=(course_reference,),
+        course_references=course_references,
         all_semesters=False,
         search_only=True,
     )

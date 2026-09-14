@@ -27,7 +27,14 @@ from ..context import (
     semester_scope_kwargs,
 )
 from ..errors import NotFoundError, UsageError
-from .search import search_course
+from .search import (
+    search_course,
+    search_course_announcements,
+    search_course_assignments,
+    search_course_materials,
+    search_course_meetings,
+    search_course_playlists,
+)
 
 
 def register(app: typer.Typer) -> None:
@@ -38,17 +45,22 @@ def register(app: typer.Typer) -> None:
     app.command("materials_folders", hidden=True)(materials_folders)
     app.command("materials_archive", hidden=True)(materials_archive)
     app.command("materials_download", hidden=True)(materials_download)
+    app.command("materials_search", hidden=True)(search_course_materials)
     app.command("assignments_list", hidden=True)(assignments_list)
     app.command("assignments_show", hidden=True)(assignments_show)
+    app.command("assignments_search", hidden=True)(search_course_assignments)
     app.command("announcements_list", hidden=True)(announcements_list)
     app.command("announcements_show", hidden=True)(announcements_show)
+    app.command("announcements_search", hidden=True)(search_course_announcements)
     app.command("meetings_list", hidden=True)(meetings_list)
     app.command("meetings_show", hidden=True)(meetings_show)
+    app.command("meetings_search", hidden=True)(search_course_meetings)
     app.command("schedule_list", hidden=True)(schedule_list)
     app.command("about_show", hidden=True)(about_show)
     app.command("groups_list", hidden=True)(groups_list)
     app.command("portfolio_show", hidden=True)(portfolio_show)
     app.command("playlists_show", hidden=True)(playlists_show)
+    app.command("playlists_search", hidden=True)(search_course_playlists)
     app.command("web_resources_list", hidden=True)(web_resources_list)
     app.command("search_course", hidden=True)(search_course)
 

@@ -4,11 +4,22 @@ from typing import Any
 
 import typer
 
+from ...api.core.refs import ResourceType
+from ...runtime.completion import complete_refs_for
 from ..context import make_api, progress_options, resource_refs, run, semester_scope_kwargs
+from .get import get_typed_resources
+from .search import search_announcements
 
 
 def register(app: typer.Typer) -> None:
-    app.command("list")(list_announcements)
+    app.command("list", help="List announcements across current courses.")(list_announcements)
+    app.command(
+        "show",
+        help="Fetch announcements by canonical reference or official MyCourseVille URL.",
+    )(show_announcements)
+    app.command(
+        "search", help="Search cached announcements across current courses."
+    )(search_announcements)
 
 
 def list_announcements(
@@ -32,3 +43,14 @@ def list_announcements(
             return resource_refs(values) if refs else values
 
     run(ctx, action, display_mode="expanded" if all_fields else "collection")
+
+
+def show_announcements(
+    ctx: typer.Context,
+    references: list[str] = typer.Argument(
+        ...,
+        help="One or more announcement references or official MyCourseVille URLs.",
+        autocompletion=complete_refs_for(ResourceType.ANNOUNCEMENT),
+    ),
+) -> None:
+    get_typed_resources(ctx, references, ResourceType.ANNOUNCEMENT)

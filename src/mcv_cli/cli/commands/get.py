@@ -6,7 +6,7 @@ from typing import Any
 import typer
 
 from ...api.core.errors import APIError
-from ...api.core.refs import ResourceRef
+from ...api.core.refs import ResourceRef, ResourceType
 from ...presentation.json import machine_error_payload, serialize_jsonl
 from ...runtime.progress import ProgressReporter
 from ..context import (
@@ -18,7 +18,7 @@ from ..context import (
     progress_for,
     run,
 )
-from ..errors import as_cli_error, exit_code_for
+from ..errors import UsageError, as_cli_error, exit_code_for
 
 
 def register(app: typer.Typer) -> None:
@@ -35,10 +35,29 @@ def get_resources(
         help="One or more canonical resource references or MyCourseVille URLs.",
     ),
 ) -> None:
+    _get_resources(ctx, references)
+
+
+def get_typed_resources(
+    ctx: typer.Context,
+    references: list[str],
+    resource_type: ResourceType,
+) -> None:
+    """Fetch refs for a typed convenience command such as ``assignments show``."""
+
+    _get_resources(ctx, references, expected_type=resource_type)
+
+
+def _get_resources(
+    ctx: typer.Context,
+    references: list[str],
+    *,
+    expected_type: ResourceType | None = None,
+) -> None:
     if not jsonl_mode(ctx):
 
         def action() -> Any:
-            parsed = [parse_resource_ref(reference) for reference in references]
+            parsed = [_parse_reference(reference, expected_type) for reference in references]
             with make_api() as api:
                 progress = progress_for(ctx)
                 task = (
@@ -59,7 +78,7 @@ def get_resources(
     parsed: list[ResourceRef | APIError] = []
     for raw_reference in references:
         try:
-            parsed.append(parse_resource_ref(raw_reference))
+            parsed.append(_parse_reference(raw_reference, expected_type))
         except APIError as error:
             parsed.append(error)
     valid = [item for item in parsed if isinstance(item, ResourceRef)]
@@ -112,3 +131,16 @@ def _emit_error_line(error: APIError, *, envelope: bool) -> None:
             separators=(",", ":"),
         )
     )
+
+
+def _parse_reference(
+    raw_reference: str,
+    expected_type: ResourceType | None,
+) -> ResourceRef:
+    reference = parse_resource_ref(raw_reference)
+    if expected_type is not None and reference.resource_type is not expected_type:
+        raise UsageError(
+            f"Expected a {expected_type.value} reference, got "
+            f"{reference.resource_type.value}."
+        )
+    return reference

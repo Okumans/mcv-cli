@@ -20,15 +20,28 @@ _COURSE_RESOURCE_ACTIONS = {
         "folders": "materials_folders",
         "archive": "materials_archive",
         "download": "materials_download",
+        "search": "materials_search",
     },
-    "assignments": {"list": "assignments_list", "show": "assignments_show"},
-    "announcements": {"list": "announcements_list", "show": "announcements_show"},
-    "meetings": {"list": "meetings_list", "show": "meetings_show"},
+    "assignments": {
+        "list": "assignments_list",
+        "show": "assignments_show",
+        "search": "assignments_search",
+    },
+    "announcements": {
+        "list": "announcements_list",
+        "show": "announcements_show",
+        "search": "announcements_search",
+    },
+    "meetings": {
+        "list": "meetings_list",
+        "show": "meetings_show",
+        "search": "meetings_search",
+    },
     "schedule": {"list": "schedule_list"},
     "about": {"show": "about_show", "": "about_show"},
     "groups": {"list": "groups_list"},
     "portfolio": {"show": "portfolio_show", "": "portfolio_show"},
-    "playlists": {"": "playlists_show"},
+    "playlists": {"": "playlists_show", "search": "playlists_search"},
     "web-resources": {"list": "web_resources_list"},
     "search": {"": "search_course"},
 }
@@ -118,17 +131,17 @@ courses_app = typer.Typer(
     context_settings=_HELP_CONTEXT_SETTINGS,
 )
 assignments_app = typer.Typer(
-    help="List assignments across current courses.",
+    help="Read assignments across current courses.",
     no_args_is_help=True,
     context_settings=_HELP_CONTEXT_SETTINGS,
 )
 announcements_app = typer.Typer(
-    help="List announcements across current courses.",
+    help="Read announcements across current courses.",
     no_args_is_help=True,
     context_settings=_HELP_CONTEXT_SETTINGS,
 )
 meetings_app = typer.Typer(
-    help="List meetings across current courses.",
+    help="Read meetings across current courses.",
     no_args_is_help=True,
     context_settings=_HELP_CONTEXT_SETTINGS,
 )

@@ -4,11 +4,22 @@ from typing import Any
 
 import typer
 
+from ...api.core.refs import ResourceType
+from ...runtime.completion import complete_refs_for
 from ..context import make_api, progress_options, resource_refs, run, semester_scope_kwargs
+from .get import get_typed_resources
+from .search import search_assignments
 
 
 def register(app: typer.Typer) -> None:
-    app.command("list")(list_assignments)
+    app.command("list", help="List assignments across current courses.")(list_assignments)
+    app.command(
+        "show",
+        help="Fetch assignments by canonical reference or official MyCourseVille URL.",
+    )(show_assignments)
+    app.command(
+        "search", help="Search cached assignments across current courses."
+    )(search_assignments)
 
 
 def list_assignments(
@@ -46,3 +57,14 @@ def list_assignments(
             return resource_refs(values) if refs else values
 
     run(ctx, action, display_mode="expanded" if all_fields else "collection")
+
+
+def show_assignments(
+    ctx: typer.Context,
+    references: list[str] = typer.Argument(
+        ...,
+        help="One or more assignment references or official MyCourseVille URLs.",
+        autocompletion=complete_refs_for(ResourceType.ASSIGNMENT),
+    ),
+) -> None:
+    get_typed_resources(ctx, references, ResourceType.ASSIGNMENT)

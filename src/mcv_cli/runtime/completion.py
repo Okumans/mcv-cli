@@ -7,6 +7,7 @@ from typing import Any
 from typer._click.shell_completion import CompletionItem
 
 from ..api.core.errors import APIError
+from ..api.core.refs import ResourceRef, ResourceType
 from .auth import AuthManager
 from .cache import CacheStore
 from .config import Settings
@@ -46,6 +47,7 @@ def completion_items(
     incomplete: str,
     *,
     cv_cid: int | None = None,
+    resource_type: ResourceType | str | None = None,
 ) -> list[CompletionItem]:
     cache = active_cache()
     if cache is None:
@@ -60,8 +62,22 @@ def completion_items(
     return [
         CompletionItem(str(record["value"]), help=record.get("help"))
         for record in records
+        if _matches_resource_type(record, resource_type)
         if _matches_completion_query(query, record)
     ]
+
+
+def _matches_resource_type(
+    record: dict[str, Any], resource_type: ResourceType | str | None
+) -> bool:
+    if resource_type is None:
+        return True
+    try:
+        return ResourceRef.parse(str(record.get("value", ""))).resource_type is ResourceType(
+            resource_type
+        )
+    except (APIError, TypeError, ValueError):
+        return False
 
 
 def _normalize_completion_text(value: object) -> str:
@@ -136,6 +152,25 @@ def complete_courses(ctx: Any, args: list[str], incomplete: str) -> list[tuple[s
     return [(item.value, item.help) for item in completion_items("courses", incomplete)]
 
 
+def complete_course_filters(
+    ctx: Any, args: list[str], incomplete: str
+) -> list[tuple[str, str | None]]:
+    """Complete the final selector in a comma-separated ``--courses`` value."""
+
+    del ctx, args
+    option_prefix = ""
+    value = incomplete
+    if value.startswith("--courses="):
+        option_prefix = "--courses="
+        value = value.removeprefix(option_prefix)
+    prefix, separator, fragment = value.rpartition(",")
+    leading = f"{prefix}{separator}"
+    return [
+        (f"{option_prefix}{leading}{item.value}", item.help)
+        for item in completion_items("courses", fragment)
+    ]
+
+
 def complete_semesters(ctx: Any, args: list[str], incomplete: str) -> list[tuple[str, str | None]]:
     del ctx, args
     return [(item.value, item.help) for item in completion_items("semesters", incomplete)]
@@ -161,6 +196,27 @@ def complete_refs(ctx: Any, args: list[str], incomplete: str) -> list[tuple[str,
     del args
     cv_cid = _context_course_id(ctx)
     return [(item.value, item.help) for item in completion_items("refs", incomplete, cv_cid=cv_cid)]
+
+
+def complete_refs_for(
+    resource_type: ResourceType | str,
+) -> Any:
+    """Create a ref completer restricted to one resource type."""
+
+    def complete(ctx: Any, args: list[str], incomplete: str) -> list[tuple[str, str | None]]:
+        del args
+        cv_cid = _context_course_id(ctx)
+        return [
+            (item.value, item.help)
+            for item in completion_items(
+                "refs",
+                incomplete,
+                cv_cid=cv_cid,
+                resource_type=resource_type,
+            )
+        ]
+
+    return complete
 
 
 def complete_course_group(ctx: Any, incomplete: str) -> list[CompletionItem]:
@@ -236,10 +292,24 @@ def complete_course_group(ctx: Any, incomplete: str) -> list[CompletionItem]:
             "folders": "List material folders",
             "archive": "Download a material-folder archive",
             "download": "Download one material",
+            "search": "Search cached materials",
         },
-        "assignments": {"list": "List assignments", "show": "Show assignment details"},
-        "announcements": {"list": "List announcements", "show": "Show announcement details"},
-        "meetings": {"list": "List meetings", "show": "Show meeting details"},
+        "assignments": {
+            "list": "List assignments",
+            "show": "Show assignment details",
+            "search": "Search cached assignments",
+        },
+        "announcements": {
+            "list": "List announcements",
+            "show": "Show announcement details",
+            "search": "Search cached announcements",
+        },
+        "meetings": {
+            "list": "List meetings",
+            "show": "Show meeting details",
+            "search": "Search cached meetings",
+        },
+        "playlists": {"search": "Search cached playlists"},
         "schedule": {"list": "List schedule events"},
         "groups": {"list": "List student groups"},
         "web-resources": {"list": "List external course links"},
@@ -275,7 +345,18 @@ def complete_course_group(ctx: Any, incomplete: str) -> list[CompletionItem]:
         ("meetings", "show"),
     }
     if (resource, action) in addressable:
-        return completion_items("refs", incomplete, cv_cid=cv_cid)
+        resource_types = {
+            "materials": ResourceType.MATERIAL,
+            "assignments": ResourceType.ASSIGNMENT,
+            "announcements": ResourceType.ANNOUNCEMENT,
+            "meetings": ResourceType.MEETING,
+        }
+        return completion_items(
+            "refs",
+            incomplete,
+            cv_cid=cv_cid,
+            resource_type=resource_types[resource],
+        )
     if resource == "materials" and action == "archive":
         return completion_items("folders", incomplete, cv_cid=cv_cid)
     return []

@@ -64,7 +64,11 @@ mcv courses "$MCV_COURSE" materials list
 mcv courses "$MCV_COURSE" materials show 2160993
 mcv courses "$MCV_COURSE" assignments list
 mcv courses "$MCV_COURSE" assignments show 2160997
+mcv courses "$MCV_COURSE" assignments search "docker"
+mcv courses "$MCV_COURSE" announcements search "deadline"
+mcv courses "$MCV_COURSE" meetings search "zoom"
 mcv courses "$MCV_COURSE" playlists
+mcv courses "$MCV_COURSE" playlists search "lecture"
 mcv courses "$MCV_COURSE" about
 mcv courses "$MCV_COURSE" portfolio
 ```
@@ -109,8 +113,14 @@ mcv courses "$MCV_COURSE" assignments show 2160997
 mcv courses "$MCV_COURSE" about
 mcv courses "$MCV_COURSE" portfolio
 mcv assignments list --pending
+mcv assignments show mcv:assignment:86428:2160997
+mcv assignments search "docker" --courses="$MCV_COURSE"
 mcv announcements list
+mcv announcements show mcv:announcement:86428:2177455
+mcv announcements search "deadline" --courses="$MCV_COURSE"
 mcv meetings list
+mcv meetings show mcv:meeting:86428:29632
+mcv meetings search "zoom" --courses="$MCV_COURSE"
 ```
 
 Global options must appear before the command:
@@ -181,6 +191,10 @@ Search uses only the local search namespace unless `--refresh` is supplied:
 ```bash
 uv run mcv search "docker"
 uv run mcv courses "$MCV_COURSE" search "docker"
+uv run mcv search "docker" --courses="$MCV_COURSE",2110521
+uv run mcv search "docker" --courses "$MCV_COURSE" --courses 2110521
+uv run mcv assignments search "docker" --courses="$MCV_COURSE"
+uv run mcv courses "$MCV_COURSE" materials search "docker"
 uv run mcv search "docker" --all
 uv run mcv courses "$MCV_COURSE" search "docker" --all
 uv run mcv search "docker" --type material --type assignment --limit 20
@@ -194,6 +208,9 @@ uv run mcv search "docker" --refresh
 Top-level local search does not accept global semester scope. A course-scoped
 search accepts one global `--semester` for its refresh target; repeated
 semesters and global `--all` remain reserved for semester-wide collections.
+The central and aggregate search commands accept exact cached course numbers,
+titles, or `cv_cid` selectors through repeatable or comma-separated
+`--courses` values.
 
 Every v1 result is a dereferenceable summary with a canonical `ref`. Human
 tables highlight matched query terms in the title and match snippet; machine
@@ -684,17 +701,23 @@ uv run mcv assignments list --all
 uv run mcv assignments list --pending
 uv run mcv assignments list --due
 uv run mcv assignments list --pending --refs
+uv run mcv assignments show mcv:assignment:86428:2160997
+uv run mcv assignments search "docker" --courses="$MCV_COURSE"
 
 uv run mcv announcements list
 uv run mcv --all announcements list
 uv run mcv announcements list --all
 uv run mcv announcements list --refs
+uv run mcv announcements show mcv:announcement:86428:2177455
+uv run mcv announcements search "deadline" --courses="$MCV_COURSE"
 
 uv run mcv meetings list
 uv run mcv --all meetings list
 uv run mcv meetings list --all
 uv run mcv meetings list --include-past
 uv run mcv meetings list --refs
+uv run mcv meetings show mcv:meeting:86428:29632
+uv run mcv meetings search "zoom" --courses="$MCV_COURSE"
 ```
 
 `--pending` excludes completed/submitted assignment records. `--due` keeps
@@ -833,7 +856,7 @@ store = CacheStore(profile_name="default", provider="chula")
 with MCVAPI(manager, cache_store=store) as api:
     results = api.search.search(
         "docker",
-        cv_cid=course.cv_cid,
+        cv_cids=[course.cv_cid],  # add another selected cv_cid to broaden scope
         resource_types={"material", "assignment"},
         limit=20,
     )

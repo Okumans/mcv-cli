@@ -165,7 +165,25 @@ class LiveAdapter(Protocol):
 
     def aggregate(self, feature: str, semester: str, *, pending: bool = False) -> Any: ...
 
+    def aggregate_show(self, feature: str, reference: str) -> Any: ...
+
+    def aggregate_search(
+        self,
+        feature: str,
+        query: str,
+        *,
+        courses: list[CourseFixture] | None = None,
+    ) -> Any: ...
+
     def detail(self, fixture: CourseFixture, feature: str, item_id: int, semester: str) -> Any: ...
+
+    def course_resource_search(
+        self,
+        fixture: CourseFixture,
+        feature: str,
+        query: str,
+        semester: str,
+    ) -> Any: ...
 
     def get(self, reference: str) -> Any: ...
 
@@ -330,6 +348,21 @@ class CLIAdapter:
             args.append("--include-past")
         return self._run(args)
 
+    def aggregate_show(self, feature: str, reference: str) -> Any:
+        return self._run([feature, "show", reference])
+
+    def aggregate_search(
+        self,
+        feature: str,
+        query: str,
+        *,
+        courses: list[CourseFixture] | None = None,
+    ) -> Any:
+        args = [feature, "search", query]
+        if courses:
+            args.extend(("--courses", ",".join(item.selector for item in courses)))
+        return self._run(args)
+
     def detail(self, fixture: CourseFixture, feature: str, item_id: int, semester: str) -> Any:
         command = {
             "materials": ("materials", "show"),
@@ -340,6 +373,24 @@ class CLIAdapter:
         if command is None:
             raise ValueError(f"{feature} is not item-addressable")
         return self._run([*self._course_args(fixture, semester), *command, str(item_id)])
+
+    def course_resource_search(
+        self,
+        fixture: CourseFixture,
+        feature: str,
+        query: str,
+        semester: str,
+    ) -> Any:
+        command = {
+            "materials": ("materials", "search"),
+            "assignments": ("assignments", "search"),
+            "announcements": ("announcements", "search"),
+            "meetings": ("meetings", "search"),
+            "playlists": ("playlists", "search"),
+        }.get(feature)
+        if command is None:
+            raise ValueError(f"{feature} is not searchable")
+        return self._run([*self._course_args(fixture, semester), *command, query])
 
     def get(self, reference: str) -> Any:
         return self._run(["get", reference])
@@ -607,6 +658,33 @@ class PythonAdapter:
             return self._api.aggregates.meetings.list(semester=semester, include_past=pending)
         raise ValueError(f"Unknown live aggregate: {feature}")
 
+    def aggregate_show(self, feature: str, reference: str) -> Any:
+        del feature
+        return self._api.get(reference)
+
+    def aggregate_search(
+        self,
+        feature: str,
+        query: str,
+        *,
+        courses: list[CourseFixture] | None = None,
+    ) -> Any:
+        resource_type = {
+            "assignments": ResourceType.ASSIGNMENT,
+            "announcements": ResourceType.ANNOUNCEMENT,
+            "meetings": ResourceType.MEETING,
+        }.get(feature)
+        if resource_type is None:
+            raise ValueError(f"Unknown searchable aggregate: {feature}")
+        cv_cids = None
+        if courses:
+            cv_cids = [item.cv_cid for item in courses if item.cv_cid is not None]
+        return self._api.search.search(
+            query,
+            cv_cids=cv_cids,
+            resource_types=(resource_type,),
+        )
+
     def detail(self, fixture: CourseFixture, feature: str, item_id: int, semester: str) -> Any:
         cv_cid = self._course_id(fixture, semester)
         clients = {
@@ -619,6 +697,28 @@ class PythonAdapter:
         if client is None:
             raise ValueError(f"{feature} is not item-addressable")
         return client.get(cv_cid, item_id)
+
+    def course_resource_search(
+        self,
+        fixture: CourseFixture,
+        feature: str,
+        query: str,
+        semester: str,
+    ) -> Any:
+        resource_type = {
+            "materials": ResourceType.MATERIAL,
+            "assignments": ResourceType.ASSIGNMENT,
+            "announcements": ResourceType.ANNOUNCEMENT,
+            "meetings": ResourceType.MEETING,
+            "playlists": ResourceType.PLAYLIST,
+        }.get(feature)
+        if resource_type is None:
+            raise ValueError(f"{feature} is not searchable")
+        return self._api.search.search(
+            query,
+            cv_cid=self._course_id(fixture, semester),
+            resource_types=(resource_type,),
+        )
 
     def get(self, reference: str) -> Any:
         return self._api.get(reference)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import difflib
 import re
 from collections.abc import Collection
+from typing import Any
 
 from ..core.errors import InvalidReferenceError, SearchUnavailableError, ValidationError
 from ..core.refs import ResourceRef, ResourceType
@@ -32,6 +33,7 @@ class SearchClient:
         query: str,
         *,
         cv_cid: int | None = None,
+        cv_cids: Collection[int] | None = None,
         resource_types: Collection[ResourceType | str] | None = None,
         limit: int = 20,
         exact: bool = False,
@@ -39,12 +41,13 @@ class SearchClient:
         if self.repository is None:
             raise SearchUnavailableError()
         normalized = _normalize_query(query)
+        selected_courses = _normalize_course_ids(cv_cid, cv_cids)
         selected_types = _normalize_types(resource_types)
         _validate_limit(limit)
 
         exact_ref = _exact_ref_query(normalized)
         if exact_ref is not None:
-            if cv_cid is not None and exact_ref.cv_cid != cv_cid:
+            if not _course_matches(exact_ref.cv_cid, selected_courses):
                 return []
             if selected_types is not None and exact_ref.resource_type not in selected_types:
                 return []
@@ -57,7 +60,7 @@ class SearchClient:
         if normalized.isdecimal():
             documents = self.repository.search_by_item_id(
                 int(normalized),
-                cv_cid=cv_cid,
+                **_course_filter_kwargs(selected_courses),
                 resource_types=selected_types,
             )
             return [
@@ -67,7 +70,7 @@ class SearchClient:
 
         if exact:
             documents = self.repository.search_documents(
-                cv_cid=cv_cid,
+                **_course_filter_kwargs(selected_courses),
                 resource_types=selected_types,
                 limit=1000,
             )
@@ -85,14 +88,14 @@ class SearchClient:
         candidates = list(
             self.repository.search_candidates(
                 normalized,
-                cv_cid=cv_cid,
+                **_course_filter_kwargs(selected_courses),
                 resource_types=selected_types,
                 limit=100,
             )
         )
         documents = list(
             self.repository.search_documents(
-                cv_cid=cv_cid,
+                **_course_filter_kwargs(selected_courses),
                 resource_types=selected_types,
                 limit=1000,
             )
@@ -118,6 +121,53 @@ class SearchClient:
 
 
 SearchService = SearchClient
+
+
+def _normalize_course_ids(
+    cv_cid: int | None,
+    cv_cids: Collection[int] | None,
+) -> frozenset[int] | None:
+    if cv_cid is not None and cv_cids is not None:
+        raise ValidationError(
+            "Use either cv_cid or cv_cids, not both.",
+            resource="search",
+            operation="search",
+        )
+    if cv_cid is not None:
+        values = (cv_cid,)
+    elif cv_cids is not None:
+        try:
+            values = tuple(cv_cids)
+        except TypeError as error:
+            raise ValidationError(
+                "Search course ids must be positive integers.",
+                resource="search",
+                operation="search",
+            ) from error
+    else:
+        return None
+    if not values or any(
+        isinstance(value, bool) or not isinstance(value, int) or value <= 0
+        for value in values
+    ):
+        raise ValidationError(
+            "Search course ids must be positive integers.",
+            resource="search",
+            operation="search",
+        )
+    return frozenset(values)
+
+
+def _course_matches(cv_cid: int, selected_courses: frozenset[int] | None) -> bool:
+    return selected_courses is None or cv_cid in selected_courses
+
+
+def _course_filter_kwargs(
+    selected_courses: frozenset[int] | None,
+) -> dict[str, Any]:
+    if selected_courses is None:
+        return {}
+    return {"cv_cids": selected_courses}
 
 
 def _normalize_query(query: str) -> str:
@@ -154,7 +204,7 @@ def _normalize_types(
                 operation="search",
             ) from error
         normalized.add(parsed)
-    return frozenset(normalized)
+    return frozenset(normalized) if normalized else None
 
 
 def _validate_limit(limit: int) -> None:
