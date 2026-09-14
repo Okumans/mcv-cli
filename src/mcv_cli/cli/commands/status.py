@@ -14,13 +14,21 @@ def register(app: typer.Typer) -> None:
     app.command("today", hidden=True)(status)
 
 
-def status(ctx: typer.Context) -> None:
+def status(
+    ctx: typer.Context,
+    all_fields: bool = typer.Option(
+        False,
+        "--all",
+        "-a",
+        help="Show expanded tables with ids and canonical references.",
+    ),
+) -> None:
     def action() -> StatusSnapshot:
         with make_api() as api:
             options = {**semester_scope_kwargs(ctx), **progress_options(ctx)}
             return api.aggregates.status.snapshot(**options)
 
-    run(ctx, action, display_mode="detail")
+    run(ctx, action, display_mode="expanded" if all_fields else "short")
 
 
 __all__ = ["register", "status"]

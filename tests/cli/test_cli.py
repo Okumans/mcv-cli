@@ -133,6 +133,26 @@ def test_status_dashboard_has_a_human_and_machine_contract(monkeypatch) -> None:
     assert calls[1] == {}
 
 
+def test_status_all_selects_expanded_display(monkeypatch) -> None:
+    modes: list[str] = []
+
+    def fake_run(_ctx, _action, *, display_mode="collection") -> None:
+        modes.append(display_mode)
+
+    monkeypatch.setattr("mcv_cli.cli.commands.status.run", fake_run)
+
+    for arguments in (["status", "-a"], ["status", "--all"]):
+        result = runner.invoke(app, arguments)
+        assert result.exit_code == 0, result.output
+
+    assert modes == ["expanded", "expanded"]
+
+    help_result = runner.invoke(app, ["status", "--help"])
+    assert help_result.exit_code == 0
+    assert "-a, --all" in help_result.stdout
+    assert "canonical references" in help_result.stdout
+
+
 def test_login_requires_the_type_option() -> None:
     result = runner.invoke(app, ["auth", "login"])
 

@@ -41,7 +41,7 @@ from .resources.schedule import (
     render_schedule_events,
 )
 from .resources.search import render_search_result, render_search_results
-from .resources.status import render_status
+from .resources.status import render_status, render_status_expanded
 from .resources.web_resources import render_web_resource, render_web_resources
 
 
@@ -107,7 +107,7 @@ def renderer_for(value: Any) -> Renderer | None:
         (PlaylistCollection, Renderer(render_playlist_collection, render_playlist_collections)),
         (WebResource, Renderer(render_web_resource, render_web_resources)),
         (SearchResult, Renderer(render_search_result, render_search_results)),
-        (StatusSnapshot, Renderer(render_status)),
+        (StatusSnapshot, Renderer(render_status, expanded_single=render_status_expanded)),
         (DownloadResult, Renderer(render_download)),
         (ArchiveResult, Renderer(render_archive)),
     )

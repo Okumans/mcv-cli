@@ -95,6 +95,8 @@ mcv status
 meetings dated today, and announcements posted or modified in the last seven
 days. `mcv today` is available as a short alias. Use global semester options
 before the command when needed, for example `mcv --semester 2026/1 status`.
+For an expanded human table with item ids and canonical references, use
+`mcv status --all` (or `mcv status -a`).
 MyCourseVille's current unread state is not exposed by the read-only parser, so
 the announcements section uses the recent-activity fallback.
 

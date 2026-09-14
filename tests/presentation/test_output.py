@@ -282,7 +282,7 @@ def test_status_dashboard_renders_all_sections() -> None:
         ],
     )
 
-    emit(snapshot, json_mode=False, console=console)
+    emit(snapshot, json_mode=False, display_mode="short", console=console)
 
     rendered = console.export_text()
     assert "Docker assignment" in rendered
@@ -294,7 +294,34 @@ def test_status_dashboard_renders_all_sections() -> None:
     assert "# Assignments due in the next 7 days" in rendered
     assert "# Meetings today" in rendered
     assert "# Recent announcements (last 7 days)" in rendered
+    assert "Ref" not in rendered
     assert rendered.count("\n\n") >= 3
+
+
+def test_expanded_status_dashboard_includes_canonical_references() -> None:
+    console = Console(record=True, width=200)
+    snapshot = StatusSnapshot(
+        generated_at=datetime(2026, 9, 14, 12, 0, tzinfo=UTC),
+        assignment_window_days=7,
+        announcement_window_days=7,
+        assignments_due=[
+            Assignment(itemid=2160997, cv_cid=86428, title="Homework"),
+        ],
+        meetings_today=[
+            OnlineMeeting(itemid=29632, cv_cid=86428, name="Lecture"),
+        ],
+        announcements_recent=[
+            Announcement(itemid=2177455, cv_cid=86428, title="Welcome"),
+        ],
+    )
+
+    emit(snapshot, json_mode=False, display_mode="expanded", console=console)
+
+    rendered = console.export_text()
+    assert rendered.count("Ref") == 3
+    assert "mcv:assignment:86428:2160997" in rendered
+    assert "mcv:meeting:86428:29632" in rendered
+    assert "mcv:announcement:86428:2177455" in rendered
 
 
 def test_assignment_human_detail_separates_submission_page_and_files() -> None:
