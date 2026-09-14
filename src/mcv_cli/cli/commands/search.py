@@ -13,7 +13,11 @@ from ...runtime.cache import CacheStore
 from ...runtime.completion import complete_course_filters, complete_courses
 from ..context import cache_namespace, reject_semester_scope, run, selected_semester
 from ..errors import UsageError
+from ..fuzzy import select_search_result
 from .cache import refresh_courses_for_search, refresh_for_search
+
+_FUZZY_BROWSE_LIMIT = 1000
+_FUZZY_HELP = "Open an interactive fzf selector over cached results."
 
 
 def register(app: typer.Typer) -> None:
@@ -25,7 +29,9 @@ def register(app: typer.Typer) -> None:
 
 def search(
     ctx: typer.Context,
-    query: str = typer.Argument(..., help="Text, item id, or canonical ref to search for."),
+    query: str | None = typer.Argument(
+        None, help="Text, item id, or canonical ref to search for; optional with --fuzzy."
+    ),
     courses: list[str] = typer.Option(
         [],
         "--courses",
@@ -43,6 +49,7 @@ def search(
         "--exact",
         help="Match the complete query phrase literally; disable fuzzy matching.",
     ),
+    fuzzy: bool = typer.Option(False, "--fuzzy", help=_FUZZY_HELP),
     refs: bool = typer.Option(False, "--refs", help="Print canonical references one per line."),
     all_fields: bool = typer.Option(
         False,
@@ -63,6 +70,7 @@ def search(
         resource_types=_split_csv(resource_types, option="--type") or None,
         limit=limit,
         exact=exact,
+        fuzzy=fuzzy,
         refs=refs,
         all_fields=all_fields,
         refresh=refresh,
@@ -73,7 +81,9 @@ def search(
 def search_course(
     ctx: typer.Context,
     course: str = typer.Argument(..., help="Course id or course number."),
-    query: str = typer.Argument(..., help="Text, item id, or canonical ref to search for."),
+    query: str | None = typer.Argument(
+        None, help="Text, item id, or canonical ref to search for; optional with --fuzzy."
+    ),
     resource_types: list[str] = typer.Option(
         [],
         "--type",
@@ -85,6 +95,7 @@ def search_course(
         "--exact",
         help="Match the complete query phrase literally; disable fuzzy matching.",
     ),
+    fuzzy: bool = typer.Option(False, "--fuzzy", help=_FUZZY_HELP),
     refs: bool = typer.Option(False, "--refs", help="Print canonical references one per line."),
     all_fields: bool = typer.Option(
         False,
@@ -105,6 +116,7 @@ def search_course(
         resource_types=_split_csv(resource_types, option="--type") or None,
         limit=limit,
         exact=exact,
+        fuzzy=fuzzy,
         refs=refs,
         all_fields=all_fields,
         refresh=refresh,
@@ -114,7 +126,9 @@ def search_course(
 
 def search_assignments(
     ctx: typer.Context,
-    query: str = typer.Argument(..., help="Text, item id, or canonical ref to search for."),
+    query: str | None = typer.Argument(
+        None, help="Text, item id, or canonical ref to search for; optional with --fuzzy."
+    ),
     courses: list[str] = typer.Option(
         [],
         "--courses",
@@ -127,6 +141,7 @@ def search_assignments(
         "--exact",
         help="Match the complete query phrase literally; disable fuzzy matching.",
     ),
+    fuzzy: bool = typer.Option(False, "--fuzzy", help=_FUZZY_HELP),
     refs: bool = typer.Option(False, "--refs", help="Print canonical references one per line."),
     all_fields: bool = typer.Option(
         False,
@@ -147,6 +162,7 @@ def search_assignments(
         resource_types=(ResourceType.ASSIGNMENT,),
         limit=limit,
         exact=exact,
+        fuzzy=fuzzy,
         refs=refs,
         all_fields=all_fields,
         refresh=refresh,
@@ -156,7 +172,9 @@ def search_assignments(
 
 def search_announcements(
     ctx: typer.Context,
-    query: str = typer.Argument(..., help="Text, item id, or canonical ref to search for."),
+    query: str | None = typer.Argument(
+        None, help="Text, item id, or canonical ref to search for; optional with --fuzzy."
+    ),
     courses: list[str] = typer.Option(
         [],
         "--courses",
@@ -169,6 +187,7 @@ def search_announcements(
         "--exact",
         help="Match the complete query phrase literally; disable fuzzy matching.",
     ),
+    fuzzy: bool = typer.Option(False, "--fuzzy", help=_FUZZY_HELP),
     refs: bool = typer.Option(False, "--refs", help="Print canonical references one per line."),
     all_fields: bool = typer.Option(
         False,
@@ -189,6 +208,7 @@ def search_announcements(
         resource_types=(ResourceType.ANNOUNCEMENT,),
         limit=limit,
         exact=exact,
+        fuzzy=fuzzy,
         refs=refs,
         all_fields=all_fields,
         refresh=refresh,
@@ -198,7 +218,9 @@ def search_announcements(
 
 def search_meetings(
     ctx: typer.Context,
-    query: str = typer.Argument(..., help="Text, item id, or canonical ref to search for."),
+    query: str | None = typer.Argument(
+        None, help="Text, item id, or canonical ref to search for; optional with --fuzzy."
+    ),
     courses: list[str] = typer.Option(
         [],
         "--courses",
@@ -211,6 +233,7 @@ def search_meetings(
         "--exact",
         help="Match the complete query phrase literally; disable fuzzy matching.",
     ),
+    fuzzy: bool = typer.Option(False, "--fuzzy", help=_FUZZY_HELP),
     refs: bool = typer.Option(False, "--refs", help="Print canonical references one per line."),
     all_fields: bool = typer.Option(
         False,
@@ -231,6 +254,7 @@ def search_meetings(
         resource_types=(ResourceType.MEETING,),
         limit=limit,
         exact=exact,
+        fuzzy=fuzzy,
         refs=refs,
         all_fields=all_fields,
         refresh=refresh,
@@ -243,13 +267,16 @@ def search_course_materials(
     course: str = typer.Argument(
         ..., help="Course id or course number.", autocompletion=complete_courses
     ),
-    query: str = typer.Argument(..., help="Text, item id, or canonical ref to search for."),
+    query: str | None = typer.Argument(
+        None, help="Text, item id, or canonical ref to search for; optional with --fuzzy."
+    ),
     limit: int = typer.Option(20, "--limit", min=1, max=100, help="Maximum results to return."),
     exact: bool = typer.Option(
         False,
         "--exact",
         help="Match the complete query phrase literally; disable fuzzy matching.",
     ),
+    fuzzy: bool = typer.Option(False, "--fuzzy", help=_FUZZY_HELP),
     refs: bool = typer.Option(False, "--refs", help="Print canonical references one per line."),
     all_fields: bool = typer.Option(
         False,
@@ -262,7 +289,7 @@ def search_course_materials(
     ),
 ) -> None:
     _run_course_resource_search(
-        ctx, course, query, ResourceType.MATERIAL, limit, exact, refs, all_fields, refresh
+        ctx, course, query, ResourceType.MATERIAL, limit, exact, fuzzy, refs, all_fields, refresh
     )
 
 
@@ -271,13 +298,16 @@ def search_course_assignments(
     course: str = typer.Argument(
         ..., help="Course id or course number.", autocompletion=complete_courses
     ),
-    query: str = typer.Argument(..., help="Text, item id, or canonical ref to search for."),
+    query: str | None = typer.Argument(
+        None, help="Text, item id, or canonical ref to search for; optional with --fuzzy."
+    ),
     limit: int = typer.Option(20, "--limit", min=1, max=100, help="Maximum results to return."),
     exact: bool = typer.Option(
         False,
         "--exact",
         help="Match the complete query phrase literally; disable fuzzy matching.",
     ),
+    fuzzy: bool = typer.Option(False, "--fuzzy", help=_FUZZY_HELP),
     refs: bool = typer.Option(False, "--refs", help="Print canonical references one per line."),
     all_fields: bool = typer.Option(
         False,
@@ -290,7 +320,7 @@ def search_course_assignments(
     ),
 ) -> None:
     _run_course_resource_search(
-        ctx, course, query, ResourceType.ASSIGNMENT, limit, exact, refs, all_fields, refresh
+        ctx, course, query, ResourceType.ASSIGNMENT, limit, exact, fuzzy, refs, all_fields, refresh
     )
 
 
@@ -299,13 +329,16 @@ def search_course_announcements(
     course: str = typer.Argument(
         ..., help="Course id or course number.", autocompletion=complete_courses
     ),
-    query: str = typer.Argument(..., help="Text, item id, or canonical ref to search for."),
+    query: str | None = typer.Argument(
+        None, help="Text, item id, or canonical ref to search for; optional with --fuzzy."
+    ),
     limit: int = typer.Option(20, "--limit", min=1, max=100, help="Maximum results to return."),
     exact: bool = typer.Option(
         False,
         "--exact",
         help="Match the complete query phrase literally; disable fuzzy matching.",
     ),
+    fuzzy: bool = typer.Option(False, "--fuzzy", help=_FUZZY_HELP),
     refs: bool = typer.Option(False, "--refs", help="Print canonical references one per line."),
     all_fields: bool = typer.Option(
         False,
@@ -316,9 +349,18 @@ def search_course_announcements(
     refresh: bool = typer.Option(
         False, "--refresh", help="Refresh this course before the local search."
     ),
-) -> None:
+    ) -> None:
     _run_course_resource_search(
-        ctx, course, query, ResourceType.ANNOUNCEMENT, limit, exact, refs, all_fields, refresh
+        ctx,
+        course,
+        query,
+        ResourceType.ANNOUNCEMENT,
+        limit,
+        exact,
+        fuzzy,
+        refs,
+        all_fields,
+        refresh,
     )
 
 
@@ -327,13 +369,16 @@ def search_course_meetings(
     course: str = typer.Argument(
         ..., help="Course id or course number.", autocompletion=complete_courses
     ),
-    query: str = typer.Argument(..., help="Text, item id, or canonical ref to search for."),
+    query: str | None = typer.Argument(
+        None, help="Text, item id, or canonical ref to search for; optional with --fuzzy."
+    ),
     limit: int = typer.Option(20, "--limit", min=1, max=100, help="Maximum results to return."),
     exact: bool = typer.Option(
         False,
         "--exact",
         help="Match the complete query phrase literally; disable fuzzy matching.",
     ),
+    fuzzy: bool = typer.Option(False, "--fuzzy", help=_FUZZY_HELP),
     refs: bool = typer.Option(False, "--refs", help="Print canonical references one per line."),
     all_fields: bool = typer.Option(
         False,
@@ -346,7 +391,7 @@ def search_course_meetings(
     ),
 ) -> None:
     _run_course_resource_search(
-        ctx, course, query, ResourceType.MEETING, limit, exact, refs, all_fields, refresh
+        ctx, course, query, ResourceType.MEETING, limit, exact, fuzzy, refs, all_fields, refresh
     )
 
 
@@ -355,13 +400,16 @@ def search_course_playlists(
     course: str = typer.Argument(
         ..., help="Course id or course number.", autocompletion=complete_courses
     ),
-    query: str = typer.Argument(..., help="Text, item id, or canonical ref to search for."),
+    query: str | None = typer.Argument(
+        None, help="Text, item id, or canonical ref to search for; optional with --fuzzy."
+    ),
     limit: int = typer.Option(20, "--limit", min=1, max=100, help="Maximum results to return."),
     exact: bool = typer.Option(
         False,
         "--exact",
         help="Match the complete query phrase literally; disable fuzzy matching.",
     ),
+    fuzzy: bool = typer.Option(False, "--fuzzy", help=_FUZZY_HELP),
     refs: bool = typer.Option(False, "--refs", help="Print canonical references one per line."),
     all_fields: bool = typer.Option(
         False,
@@ -374,17 +422,18 @@ def search_course_playlists(
     ),
 ) -> None:
     _run_course_resource_search(
-        ctx, course, query, ResourceType.PLAYLIST, limit, exact, refs, all_fields, refresh
+        ctx, course, query, ResourceType.PLAYLIST, limit, exact, fuzzy, refs, all_fields, refresh
     )
 
 
 def _run_course_resource_search(
     ctx: typer.Context,
     course: str,
-    query: str,
+    query: str | None,
     resource_type: ResourceType,
     limit: int,
     exact: bool,
+    fuzzy: bool,
     refs: bool,
     all_fields: bool,
     refresh: bool,
@@ -396,6 +445,7 @@ def _run_course_resource_search(
         resource_types=(resource_type,),
         limit=limit,
         exact=exact,
+        fuzzy=fuzzy,
         refs=refs,
         all_fields=all_fields,
         refresh=refresh,
@@ -405,18 +455,23 @@ def _run_course_resource_search(
 
 def _run_search_command(
     ctx: typer.Context,
-    query: str,
+    query: str | None,
     *,
     course_references: Collection[str],
     resource_types: Collection[ResourceType | str] | None,
     limit: int,
     exact: bool,
+    fuzzy: bool,
     refs: bool,
     all_fields: bool,
     refresh: bool,
     allow_semester_scope: bool,
 ) -> None:
-    def action() -> list[SearchResult] | ShellIdList:
+    def action() -> list[SearchResult] | ShellIdList | None:
+        if query is None and not fuzzy:
+            raise UsageError("Search query is required unless --fuzzy is supplied.")
+        if exact and fuzzy:
+            raise UsageError("Choose either --exact or --fuzzy.")
         if allow_semester_scope:
             selected_semester(ctx)
         else:
@@ -432,7 +487,23 @@ def _run_search_command(
             cache = cache_namespace()
 
         cv_cids = _resolve_course_ids(cache, references) if references else None
-        results = SearchClient(cache).search(
+        client = SearchClient(cache)
+        if fuzzy:
+            candidates = client.browse(
+                cv_cids=cv_cids,
+                resource_types=resource_types,
+                limit=_FUZZY_BROWSE_LIMIT,
+            )
+            if not candidates:
+                return _refs_or_results([], refs=refs)
+            selected = select_search_result(
+                candidates,
+                initial_query=query,
+            )
+            return _refs_or_results([selected], refs=refs) if selected is not None else None
+
+        assert query is not None
+        results = client.search(
             query,
             cv_cids=cv_cids,
             resource_types=resource_types,

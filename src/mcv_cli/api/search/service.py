@@ -119,6 +119,31 @@ class SearchClient:
         ranked.sort(key=lambda item: item[0])
         return [result for _, result in ranked[:limit]]
 
+    def browse(
+        self,
+        *,
+        cv_cid: int | None = None,
+        cv_cids: Collection[int] | None = None,
+        resource_types: Collection[ResourceType | str] | None = None,
+        limit: int = 1000,
+    ) -> list[SearchResult]:
+        """Return unranked summaries for an interactive local selector."""
+
+        if self.repository is None:
+            raise SearchUnavailableError()
+        selected_courses = _normalize_course_ids(cv_cid, cv_cids)
+        selected_types = _normalize_types(resource_types)
+        _validate_browse_limit(limit)
+        documents = self.repository.search_documents(
+            **_course_filter_kwargs(selected_courses),
+            resource_types=selected_types,
+            limit=limit,
+        )
+        return [
+            _result(document, score=0.0, snippet=_browse_snippet(document))
+            for document in documents
+        ]
+
 
 SearchService = SearchClient
 
@@ -216,6 +241,15 @@ def _validate_limit(limit: int) -> None:
         )
 
 
+def _validate_browse_limit(limit: int) -> None:
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
+        raise ValidationError(
+            "Search browse limit must be an integer between 1 and 1000.",
+            resource="search",
+            operation="browse",
+        )
+
+
 def _exact_ref_query(query: str) -> ResourceRef | None:
     if not query.casefold().startswith("mcv:"):
         return None
@@ -244,6 +278,10 @@ def _exact_snippet(document: SearchDocument, query: str) -> str | None:
     if _contains_exact_phrase(document.content, query):
         return _snippet(document.content, _tokens(_fold(query)))
     return None
+
+
+def _browse_snippet(document: SearchDocument) -> str | None:
+    return _snippet(document.content, set())
 
 
 def _rank(query: str, candidate: SearchCandidate) -> tuple[float, str | None] | None:

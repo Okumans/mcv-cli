@@ -555,6 +555,24 @@ wheels = [
 ]
 
 [[package]]
+name = "fzf-bin"
+version = "0.74.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a9/a2/ed4d7dd9a268ca72960772704925e02884c4e3cfebbaadb542e0af93532d/fzf_bin-0.74.4.tar.gz", hash = "sha256:6396d139b35d4c8a6e5c7cd161cb78a4d662fbc235ec1b26ff14637eff953d2a", size = 488865, upload-time = "2026-09-14T01:20:20.068Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ab/10/34e950e958c189d886aef1bf7fa3db3f1617027ecdc6d863d813922e084f/fzf_bin-0.74.4-py3-none-android_33_arm64_v8a.whl", hash = "sha256:22243f3f3a780efe63ecfd7919b3e3225aa011dd2cdda1b3cc0ada84567206a6", size = 2128160, upload-time = "2026-09-14T01:20:01.821Z" },
+    { url = "https://files.pythonhosted.org/packages/ed/02/933ed7fe20259ff761924c6dcd617f9ce7d62d2877eba41f2864d9ed8aad/fzf_bin-0.74.4-py3-none-macosx_13_0_arm64.whl", hash = "sha256:fbb576e90162c236ea1184762dffbcf485e07ed77bba8e7492edeab81ec3d3a9", size = 2101180, upload-time = "2026-09-14T01:20:03.707Z" },
+    { url = "https://files.pythonhosted.org/packages/dc/22/8bddb90a99a820a5a743cd5055ecaaa4cd635bb3c0aadb1afbf6bb724ac2/fzf_bin-0.74.4-py3-none-macosx_13_0_x86_64.whl", hash = "sha256:c32faccd14dee72d66c9e0b57f9e05c2bf37b8b4a59130cdb38724bcb86257b5", size = 2272836, upload-time = "2026-09-14T01:20:05.752Z" },
+    { url = "https://files.pythonhosted.org/packages/36/76/e2b0ea0aaba6cfa2c2abc1326c22b60b79f986e37d558ce3ffbcfa2ed82f/fzf_bin-0.74.4-py3-none-manylinux_2_28_aarch64.musllinux_1_2_aarch64.whl", hash = "sha256:b6656e923a42399259cdb5ef051d50b46e26aa61aa441bcdb87e082fcd71f505", size = 2042363, upload-time = "2026-09-14T01:20:07.466Z" },
+    { url = "https://files.pythonhosted.org/packages/75/da/cabf4b0086ae40fa8153673dddc718183504341c6b3cf9f96c58d84b5566/fzf_bin-0.74.4-py3-none-manylinux_2_28_ppc64le.musllinux_1_2_ppc64le.whl", hash = "sha256:081497ac7fdfea3b43e118945c7a9813641e213ef7a654d8d01f2d5ff38d5536", size = 2081002, upload-time = "2026-09-14T01:20:09.279Z" },
+    { url = "https://files.pythonhosted.org/packages/06/b4/bcbbad60d86011be789d6cbf4f46134768bf5713a068d0dc370d21c04273/fzf_bin-0.74.4-py3-none-manylinux_2_28_riscv64.musllinux_1_2_riscv64.whl", hash = "sha256:272757e6e2900e53f39a4c1b207173a6835255e8a2a6c07c82895d0f0fc0611f", size = 2112888, upload-time = "2026-09-14T01:20:11.048Z" },
+    { url = "https://files.pythonhosted.org/packages/70/9f/57b50a379d58c1c90c91146ab04337276929a26f569d3ed3704c6b150273/fzf_bin-0.74.4-py3-none-manylinux_2_28_s390x.musllinux_1_2_s390x.whl", hash = "sha256:525ed1f8ccd92b4371e860e688dee5cde063bf1ec4d8fe65ea704a46021a686b", size = 2207092, upload-time = "2026-09-14T01:20:12.756Z" },
+    { url = "https://files.pythonhosted.org/packages/8b/b0/c2d3430783817caa5665f7cd7294f67270a8cdca6f1c3e3ee6f0c00aac29/fzf_bin-0.74.4-py3-none-manylinux_2_28_x86_64.musllinux_1_2_x86_64.whl", hash = "sha256:e5bc210560a3494e58c3848305b830cb06816c5323724770034028ed4f74694b", size = 2258810, upload-time = "2026-09-14T01:20:14.576Z" },
+    { url = "https://files.pythonhosted.org/packages/40/b0/4151baf5bf00d961cdc936a38efda6fb27ee4f88413c07f50f93c9f392b5/fzf_bin-0.74.4-py3-none-win_amd64.whl", hash = "sha256:52f22c5c8a24d30cb51fccfb0e43cfd84489fd50a46f18559c66937b03487aed", size = 2498684, upload-time = "2026-09-14T01:20:16.63Z" },
+    { url = "https://files.pythonhosted.org/packages/1a/c0/709967d7ac71de33c8bb034971b8661030e8fe0aed53ba376ea2381fafe9/fzf_bin-0.74.4-py3-none-win_arm64.whl", hash = "sha256:f497c21cadb57fca4b8f5606947d8ddf0e2eba2dcb5de16322cf5ebd1b690eef", size = 2241724, upload-time = "2026-09-14T01:20:18.651Z" },
+]
+
+[[package]]
 name = "h11"
 version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -725,6 +743,11 @@ dependencies = [
     { name = "typer" },
 ]
 
+[package.optional-dependencies]
+fzf = [
+    { name = "fzf-bin" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "pip-audit" },
@@ -739,6 +762,7 @@ dev = [
 requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.12,<5" },
     { name = "cryptography", specifier = ">=44,<51" },
+    { name = "fzf-bin", marker = "extra == 'fzf'", specifier = ">=0.74,<1" },
     { name = "httpx", specifier = ">=0.27,<1" },
     { name = "keyring", specifier = ">=25,<26" },
     { name = "platformdirs", specifier = ">=4,<5" },
@@ -748,6 +772,7 @@ requires-dist = [
     { name = "rich", specifier = ">=13.7,<15" },
     { name = "typer", specifier = ">=0.16,<1" },
 ]
+provides-extras = ["fzf"]
 
 [package.metadata.requires-dev]
 dev = [

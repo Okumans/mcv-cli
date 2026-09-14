@@ -116,6 +116,21 @@ def test_search_filters_by_course_and_resource_type(search_cache: CacheStore, tm
     assert {result.cv_cid for result in results} == {86428}
 
 
+def test_browse_returns_scoped_unranked_summaries(search_cache: CacheStore) -> None:
+    results = SearchClient(search_cache).browse(
+        cv_cid=86428,
+        resource_types=[ResourceType.MATERIAL],
+    )
+
+    assert [str(result.ref) for result in results] == [
+        "mcv:material:86428:2160993"
+    ]
+    assert results[0].score == 0
+    assert results[0].match_query == ""
+    assert results[0].snippet is not None
+    assert results[0].snippet.startswith("Images, containers, and Docker networks.")
+
+
 def test_search_supports_multiple_course_ids_for_every_query_mode(
     search_cache: CacheStore,
 ) -> None:

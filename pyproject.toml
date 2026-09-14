@@ -21,6 +21,11 @@ dependencies = [
     "typer>=0.16,<1",
 ]
 
+[project.optional-dependencies]
+fzf = [
+    "fzf-bin>=0.74,<1",
+]
+
 [project.scripts]
 mcv = "mcv_cli.cli.app:app"
 

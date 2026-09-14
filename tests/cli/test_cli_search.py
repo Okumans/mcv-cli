@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import subprocess
 
+import pytest
 from typer.testing import CliRunner
 
 from mcv_cli.api.resources.assignments.models import Assignment
 from mcv_cli.api.resources.courses.models import Course
 from mcv_cli.api.resources.materials.models import Material
+from mcv_cli.cli import fuzzy as fuzzy_cli
 from mcv_cli.cli.app import app
 from mcv_cli.runtime.cache import CacheStore
 
@@ -211,6 +214,154 @@ def test_search_help_exposes_exact_matching() -> None:
 
     assert result.exit_code == 0, result.output
     assert "--exact" in result.stdout
+
+
+def test_search_help_exposes_interactive_fuzzy_selection() -> None:
+    result = runner.invoke(app, ["search", "--help"])
+
+    assert result.exit_code == 0, result.output
+    assert "--fuzzy" in result.stdout
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["search"],
+        ["courses", "2110575", "search"],
+        ["assignments", "search"],
+        ["announcements", "search"],
+        ["meetings", "search"],
+        ["courses", "2110575", "materials", "search"],
+        ["courses", "2110575", "assignments", "search"],
+        ["courses", "2110575", "announcements", "search"],
+        ["courses", "2110575", "meetings", "search"],
+        ["courses", "2110575", "playlists", "search"],
+    ],
+)
+def test_every_search_alias_exposes_interactive_fuzzy_selection(command: list[str]) -> None:
+    result = runner.invoke(app, [*command, "--help"])
+
+    assert result.exit_code == 0, result.output
+    assert "--fuzzy" in result.stdout
+
+
+def test_fuzzy_search_selects_a_cached_result_and_seeds_fzf(monkeypatch, tmp_path) -> None:
+    cache = _cache(tmp_path)
+    monkeypatch.setattr("mcv_cli.cli.commands.search.cache_namespace", lambda: cache)
+    command_seen: list[str] = []
+    input_seen = ""
+
+    def fake_run(
+        command: list[str],
+        *,
+        input: str,
+        text: bool,
+        stdout: int,
+        check: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        nonlocal input_seen
+        command_seen.extend(command)
+        input_seen = input
+        return subprocess.CompletedProcess(command, 0, stdout="0\tassignment\t2110575\tselected\n")
+
+    monkeypatch.setattr(fuzzy_cli.shutil, "which", lambda name: "/usr/bin/fzf")
+    monkeypatch.setattr(fuzzy_cli.subprocess, "run", fake_run)
+
+    result = runner.invoke(app, ["--quiet", "search", "compose", "--fuzzy", "--refs"])
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout.strip() == "mcv:assignment:86428:2160997"
+    assert "--query=compose" in command_seen
+    assert "Docker Fundamentals" in input_seen
+    assert "Docker Compose Assignment" in input_seen
+
+
+def test_course_resource_fuzzy_search_preserves_scope(monkeypatch, tmp_path) -> None:
+    cache = _multi_course_cache(tmp_path)
+    monkeypatch.setattr("mcv_cli.cli.commands.search.cache_namespace", lambda: cache)
+    input_seen = ""
+
+    def fake_run(
+        command: list[str],
+        *,
+        input: str,
+        text: bool,
+        stdout: int,
+        check: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        nonlocal input_seen
+        input_seen = input
+        return subprocess.CompletedProcess(command, 0, stdout="0\tmaterial\t2110575\tselected\n")
+
+    monkeypatch.setattr(fuzzy_cli.shutil, "which", lambda name: "/usr/bin/fzf")
+    monkeypatch.setattr(fuzzy_cli.subprocess, "run", fake_run)
+
+    result = runner.invoke(
+        app,
+        ["--quiet", "courses", "2110575", "materials", "search", "--fuzzy", "--refs"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout.strip() == "mcv:material:86428:2160993"
+    assert "Docker Fundamentals" in input_seen
+    assert "Docker Compose Assignment" not in input_seen
+    assert "Docker deployment assignment" not in input_seen
+
+
+def test_fuzzy_search_reports_optional_dependency_hint(monkeypatch, tmp_path) -> None:
+    cache = _cache(tmp_path)
+    monkeypatch.setattr("mcv_cli.cli.commands.search.cache_namespace", lambda: cache)
+    monkeypatch.setattr(fuzzy_cli.shutil, "which", lambda name: None)
+
+    result = runner.invoke(app, ["--quiet", "search", "--fuzzy"])
+
+    assert result.exit_code == 2
+    assert "uv tool install" in result.stderr
+    assert "mcv-cli[fzf]" in result.stderr
+
+
+def test_fuzzy_search_keeps_empty_machine_output_valid(monkeypatch, tmp_path) -> None:
+    cache = CacheStore(profile_name="default", provider="chula", root=tmp_path)
+    monkeypatch.setattr("mcv_cli.cli.commands.search.cache_namespace", lambda: cache)
+    monkeypatch.setattr(fuzzy_cli.shutil, "which", lambda name: None)
+
+    result = runner.invoke(app, ["--quiet", "--json", "search", "--fuzzy"])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == []
+
+
+def test_fuzzy_search_can_be_cancelled(monkeypatch, tmp_path) -> None:
+    cache = _cache(tmp_path)
+    monkeypatch.setattr("mcv_cli.cli.commands.search.cache_namespace", lambda: cache)
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(command, 1, stdout="")
+
+    monkeypatch.setattr(fuzzy_cli.shutil, "which", lambda name: "/usr/bin/fzf")
+    monkeypatch.setattr(fuzzy_cli.subprocess, "run", fake_run)
+
+    result = runner.invoke(app, ["--quiet", "search", "--fuzzy"])
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout == ""
+
+
+def test_search_requires_a_query_without_fuzzy_mode() -> None:
+    result = runner.invoke(app, ["--quiet", "search"])
+
+    assert result.exit_code == 2
+    assert "Search query is required unless --fuzzy is supplied" in result.stderr
+
+
+def test_fuzzy_search_cannot_be_combined_with_exact(monkeypatch, tmp_path) -> None:
+    cache = _cache(tmp_path)
+    monkeypatch.setattr("mcv_cli.cli.commands.search.cache_namespace", lambda: cache)
+
+    result = runner.invoke(app, ["--quiet", "search", "docker", "--fuzzy", "--exact"])
+
+    assert result.exit_code == 2
+    assert "either --exact or --fuzzy" in result.stderr
 
 
 def test_course_search_rejects_unknown_course_without_refresh(monkeypatch, tmp_path) -> None:

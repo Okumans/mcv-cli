@@ -75,6 +75,22 @@ uv tool install .
 mcv --version
 ```
 
+The interactive fuzzy selector is optional. Install it with the `fzf` extra:
+
+```bash
+# Published package
+uv tool install "mcv-cli[fzf]"
+
+# Or from the local checkout above
+uv tool install ".[fzf]"
+```
+
+When installing directly from GitHub, add the optional binary explicitly:
+
+```bash
+uv tool install --with fzf-bin https://github.com/Okumans/mcv-cli
+```
+
 For local development, use an editable tool installation so source changes are
 available immediately:
 
@@ -221,6 +237,18 @@ mcv courses 2110575 assignments search "docker"
 mcv courses 2110575 announcements search "deadline"
 mcv courses 2110575 meetings search "zoom"
 mcv courses 2110575 playlists search "lecture"
+```
+
+Every search path also accepts `--fuzzy` to open an interactive `fzf` selector
+over the cached results in that command's scope. The query is optional with
+this flag; when supplied, it seeds the selector, while `Enter` returns one
+resource and `Esc` exits without output:
+
+```bash
+mcv search --fuzzy
+mcv search "docker" --fuzzy
+mcv assignments search --fuzzy --courses 2110575
+mcv courses 2110575 materials search --fuzzy
 ```
 
 There are two intentionally different uses of `--all`:
@@ -393,6 +421,8 @@ mcv search "docker" --refs
 mcv --json search "docker"
 mcv --jsonl search "docker"
 mcv search "docker compose" --exact
+mcv search "docker" --fuzzy
+mcv courses 2110575 materials search --fuzzy
 ```
 
 Top-level local search does not accept global semester scope. Use a
@@ -416,7 +446,12 @@ Search results are compact summaries with canonical references. Human output
 highlights matched text in titles and snippets, including the actual title
 word rescued by typo-tolerant matching. Pass a result reference to `mcv get`
 when the full resource is needed. Use `--exact` to match the complete query
-phrase literally and disable fuzzy matching.
+phrase literally and disable normal fuzzy matching. `--fuzzy` is the separate
+interactive mode: it browses up to 1,000 cached candidates after applying the
+course and resource filters, then serializes the selected result using the
+requested human, `--refs`, JSON, or JSONL output mode. `--limit` applies to
+normal search results; use the scope filters to keep a large interactive list
+manageable.
 
 ## Downloads and archives
 
