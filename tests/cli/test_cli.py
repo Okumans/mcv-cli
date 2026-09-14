@@ -4,6 +4,7 @@ from datetime import datetime
 from io import StringIO
 from zoneinfo import ZoneInfo
 
+import pytest
 from rich.console import Console
 from rich.table import Table
 from typer.testing import CliRunner
@@ -668,6 +669,7 @@ def test_material_list_exposes_shell_query_options() -> None:
     assert "--select" in result.stdout
     assert "--folder" in result.stdout
     assert "--refs" in result.stdout
+    assert "-r" in result.stdout
     assert "--all" in result.stdout
     assert "-a" in result.stdout
     assert "--unique-ids" not in result.stdout
@@ -690,7 +692,27 @@ def test_cross_course_resource_commands_expose_filters_and_refs() -> None:
     assert "--pending" in result.stdout
     assert "--due" in result.stdout
     assert "--refs" in result.stdout
+    assert "-r" in result.stdout
     assert "--all" in result.stdout
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["announcements", "list"],
+        ["meetings", "list"],
+        ["courses", "2110575", "materials", "list"],
+        ["courses", "2110575", "assignments", "list"],
+        ["courses", "2110575", "announcements", "list"],
+        ["courses", "2110575", "meetings", "list"],
+    ],
+)
+def test_reference_list_commands_expose_short_refs_alias(command: list[str]) -> None:
+    result = runner.invoke(app, [*command, "--help"])
+
+    assert result.exit_code == 0, result.output
+    assert "--refs" in result.stdout
+    assert "-r" in result.stdout
 
 
 def test_meeting_commands_expose_include_past_filter() -> None:

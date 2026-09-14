@@ -37,6 +37,7 @@ def list_assignments(
     refs: bool = typer.Option(
         False,
         "--refs",
+        "-r",
         help="Print canonical assignment references one per line.",
     ),
     all_fields: bool = typer.Option(

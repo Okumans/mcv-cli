@@ -25,7 +25,10 @@ def register(app: typer.Typer) -> None:
 def list_announcements(
     ctx: typer.Context,
     refs: bool = typer.Option(
-        False, "--refs", help="Print canonical announcement references one per line."
+        False,
+        "--refs",
+        "-r",
+        help="Print canonical announcement references one per line.",
     ),
     all_fields: bool = typer.Option(
         False,

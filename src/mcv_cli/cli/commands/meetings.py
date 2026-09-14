@@ -28,7 +28,10 @@ def list_meetings(
         help="Show meetings from all dates, including meetings whose scheduled time has passed.",
     ),
     refs: bool = typer.Option(
-        False, "--refs", help="Print canonical meeting references one per line."
+        False,
+        "--refs",
+        "-r",
+        help="Print canonical meeting references one per line.",
     ),
     all_fields: bool = typer.Option(
         False,

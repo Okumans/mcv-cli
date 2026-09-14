@@ -78,6 +78,7 @@ _RESOURCE_SUBCOMMANDS = {
 }
 _LIST_OPTIONS = {
     "--refs": "Print canonical references",
+    "-r": "Print canonical references",
     "--all": "Show expanded rows",
     "-a": "Show expanded rows",
     "--help": "Show help",
@@ -91,6 +92,7 @@ _SEARCH_OPTIONS = {
     "--fuzzy": "Enable fuzzy matching",
     "-z": "Enable fuzzy matching",
     "--refs": "Print canonical references",
+    "-r": "Print canonical references",
     "--all": "Show expanded rows",
     "-a": "Show expanded rows",
     "--refresh": "Refresh the local search cache",
@@ -164,6 +166,7 @@ _COURSE_OPTIONS = {
         "--fields": "Select output fields",
         "--ids": "Print item ids",
         "--refs": "Print canonical references",
+        "-r": "Print canonical references",
         "--all": "Show expanded rows",
         "-a": "Show expanded rows",
         "--help": "Show help",

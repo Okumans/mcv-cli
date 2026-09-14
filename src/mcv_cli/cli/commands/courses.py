@@ -115,7 +115,10 @@ def materials_list(
         False, "--ids", help="Print item ids one per line for shell command substitution."
     ),
     refs: bool = typer.Option(
-        False, "--refs", help="Print canonical resource references one per line."
+        False,
+        "--refs",
+        "-r",
+        help="Print canonical resource references one per line.",
     ),
     all_fields: bool = typer.Option(
         False,
@@ -280,7 +283,10 @@ def assignments_list(
     course: str = typer.Argument(..., autocompletion=complete_courses),
     ids: bool = typer.Option(False, "--ids", help="Print assignment ids one per line."),
     refs: bool = typer.Option(
-        False, "--refs", help="Print canonical assignment references one per line."
+        False,
+        "--refs",
+        "-r",
+        help="Print canonical assignment references one per line.",
     ),
     all_fields: bool = typer.Option(
         False,
@@ -339,7 +345,10 @@ def announcements_list(
     course: str = typer.Argument(..., autocompletion=complete_courses),
     ids: bool = typer.Option(False, "--ids", help="Print announcement ids one per line."),
     refs: bool = typer.Option(
-        False, "--refs", help="Print canonical announcement references one per line."
+        False,
+        "--refs",
+        "-r",
+        help="Print canonical announcement references one per line.",
     ),
     all_fields: bool = typer.Option(
         False,
@@ -400,7 +409,10 @@ def meetings_list(
     ),
     ids: bool = typer.Option(False, "--ids", help="Print meeting ids one per line."),
     refs: bool = typer.Option(
-        False, "--refs", help="Print canonical meeting references one per line."
+        False,
+        "--refs",
+        "-r",
+        help="Print canonical meeting references one per line.",
     ),
     all_fields: bool = typer.Option(
         False,

@@ -286,11 +286,11 @@ all dates.
 ## References and shell pipelines
 
 Use `--ids` only when the receiving command already has a course context. Use
-`--refs` when the result will be passed between commands or across courses:
+`-r` or `--refs` when the result will be passed between commands or across courses:
 
 ```bash
 mcv courses 2110575 materials list --folder "Week 1" --ids
-mcv courses 2110575 materials list --folder "Week 1" --refs
+mcv courses 2110575 materials list --folder "Week 1" -r
 mcv courses 2110575 materials list --folder "Week 1" --all
 ```
 

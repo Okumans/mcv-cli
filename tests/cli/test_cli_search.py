@@ -60,7 +60,7 @@ def test_search_is_local_and_supports_refs(monkeypatch, tmp_path) -> None:
     cache = _cache(tmp_path)
     monkeypatch.setattr("mcv_cli.cli.commands.search.cache_namespace", lambda: cache)
 
-    result = runner.invoke(app, ["--quiet", "search", "docker", "--refs"])
+    result = runner.invoke(app, ["--quiet", "search", "docker", "-r"])
 
     assert result.exit_code == 0, result.output
     assert set(result.stdout.splitlines()) == {
@@ -222,6 +222,8 @@ def test_search_help_exposes_interactive_fuzzy_selection() -> None:
     assert result.exit_code == 0, result.output
     assert "--fuzzy" in result.stdout
     assert "-z" in result.stdout
+    assert "--refs" in result.stdout
+    assert "-r" in result.stdout
 
 
 @pytest.mark.parametrize(
@@ -245,6 +247,8 @@ def test_every_search_alias_exposes_interactive_fuzzy_selection(command: list[st
     assert result.exit_code == 0, result.output
     assert "--fuzzy" in result.stdout
     assert "-z" in result.stdout
+    assert "--refs" in result.stdout
+    assert "-r" in result.stdout
 
 
 def test_fuzzy_search_selects_a_cached_result_and_seeds_fzf(monkeypatch, tmp_path) -> None:

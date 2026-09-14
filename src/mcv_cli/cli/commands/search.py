@@ -50,7 +50,9 @@ def search(
         help="Match the complete query phrase literally; disable fuzzy matching.",
     ),
     fuzzy: bool = typer.Option(False, "--fuzzy", "-z", help=_FUZZY_HELP),
-    refs: bool = typer.Option(False, "--refs", help="Print canonical references one per line."),
+    refs: bool = typer.Option(
+        False, "--refs", "-r", help="Print canonical references one per line."
+    ),
     all_fields: bool = typer.Option(
         False,
         "--all",
@@ -96,7 +98,9 @@ def search_course(
         help="Match the complete query phrase literally; disable fuzzy matching.",
     ),
     fuzzy: bool = typer.Option(False, "--fuzzy", "-z", help=_FUZZY_HELP),
-    refs: bool = typer.Option(False, "--refs", help="Print canonical references one per line."),
+    refs: bool = typer.Option(
+        False, "--refs", "-r", help="Print canonical references one per line."
+    ),
     all_fields: bool = typer.Option(
         False,
         "--all",
@@ -142,7 +146,9 @@ def search_assignments(
         help="Match the complete query phrase literally; disable fuzzy matching.",
     ),
     fuzzy: bool = typer.Option(False, "--fuzzy", "-z", help=_FUZZY_HELP),
-    refs: bool = typer.Option(False, "--refs", help="Print canonical references one per line."),
+    refs: bool = typer.Option(
+        False, "--refs", "-r", help="Print canonical references one per line."
+    ),
     all_fields: bool = typer.Option(
         False,
         "--all",
@@ -188,7 +194,9 @@ def search_announcements(
         help="Match the complete query phrase literally; disable fuzzy matching.",
     ),
     fuzzy: bool = typer.Option(False, "--fuzzy", "-z", help=_FUZZY_HELP),
-    refs: bool = typer.Option(False, "--refs", help="Print canonical references one per line."),
+    refs: bool = typer.Option(
+        False, "--refs", "-r", help="Print canonical references one per line."
+    ),
     all_fields: bool = typer.Option(
         False,
         "--all",
@@ -234,7 +242,9 @@ def search_meetings(
         help="Match the complete query phrase literally; disable fuzzy matching.",
     ),
     fuzzy: bool = typer.Option(False, "--fuzzy", "-z", help=_FUZZY_HELP),
-    refs: bool = typer.Option(False, "--refs", help="Print canonical references one per line."),
+    refs: bool = typer.Option(
+        False, "--refs", "-r", help="Print canonical references one per line."
+    ),
     all_fields: bool = typer.Option(
         False,
         "--all",
@@ -277,7 +287,9 @@ def search_course_materials(
         help="Match the complete query phrase literally; disable fuzzy matching.",
     ),
     fuzzy: bool = typer.Option(False, "--fuzzy", "-z", help=_FUZZY_HELP),
-    refs: bool = typer.Option(False, "--refs", help="Print canonical references one per line."),
+    refs: bool = typer.Option(
+        False, "--refs", "-r", help="Print canonical references one per line."
+    ),
     all_fields: bool = typer.Option(
         False,
         "--all",
@@ -308,7 +320,9 @@ def search_course_assignments(
         help="Match the complete query phrase literally; disable fuzzy matching.",
     ),
     fuzzy: bool = typer.Option(False, "--fuzzy", "-z", help=_FUZZY_HELP),
-    refs: bool = typer.Option(False, "--refs", help="Print canonical references one per line."),
+    refs: bool = typer.Option(
+        False, "--refs", "-r", help="Print canonical references one per line."
+    ),
     all_fields: bool = typer.Option(
         False,
         "--all",
@@ -339,7 +353,9 @@ def search_course_announcements(
         help="Match the complete query phrase literally; disable fuzzy matching.",
     ),
     fuzzy: bool = typer.Option(False, "--fuzzy", "-z", help=_FUZZY_HELP),
-    refs: bool = typer.Option(False, "--refs", help="Print canonical references one per line."),
+    refs: bool = typer.Option(
+        False, "--refs", "-r", help="Print canonical references one per line."
+    ),
     all_fields: bool = typer.Option(
         False,
         "--all",
@@ -349,7 +365,7 @@ def search_course_announcements(
     refresh: bool = typer.Option(
         False, "--refresh", help="Refresh this course before the local search."
     ),
-    ) -> None:
+) -> None:
     _run_course_resource_search(
         ctx,
         course,
@@ -379,7 +395,9 @@ def search_course_meetings(
         help="Match the complete query phrase literally; disable fuzzy matching.",
     ),
     fuzzy: bool = typer.Option(False, "--fuzzy", "-z", help=_FUZZY_HELP),
-    refs: bool = typer.Option(False, "--refs", help="Print canonical references one per line."),
+    refs: bool = typer.Option(
+        False, "--refs", "-r", help="Print canonical references one per line."
+    ),
     all_fields: bool = typer.Option(
         False,
         "--all",
@@ -410,7 +428,9 @@ def search_course_playlists(
         help="Match the complete query phrase literally; disable fuzzy matching.",
     ),
     fuzzy: bool = typer.Option(False, "--fuzzy", "-z", help=_FUZZY_HELP),
-    refs: bool = typer.Option(False, "--refs", help="Print canonical references one per line."),
+    refs: bool = typer.Option(
+        False, "--refs", "-r", help="Print canonical references one per line."
+    ),
     all_fields: bool = typer.Option(
         False,
         "--all",
