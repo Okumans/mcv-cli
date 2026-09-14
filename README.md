@@ -60,7 +60,7 @@ The project requires Python 3.11 or newer. Install the CLI as an isolated
 Install the latest version directly from GitHub:
 
 ```bash
-uv tool install https://github.com/Okumans/mcv-cli
+uv tool install https://github.com/Okumans/mcv-cli.git
 mcv --version
 ```
 
