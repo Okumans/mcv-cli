@@ -34,6 +34,8 @@ reverse-engineered and may change without notice.
       MyCourseVille URLs.
 - [x] Cache course content locally and search it from the terminal.
 - [x] Use human-readable tables, JSON, and JSONL output modes.
+- [x] Show a unified status dashboard for upcoming assignments, today's
+      meetings, and recent announcements.
 
 ## TODO
 
@@ -86,7 +88,15 @@ The command is `mcv`; the Python distribution is `mcv-cli`.
 
 ```bash
 mcv --help
+mcv status
 ```
+
+`mcv status` combines pending assignments due within the next seven days,
+meetings dated today, and announcements posted or modified in the last seven
+days. `mcv today` is available as a short alias. Use global semester options
+before the command when needed, for example `mcv --semester 2026/1 status`.
+MyCourseVille's current unread state is not exposed by the read-only parser, so
+the announcements section uses the recent-activity fallback.
 
 ## Authentication
 

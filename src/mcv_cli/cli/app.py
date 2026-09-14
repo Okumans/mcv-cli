@@ -218,6 +218,7 @@ from .commands import (  # noqa: E402
     get,
     meetings,
     search,
+    status,
 )
 
 auth.register(auth_app)
@@ -228,6 +229,7 @@ announcements.register(announcements_app)
 meetings.register(meetings_app)
 search.register(app)
 get.register(app)
+status.register(app)
 
 
 __all__ = ["app", "auth_app", "cache_app", "courses_app"]

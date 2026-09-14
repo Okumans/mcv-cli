@@ -6,6 +6,7 @@ from pathlib import Path
 from pytest import mark
 from rich.console import Console
 
+from mcv_cli.api.aggregates.status import StatusSnapshot
 from mcv_cli.api.core.errors import NotFoundError
 from mcv_cli.api.core.refs import ResourceType
 from mcv_cli.api.core.resource import User
@@ -242,6 +243,56 @@ def test_meeting_human_list_includes_link() -> None:
     assert "Link" in rendered
     assert "https://zoom.example/meeting/" in rendered
     assert "29632" in rendered
+
+
+def test_status_dashboard_renders_all_sections() -> None:
+    console = Console(record=True, width=120)
+    snapshot = StatusSnapshot(
+        generated_at=datetime(2026, 9, 14, 12, 0, tzinfo=UTC),
+        assignment_window_days=7,
+        announcement_window_days=7,
+        assignments_due=[
+            Assignment(
+                itemid=2160997,
+                cv_cid=86428,
+                course_no="2110575",
+                title="Docker assignment",
+                status="Not submitted",
+                duedate="Sep 16 2026 18:00",
+            )
+        ],
+        meetings_today=[
+            OnlineMeeting(
+                itemid=29632,
+                cv_cid=86428,
+                course_no="2110575",
+                name="Lab meeting",
+                provider="Zoom",
+                scheduled_at="Sep 14 2026 14:00",
+            )
+        ],
+        announcements_recent=[
+            Announcement(
+                itemid=2177455,
+                cv_cid=86428,
+                course_no="2110575",
+                title="Room changed",
+                posted="Sep 14 2026 08:00",
+            )
+        ],
+    )
+
+    emit(snapshot, json_mode=False, console=console)
+
+    rendered = console.export_text()
+    assert "Docker assignment" in rendered
+    assert "Lab meeting" in rendered
+    assert "Room changed" in rendered
+    assert "Assignments due in the next 7 days" in rendered
+    assert "Meetings today" in rendered
+    assert "Recent announcements (last 7 days)" in rendered
+    assert rendered.count("─") >= 3
+    assert "\n\n" in rendered
 
 
 def test_assignment_human_detail_separates_submission_page_and_files() -> None:

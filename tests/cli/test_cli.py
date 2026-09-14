@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from datetime import datetime
 from io import StringIO
+from zoneinfo import ZoneInfo
 
 from rich.console import Console
 from rich.table import Table
 from typer.testing import CliRunner
 
+from mcv_cli.api.aggregates.status import StatusSnapshot
 from mcv_cli.api.resources.assignments.models import Assignment
 from mcv_cli.api.resources.courses.models import Course
 from mcv_cli.api.resources.playlists.models import Playlist, PlaylistCollection, PlaylistVideo
@@ -30,6 +33,7 @@ def test_help_lists_command_groups() -> None:
     assert "announcements" in result.stdout
     assert "meetings" in result.stdout
     assert "cache" in result.stdout
+    assert "Show upcoming assignments" in result.stdout
     assert "Search cached course content" in result.stdout
     assert "Fetch resources by canonical reference" in result.stdout
     assert "--jsonl" in result.stdout
@@ -88,6 +92,43 @@ def test_short_help_and_version_aliases() -> None:
     assert "Usage: root" in help_result.stdout
     assert version_result.exit_code == 0
     assert version_result.stdout.strip() == "0.3.0"
+
+
+def test_status_dashboard_has_a_human_and_machine_contract(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+    snapshot = StatusSnapshot(
+        generated_at=datetime(2026, 9, 14, 12, 0, tzinfo=ZoneInfo("Asia/Bangkok")),
+        assignment_window_days=7,
+        announcement_window_days=7,
+    )
+
+    class FakeStatus:
+        def snapshot(self, **kwargs: object) -> StatusSnapshot:
+            calls.append(kwargs)
+            return snapshot
+
+    class FakeAPI:
+        aggregates = type("Aggregates", (), {"status": FakeStatus()})()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+    monkeypatch.setattr("mcv_cli.cli.commands.status.make_api", lambda: FakeAPI())
+
+    human = runner.invoke(app, ["--quiet", "status"])
+    machine = runner.invoke(app, ["--quiet", "--json", "status"])
+
+    assert human.exit_code == 0, human.output
+    assert "Assignments due in the next 7 days" in human.stdout
+    assert "Meetings today" in human.stdout
+    assert "Recent announcements (last 7 days)" in human.stdout
+    assert machine.exit_code == 0, machine.output
+    assert machine.stdout.strip().startswith("{")
+    assert '"assignments_due": []' in machine.stdout
+    assert calls == [{}, {}]
 
 
 def test_login_requires_the_type_option() -> None:

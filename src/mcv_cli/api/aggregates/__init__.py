@@ -3,6 +3,7 @@ from typing import Any
 from .announcements import AnnouncementsAggregate, AnnouncementService
 from .assignments import AssignmentsAggregate, AssignmentService
 from .meetings import MeetingsAggregate, MeetingService
+from .status import StatusAggregate, StatusService, StatusSnapshot
 
 
 class AggregateClients:
@@ -12,6 +13,7 @@ class AggregateClients:
         self.assignments = AssignmentsAggregate(api)
         self.announcements = AnnouncementsAggregate(api)
         self.meetings = MeetingsAggregate(api)
+        self.status = StatusAggregate(api)
 
 
 __all__ = [
@@ -22,4 +24,7 @@ __all__ = [
     "AssignmentsAggregate",
     "MeetingService",
     "MeetingsAggregate",
+    "StatusAggregate",
+    "StatusService",
+    "StatusSnapshot",
 ]

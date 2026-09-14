@@ -4,7 +4,7 @@ Importing this package does not import Typer, Rich, CLI commands, completion,
 or runtime storage.
 """
 
-from .aggregates import AggregateClients
+from .aggregates import AggregateClients, StatusSnapshot
 from .core.dates import (
     COURSEVILLE_TIMEZONE,
     combine_courseville_datetime,
@@ -55,6 +55,7 @@ __all__ = [
     "SearchDocument",
     "SearchResult",
     "SearchService",
+    "StatusSnapshot",
     "SearchUnavailableError",
     "TransportError",
     "UnsupportedResourceError",
