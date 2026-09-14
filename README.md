@@ -55,7 +55,16 @@ the authenticated smoke checks documented in [showcases.md](showcases.md).
 ## Installation
 
 The project requires Python 3.11 or newer. Install the CLI as an isolated
-[`uv`](https://docs.astral.sh/uv/) tool from a checkout:
+[`uv`](https://docs.astral.sh/uv/) tool:
+
+Install the latest version directly from GitHub:
+
+```bash
+uv tool install https://github.com/Okumans/mcv-cli
+mcv --version
+```
+
+Or install it from a local checkout:
 
 ```bash
 git clone https://github.com/Okumans/mcv-cli.git
