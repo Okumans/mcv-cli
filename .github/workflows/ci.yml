@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -63,6 +63,20 @@ jobs:
           uv pip install --python "$wheel_env/bin/python" "$wheel_path"
           "$wheel_env/bin/mcv" --version
           "$wheel_env/bin/mcv" --help >/dev/null
+
+      - name: Run installed-package integration checks
+        shell: bash
+        run: |
+          wheel_path="$(find dist -maxdepth 1 -type f -name '*.whl' -print -quit)"
+          test -n "$wheel_path"
+          wheel_env="$RUNNER_TEMP/mcv-wheel-${{ matrix.python-version }}"
+          uv pip install --python "$wheel_env/bin/python" "$wheel_path[fzf]"
+          test -x "$wheel_env/bin/fzf"
+          PATH="$wheel_env/bin:$PATH" \
+            MCV_INTEGRATION_MCV="$wheel_env/bin/mcv" \
+            MCV_INTEGRATION_PYTHON="$wheel_env/bin/python" \
+            MCV_INTEGRATION_FZF="$wheel_env/bin/fzf" \
+            uv run pytest -q -m integration tests/integration
 
   live-e2e:
     name: authenticated CLI/API live suite

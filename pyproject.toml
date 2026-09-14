@@ -61,5 +61,6 @@ typeCheckingMode = "basic"
 addopts = "--strict-markers"
 testpaths = ["tests"]
 markers = [
+    "integration: installed-package and external-tool integration checks",
     "live: authenticated read-only MyCourseVille end-to-end checks (opt-in)",
 ]

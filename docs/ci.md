@@ -1,9 +1,10 @@
 # Continuous integration
 
 The `quality` job runs on pushes and pull requests. It tests Python 3.11,
-3.12, and 3.13, enforces the coverage threshold, runs Ruff and Pyright,
+3.12, 3.13, and 3.14, enforces the coverage threshold, runs Ruff and Pyright,
 audits dependencies, builds the package, installs the wheel into an isolated
-environment, and runs CLI version/help smoke checks.
+environment, verifies the optional `fzf` extra, and runs installed-package
+integration checks for CLI smoke behavior, shell completion, and fuzzy search.
 
 The `live-e2e` job runs only on protected default-branch pushes, `v*` tags,
 the daily schedule, and manual dispatch. Configure these protected secrets:
