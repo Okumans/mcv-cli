@@ -32,13 +32,15 @@ def render_meetings(items: Iterable[OnlineMeeting], *, detail: bool = False) -> 
             )
         )
     overflow_columns = {"Link"}
+    no_wrap_columns = {"Link"}
     if detail:
         overflow_columns.add("Ref")
+        no_wrap_columns.add("Ref")
     return table_for(
         columns,
         rows,
         overflow_columns=overflow_columns,
-        no_wrap_columns={"Ref"} if detail else None,
+        no_wrap_columns=no_wrap_columns,
     )
 
 
