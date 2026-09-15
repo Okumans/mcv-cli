@@ -3,25 +3,25 @@ from __future__ import annotations
 from pathlib import Path
 
 import typer
-
-from ...api.core.refs import ResourceType, ref_for_resource
-from ...api.resources.about.models import CourseAbout
-from ...api.resources.announcements.models import Announcement
-from ...api.resources.assignments.models import Assignment
-from ...api.resources.courses.models import Course
-from ...api.resources.groups.models import StudentGroup
-from ...api.resources.materials.models import (
+from mcv_api.core.refs import ResourceType, ref_for_resource
+from mcv_api.resources.about.models import CourseAbout
+from mcv_api.resources.announcements.models import Announcement
+from mcv_api.resources.assignments.models import Assignment
+from mcv_api.resources.courses.models import Course
+from mcv_api.resources.groups.models import StudentGroup
+from mcv_api.resources.materials.models import (
     ArchiveFormat,
     ArchiveResult,
     DownloadResult,
     Material,
     MaterialFolder,
 )
-from ...api.resources.meetings.models import MeetingCollection, OnlineMeeting
-from ...api.resources.playlists.models import PlaylistCollection
-from ...api.resources.portfolio.models import Portfolio
-from ...api.resources.schedule.models import ScheduleCollection
-from ...api.resources.web_resources.models import WebResource
+from mcv_api.resources.meetings.models import MeetingCollection, OnlineMeeting
+from mcv_api.resources.playlists.models import PlaylistCollection
+from mcv_api.resources.portfolio.models import Portfolio
+from mcv_api.resources.schedule.models import ScheduleCollection
+from mcv_api.resources.web_resources.models import WebResource
+
 from ...presentation.json import ShellIdList
 from ...runtime.completion import (
     complete_courses,

@@ -5,12 +5,13 @@ import stat
 from pathlib import Path
 
 import pytest
+from mcv_api import SearchClient
+from mcv_api.core.refs import ResourceType
+from mcv_api.resources.assignments.models import Assignment
+from mcv_api.resources.courses.models import Course
+from mcv_api.resources.materials.models import Material, MaterialFolder
+from mcv_api.resources.playlists.models import PlaylistCollection
 
-from mcv_cli.api.core.refs import ResourceType
-from mcv_cli.api.resources.assignments.models import Assignment
-from mcv_cli.api.resources.courses.models import Course
-from mcv_cli.api.resources.materials.models import Material, MaterialFolder
-from mcv_cli.api.resources.playlists.models import PlaylistCollection
 from mcv_cli.runtime.cache import CacheStore
 from mcv_cli.runtime.completion import completion_items
 from mcv_cli.runtime.errors import CacheSchemaError
@@ -215,9 +216,17 @@ def test_completion_returns_empty_for_missing_or_corrupt_cache(tmp_path: Path, m
     assert completion_items("courses", "") == []
 
 
+def test_search_treats_a_corrupt_local_store_as_empty(tmp_path: Path) -> None:
+    cache = CacheStore(profile_name="default", provider="chula", root=tmp_path)
+    cache.path.parent.mkdir(parents=True)
+    cache.path.write_bytes(b"not a sqlite database")
+
+    assert SearchClient(cache).search("docker") == []
+
+
 def test_search_snapshot_is_allow_listed_and_searchable(tmp_path: Path) -> None:
-    from mcv_cli.api.resources.announcements.models import Announcement
-    from mcv_cli.api.resources.meetings.models import MeetingRecording, OnlineMeeting
+    from mcv_api.resources.announcements.models import Announcement
+    from mcv_api.resources.meetings.models import MeetingRecording, OnlineMeeting
 
     cache = CacheStore(profile_name="default", provider="chula", root=tmp_path)
     cache.upsert_courses([Course(cv_cid=86428, course_no="2110575", title="Containers")])

@@ -9,9 +9,7 @@ from typing import Literal
 from urllib.parse import urljoin, urlparse
 
 import httpx
-
-from .. import __version__
-from ..api.core.constants import (
+from mcv_api.core.constants import (
     BASE_URL,
     CHULA_LOGIN_URL,
     PLATFORM_LOGIN_URL,
@@ -19,8 +17,10 @@ from ..api.core.constants import (
     PUBLIC_CLIENT_ID,
     PUBLIC_REDIRECT_URI,
 )
-from ..api.core.errors import AuthenticationError, AuthenticationRequired
-from ..api.core.types import JsonObject
+from mcv_api.core.errors import AuthenticationError, AuthenticationRequired
+from mcv_api.core.types import JsonObject
+
+from .. import __version__
 from .completion.state import activate, deactivate
 from .config import Settings
 from .errors import ConfigurationError

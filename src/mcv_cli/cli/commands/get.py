@@ -3,11 +3,11 @@ from __future__ import annotations
 import json
 
 import typer
+from mcv_api.core.errors import APIError
+from mcv_api.core.refs import ResourceRef, ResourceType
+from mcv_api.core.resource import Resource
+from mcv_api.facade import MCVAPI
 
-from ...api.core.errors import APIError
-from ...api.core.refs import ResourceRef, ResourceType
-from ...api.core.resource import Resource
-from ...api.facade import MCVAPI
 from ...presentation.json import machine_error_payload, serialize_jsonl
 from ...runtime.progress import ProgressReporter
 from ..context import (

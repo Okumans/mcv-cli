@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 def test_importing_api_does_not_load_cli_or_rich() -> None:
-    repository = Path(__file__).parents[2]
+    repository = Path(__file__).parents[1]
     environment = os.environ.copy()
     environment["PYTHONPATH"] = str(repository / "src")
     probe = subprocess.run(
@@ -15,7 +15,7 @@ def test_importing_api_does_not_load_cli_or_rich() -> None:
             sys.executable,
             "-c",
             (
-                "import sys; import mcv_cli.api; "
+                "import sys; import mcv_api; "
                 "assert not any("
                 "name == 'typer' or name.startswith('typer.') for name in sys.modules"
                 "); "

@@ -1,30 +1,107 @@
 from __future__ import annotations
 
+from collections.abc import Collection
 from typing import cast
 
 import pytest
+from mcv_api import SearchClient
+from mcv_api.core.errors import SearchUnavailableError, ValidationError
+from mcv_api.core.refs import ResourceRef, ResourceType
+from mcv_api.core.resource import AddressableResource
+from mcv_api.resources.announcements.models import Announcement
+from mcv_api.resources.assignments.models import Assignment
+from mcv_api.resources.materials.models import Material
+from mcv_api.resources.meetings.models import OnlineMeeting
+from mcv_api.resources.playlists.models import Playlist, PlaylistCollection, PlaylistVideo
+from mcv_api.search.documents import searchable_document
+from mcv_api.search.models import SearchCandidate, SearchDocument
+from mcv_api.search.protocols import SearchRepository
 
-from mcv_cli.api import SearchClient
-from mcv_cli.api.core.errors import SearchUnavailableError, ValidationError
-from mcv_cli.api.core.refs import ResourceType
-from mcv_cli.api.resources.announcements.models import Announcement
-from mcv_cli.api.resources.assignments.models import Assignment
-from mcv_cli.api.resources.courses.models import Course
-from mcv_cli.api.resources.materials.models import Material
-from mcv_cli.api.resources.meetings.models import OnlineMeeting
-from mcv_cli.api.resources.playlists.models import Playlist, PlaylistCollection, PlaylistVideo
-from mcv_cli.api.search.protocols import SearchRepository
-from mcv_cli.presentation.json import to_jsonable
-from mcv_cli.runtime.cache import CacheStore
+
+class MemorySearchRepository:
+    def __init__(self) -> None:
+        self.documents: dict[str, SearchDocument] = {}
+
+    def add(self, resource: AddressableResource) -> None:
+        document = searchable_document(resource)
+        assert document is not None
+        self.documents[str(document.ref)] = document
+
+    def _filtered(
+        self,
+        *,
+        cv_cid: int | None,
+        cv_cids: Collection[int] | None,
+        resource_types: Collection[ResourceType] | None,
+    ) -> list[SearchDocument]:
+        return [
+            document
+            for document in self.documents.values()
+            if (cv_cid is None or document.cv_cid == cv_cid)
+            and (cv_cids is None or document.cv_cid in cv_cids)
+            and (resource_types is None or document.resource_type in resource_types)
+        ]
+
+    def search_candidates(
+        self,
+        query: str,
+        *,
+        cv_cid: int | None = None,
+        cv_cids: Collection[int] | None = None,
+        resource_types: Collection[ResourceType] | None = None,
+        limit: int = 100,
+    ) -> list[SearchCandidate]:
+        del query
+        return [
+            SearchCandidate(document=document)
+            for document in self._filtered(
+                cv_cid=cv_cid,
+                cv_cids=cv_cids,
+                resource_types=resource_types,
+            )[:limit]
+        ]
+
+    def search_documents(
+        self,
+        *,
+        cv_cid: int | None = None,
+        cv_cids: Collection[int] | None = None,
+        resource_types: Collection[ResourceType] | None = None,
+        limit: int = 1000,
+    ) -> list[SearchDocument]:
+        return self._filtered(
+            cv_cid=cv_cid,
+            cv_cids=cv_cids,
+            resource_types=resource_types,
+        )[:limit]
+
+    def search_by_ref(self, ref: ResourceRef) -> list[SearchDocument]:
+        document = self.documents.get(str(ref))
+        return [] if document is None else [document]
+
+    def search_by_item_id(
+        self,
+        item_id: int,
+        *,
+        cv_cid: int | None = None,
+        cv_cids: Collection[int] | None = None,
+        resource_types: Collection[ResourceType] | None = None,
+    ) -> list[SearchDocument]:
+        return [
+            document
+            for document in self._filtered(
+                cv_cid=cv_cid,
+                cv_cids=cv_cids,
+                resource_types=resource_types,
+            )
+            if document.ref.item_id == item_id
+        ]
 
 
 @pytest.fixture
-def search_cache(tmp_path) -> CacheStore:
-    cache = CacheStore(profile_name="default", provider="chula", root=tmp_path)
-    cache.upsert_courses(
-        [Course(cv_cid=86428, course_no="2110575", title="Container Systems")]
-    )
-    cache.record_value(
+def search_cache() -> MemorySearchRepository:
+    cache = MemorySearchRepository()
+    cache.add(
         Material(
             itemid=2160993,
             cv_cid=86428,
@@ -33,7 +110,7 @@ def search_cache(tmp_path) -> CacheStore:
             folder_name="Week 4",
         )
     )
-    cache.record_value(
+    cache.add(
         Assignment(
             itemid=2160997,
             cv_cid=86428,
@@ -42,7 +119,7 @@ def search_cache(tmp_path) -> CacheStore:
             instruction="Build a multi-container service using Compose.",
         )
     )
-    cache.record_value(
+    cache.add(
         Announcement(
             itemid=2177455,
             cv_cid=86428,
@@ -51,7 +128,7 @@ def search_cache(tmp_path) -> CacheStore:
             body="The Docker portion has been updated.",
         )
     )
-    cache.record_value(
+    cache.add(
         OnlineMeeting(
             itemid=29632,
             cv_cid=86428,
@@ -60,7 +137,7 @@ def search_cache(tmp_path) -> CacheStore:
             provider="Zoom",
         )
     )
-    cache.record_value(
+    cache.add(
         PlaylistCollection(
             cv_cid=86428,
             title="Docker Lectures",
@@ -75,7 +152,9 @@ def search_cache(tmp_path) -> CacheStore:
     return cache
 
 
-def test_search_returns_dereferenceable_ranked_summaries(search_cache: CacheStore) -> None:
+def test_search_returns_dereferenceable_ranked_summaries(
+    search_cache: MemorySearchRepository,
+) -> None:
     results = SearchClient(search_cache).search("docker")
 
     assert results
@@ -92,13 +171,13 @@ def test_search_returns_dereferenceable_ranked_summaries(search_cache: CacheStor
     assert results[0].score >= results[-1].score
 
 
-def test_search_filters_by_course_and_resource_type(search_cache: CacheStore, tmp_path) -> None:
-    other = CacheStore(profile_name="default", provider="chula", root=tmp_path)
-    other.upsert_courses([Course(cv_cid=90000, course_no="9999999", title="Other")])
-    other.record_value(
+def test_search_filters_by_course_and_resource_type(
+    search_cache: MemorySearchRepository,
+) -> None:
+    search_cache.add(
         Material(itemid=1, cv_cid=90000, title="Docker in another course")
     )
-    search_cache.record_value(
+    search_cache.add(
         Material(itemid=2, cv_cid=86429, title="Docker in another cached scope")
     )
 
@@ -116,7 +195,9 @@ def test_search_filters_by_course_and_resource_type(search_cache: CacheStore, tm
     assert {result.cv_cid for result in results} == {86428}
 
 
-def test_browse_returns_scoped_unranked_summaries(search_cache: CacheStore) -> None:
+def test_browse_returns_scoped_unranked_summaries(
+    search_cache: MemorySearchRepository,
+) -> None:
     results = SearchClient(search_cache).browse(
         cv_cid=86428,
         resource_types=[ResourceType.MATERIAL],
@@ -132,12 +213,9 @@ def test_browse_returns_scoped_unranked_summaries(search_cache: CacheStore) -> N
 
 
 def test_search_supports_multiple_course_ids_for_every_query_mode(
-    search_cache: CacheStore,
+    search_cache: MemorySearchRepository,
 ) -> None:
-    search_cache.upsert_courses(
-        [Course(cv_cid=86429, course_no="2110521", title="Distributed Systems")]
-    )
-    search_cache.record_value(
+    search_cache.add(
         Assignment(
             itemid=2160998,
             cv_cid=86429,
@@ -172,7 +250,7 @@ def test_search_supports_multiple_course_ids_for_every_query_mode(
 
 
 def test_search_rejects_conflicting_or_invalid_course_scopes(
-    search_cache: CacheStore,
+    search_cache: MemorySearchRepository,
 ) -> None:
     client = SearchClient(search_cache)
 
@@ -186,7 +264,9 @@ def test_search_rejects_conflicting_or_invalid_course_scopes(
         client.search("docker", cv_cids=[True])
 
 
-def test_search_uses_fuzzy_title_fallback_for_small_typos(search_cache: CacheStore) -> None:
+def test_search_uses_fuzzy_title_fallback_for_small_typos(
+    search_cache: MemorySearchRepository,
+) -> None:
     results = SearchClient(search_cache).search("dockre")
 
     assert results
@@ -195,9 +275,9 @@ def test_search_uses_fuzzy_title_fallback_for_small_typos(search_cache: CacheSto
 
 
 def test_search_uses_token_fuzzy_fallback_without_rapidfuzz(
-    search_cache: CacheStore, monkeypatch: pytest.MonkeyPatch
+    search_cache: MemorySearchRepository, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("mcv_cli.api.search.service.fuzz", None)
+    monkeypatch.setattr("mcv_api.search.service.fuzz", None)
 
     results = SearchClient(search_cache).search("dockre")
 
@@ -206,7 +286,7 @@ def test_search_uses_token_fuzzy_fallback_without_rapidfuzz(
     assert results[0].match_terms == ("Docker",)
 
 
-def test_identifier_queries_are_exact(search_cache: CacheStore) -> None:
+def test_identifier_queries_are_exact(search_cache: MemorySearchRepository) -> None:
     by_item_id = SearchClient(search_cache).search("2160997")
     by_ref = SearchClient(search_cache).search("mcv:assignment:86428:2160997")
 
@@ -218,7 +298,9 @@ def test_identifier_queries_are_exact(search_cache: CacheStore) -> None:
     ]
 
 
-def test_exact_text_queries_match_literal_phrases_only(search_cache: CacheStore) -> None:
+def test_exact_text_queries_match_literal_phrases_only(
+    search_cache: MemorySearchRepository,
+) -> None:
     phrase = SearchClient(search_cache).search("docker compose", exact=True)
     typo = SearchClient(search_cache).search("dockre", exact=True)
 
@@ -229,7 +311,7 @@ def test_exact_text_queries_match_literal_phrases_only(search_cache: CacheStore)
 
 
 def test_search_result_accepts_string_refs_without_serializing_private_query(
-    search_cache: CacheStore,
+    search_cache: MemorySearchRepository,
 ) -> None:
     result = SearchClient(search_cache).search("docker compose assignment", limit=1)[0]
     reconstructed = result.__class__(
@@ -238,7 +320,7 @@ def test_search_result_accepts_string_refs_without_serializing_private_query(
             "ref": str(result.ref),
         }
     )
-    data = to_jsonable(reconstructed)
+    data = reconstructed.model_dump(mode="json")
 
     assert str(reconstructed.ref) == "mcv:assignment:86428:2160997"
     assert isinstance(data["ref"], str)
@@ -250,14 +332,6 @@ def test_search_requires_a_local_store() -> None:
         SearchClient(None).search("docker")
 
     assert error.value.code == "search_unavailable"
-
-
-def test_search_treats_a_corrupt_local_store_as_empty(tmp_path) -> None:
-    cache = CacheStore(profile_name="default", provider="chula", root=tmp_path)
-    cache.path.parent.mkdir(parents=True)
-    cache.path.write_bytes(b"not a sqlite database")
-
-    assert SearchClient(cache).search("docker") == []
 
 
 def test_search_rejects_blank_queries() -> None:

@@ -7,12 +7,12 @@ import sys
 from collections.abc import Mapping
 from typing import Literal, cast
 
+from mcv_api.core.errors import APIError
 from pydantic import BaseModel
 from rich import box
 from rich.console import Console, RenderableType
 from rich.table import Table
 
-from ..api.core.errors import APIError
 from .common import human_value
 from .json import (
     MACHINE_SCHEMA_VERSION,

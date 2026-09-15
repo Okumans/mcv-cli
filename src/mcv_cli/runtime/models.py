@@ -3,9 +3,8 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import TypedDict
 
+from mcv_api.core.errors import ErrorPayload
 from pydantic import BaseModel, ConfigDict, Field
-
-from ..api.core.errors import ErrorPayload
 
 
 class AuthProvider(StrEnum):

@@ -3,40 +3,40 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from pytest import mark
-from rich.console import Console
-
-from mcv_cli.api.aggregates.status import StatusSnapshot
-from mcv_cli.api.core.errors import NotFoundError
-from mcv_cli.api.core.refs import ResourceType
-from mcv_cli.api.core.resource import User
-from mcv_cli.api.resources.about.models import CourseAbout
-from mcv_cli.api.resources.announcements.models import Announcement
-from mcv_cli.api.resources.assignments.models import (
+from mcv_api.aggregates.status import StatusSnapshot
+from mcv_api.core.errors import NotFoundError
+from mcv_api.core.refs import ResourceType
+from mcv_api.core.resource import User
+from mcv_api.resources.about.models import CourseAbout
+from mcv_api.resources.announcements.models import Announcement
+from mcv_api.resources.assignments.models import (
     Assignment,
     QuestionSetChoice,
     QuestionSetQuestion,
     QuestionSetSubmission,
 )
-from mcv_cli.api.resources.courses.models import Course
-from mcv_cli.api.resources.groups.models import StudentGroup
-from mcv_cli.api.resources.materials.models import (
+from mcv_api.resources.courses.models import Course
+from mcv_api.resources.groups.models import StudentGroup
+from mcv_api.resources.materials.models import (
     ArchiveResult,
     DownloadResult,
     Material,
     MaterialFolder,
 )
-from mcv_cli.api.resources.meetings.models import MeetingCollection, MeetingRecording, OnlineMeeting
-from mcv_cli.api.resources.playlists.models import (
+from mcv_api.resources.meetings.models import MeetingCollection, MeetingRecording, OnlineMeeting
+from mcv_api.resources.playlists.models import (
     Playlist,
     PlaylistCollection,
     PlaylistFolder,
     PlaylistVideo,
 )
-from mcv_cli.api.resources.portfolio.models import Portfolio
-from mcv_cli.api.resources.schedule.models import ScheduleCollection, ScheduleEvent
-from mcv_cli.api.resources.web_resources.models import WebResource
-from mcv_cli.api.search.models import SearchResult
+from mcv_api.resources.portfolio.models import Portfolio
+from mcv_api.resources.schedule.models import ScheduleCollection, ScheduleEvent
+from mcv_api.resources.web_resources.models import WebResource
+from mcv_api.search.models import SearchResult
+from pytest import mark
+from rich.console import Console
+
 from mcv_cli.presentation.output import ShellIdList, emit, emit_error, to_jsonable
 from mcv_cli.presentation.resources.search import _highlight
 

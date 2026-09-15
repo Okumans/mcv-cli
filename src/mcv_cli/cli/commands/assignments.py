@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import typer
+from mcv_api.core.refs import ResourceType
+from mcv_api.resources.assignments.models import Assignment
 
-from ...api.core.refs import ResourceType
-from ...api.resources.assignments.models import Assignment
 from ...presentation.json import ShellIdList
 from ...runtime.completion import complete_refs_for
 from ..context import make_api, progress_options, resource_refs, run, semester_scope_kwargs

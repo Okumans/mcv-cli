@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, time
 
-from mcv_cli.api.core.dates import (
+from mcv_api.core.dates import (
     COURSEVILLE_TIMEZONE,
     parse_courseville_date,
     parse_courseville_datetime,
     parse_courseville_time,
 )
-from mcv_cli.api.resources.assignments.models import Assignment
-from mcv_cli.api.resources.meetings.models import OnlineMeeting
-from mcv_cli.api.resources.schedule.models import ScheduleEvent
+from mcv_api.resources.assignments.models import Assignment
+from mcv_api.resources.meetings.models import OnlineMeeting
+from mcv_api.resources.schedule.models import ScheduleEvent
 
 
 def test_courseville_datetime_is_timezone_aware_and_normalized() -> None:

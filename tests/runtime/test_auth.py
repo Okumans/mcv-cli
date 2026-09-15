@@ -5,14 +5,14 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 import pytest
 import respx
-
-from mcv_cli.api.core.constants import (
+from mcv_api.core.constants import (
     BASE_URL,
     CHULA_LOGIN_URL,
     PLATFORM_LOGIN_URL,
     PUBLIC_AUTHORIZATION_URL,
 )
-from mcv_cli.api.core.errors import AuthenticationError
+from mcv_api.core.errors import AuthenticationError
+
 from mcv_cli.runtime.auth import AuthManager, build_public_authorization_url
 from mcv_cli.runtime.completion.state import read_state
 from mcv_cli.runtime.errors import ConfigurationError

@@ -4,14 +4,14 @@ from datetime import datetime
 from typing import cast
 from zoneinfo import ZoneInfo
 
-from mcv_cli.api.aggregates.announcements import AnnouncementsAggregate
-from mcv_cli.api.aggregates.assignments import AssignmentService
-from mcv_cli.api.aggregates.meetings import MeetingService
-from mcv_cli.api.aggregates.status import StatusAggregate, StatusSnapshot
-from mcv_cli.api.resources.announcements.models import Announcement
-from mcv_cli.api.resources.assignments.models import Assignment
-from mcv_cli.api.resources.courses.models import Course
-from mcv_cli.api.resources.meetings.models import MeetingCollection, OnlineMeeting
+from mcv_api.aggregates.announcements import AnnouncementsAggregate
+from mcv_api.aggregates.assignments import AssignmentService
+from mcv_api.aggregates.meetings import MeetingService
+from mcv_api.aggregates.status import StatusAggregate, StatusSnapshot
+from mcv_api.resources.announcements.models import Announcement
+from mcv_api.resources.assignments.models import Assignment
+from mcv_api.resources.courses.models import Course
+from mcv_api.resources.meetings.models import MeetingCollection, OnlineMeeting
 
 
 class FakeCourses:
@@ -104,7 +104,7 @@ def test_assignment_service_aggregates_context_and_filters() -> None:
 
 
 def test_assignment_service_understands_web_submission_statuses() -> None:
-    from mcv_cli.api.aggregates.assignments import is_pending
+    from mcv_api.aggregates.assignments import is_pending
 
     assert not is_pending(
         Assignment(

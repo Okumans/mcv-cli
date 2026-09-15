@@ -3,11 +3,11 @@ from __future__ import annotations
 from collections.abc import Collection
 
 import typer
+from mcv_api.core.errors import NotFoundError
+from mcv_api.core.refs import ResourceType
+from mcv_api.search import SearchClient
+from mcv_api.search.models import SearchResult
 
-from ...api.core.errors import NotFoundError
-from ...api.core.refs import ResourceType
-from ...api.search import SearchClient
-from ...api.search.models import SearchResult
 from ...presentation.json import ShellIdList
 from ...runtime.cache import CacheStore
 from ...runtime.completion import complete_course_filters, complete_courses

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import typer
+from mcv_api.aggregates.status import StatusSnapshot
 
-from ...api.aggregates.status import StatusSnapshot
 from ..context import make_api, progress_options, run, semester_scope_kwargs
 
 

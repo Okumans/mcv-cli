@@ -8,7 +8,7 @@ from collections.abc import Collection
 from dataclasses import dataclass
 from pathlib import Path
 
-from ...api.core.types import SQLiteValue
+from mcv_api.core.types import SQLiteValue
 
 _CACHE_SCHEMA_VERSION = 3
 _SAFE_COMPONENT = re.compile(r"[^A-Za-z0-9_.-]+")

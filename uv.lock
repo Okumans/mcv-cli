@@ -2,6 +2,12 @@ version = 1
 revision = 3
 requires-python = ">=3.11"
 
+[manifest]
+members = [
+    "mcv-api",
+    "mcv-cli",
+]
+
 [[package]]
 name = "annotated-doc"
 version = "0.0.5"
@@ -727,18 +733,48 @@ wheels = [
 ]
 
 [[package]]
-name = "mcv-cli"
-version = "0.5.0"
-source = { editable = "." }
+name = "mcv-api"
+version = "0.6.0"
+source = { editable = "packages/mcv-api" }
 dependencies = [
     { name = "beautifulsoup4" },
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "rapidfuzz" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-cov" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "beautifulsoup4", specifier = ">=4.12,<5" },
+    { name = "httpx", specifier = ">=0.27,<1" },
+    { name = "pydantic", specifier = ">=2.7,<3" },
+    { name = "rapidfuzz", specifier = ">=3,<4" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8,<10" },
+    { name = "pytest-cov", specifier = ">=5,<8" },
+]
+
+[[package]]
+name = "mcv-cli"
+version = "0.6.0"
+source = { editable = "." }
+dependencies = [
     { name = "cryptography" },
     { name = "httpx" },
     { name = "keyring" },
+    { name = "mcv-api" },
     { name = "platformdirs" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
-    { name = "rapidfuzz" },
     { name = "rich" },
     { name = "typer" },
 ]
@@ -760,15 +796,14 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "beautifulsoup4", specifier = ">=4.12,<5" },
     { name = "cryptography", specifier = ">=44,<51" },
     { name = "fzf-bin", marker = "extra == 'fzf'", specifier = ">=0.74,<1" },
     { name = "httpx", specifier = ">=0.27,<1" },
     { name = "keyring", specifier = ">=25,<26" },
+    { name = "mcv-api", editable = "packages/mcv-api" },
     { name = "platformdirs", specifier = ">=4,<5" },
     { name = "pydantic", specifier = ">=2.7,<3" },
     { name = "pydantic-settings", specifier = ">=2.2,<3" },
-    { name = "rapidfuzz", specifier = ">=3,<4" },
     { name = "rich", specifier = ">=13.7,<15" },
     { name = "typer", specifier = ">=0.16,<1" },
 ]

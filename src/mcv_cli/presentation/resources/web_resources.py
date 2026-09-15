@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from mcv_api.resources.web_resources.models import WebResource
 from rich.console import RenderableType
 
-from ...api.resources.web_resources.models import WebResource
 from ..common import fields_table
 from ..tables import table_for
 

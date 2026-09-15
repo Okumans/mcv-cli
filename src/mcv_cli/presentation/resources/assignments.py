@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from rich.console import Group, RenderableType
-from rich.text import Text
-
-from ...api.resources.assignments.models import (
+from mcv_api.resources.assignments.models import (
     Assignment,
     QuestionSetQuestion,
     QuestionSetSubmission,
 )
+from rich.console import Group, RenderableType
+from rich.text import Text
+
 from ..common import (
     fields_table,
     human_value,

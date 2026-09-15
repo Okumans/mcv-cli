@@ -4,12 +4,11 @@ import json
 from pathlib import Path
 
 import pytest
+from mcv_api.core.errors import ParseError
+from mcv_api.resources.playlists.models import PlaylistCollection, PlaylistFolder, PlaylistVideo
+from mcv_api.resources.playlists.parser import parse_playlist, playlist_ids
 
-from mcv_cli.api.core.errors import ParseError
-from mcv_cli.api.resources.playlists.models import PlaylistCollection, PlaylistFolder, PlaylistVideo
-from mcv_cli.api.resources.playlists.parser import parse_playlist, playlist_ids
-
-FIXTURE_ROOT = Path(__file__).parents[3] / "fixtures" / "playlists"
+FIXTURE_ROOT = Path(__file__).parents[2] / "fixtures" / "playlists"
 
 
 def test_parse_playlist_preserves_nested_folder_and_video_order() -> None:

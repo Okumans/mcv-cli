@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from mcv_cli.api.core.refs import ResourceType
-from mcv_cli.api.resources.assignments.models import Assignment
-from mcv_cli.api.resources.courses.models import Course
-from mcv_cli.api.resources.materials.models import Material, MaterialFolder
-from mcv_cli.api.resources.playlists.models import PlaylistCollection
+from mcv_api.core.refs import ResourceType
+from mcv_api.resources.assignments.models import Assignment
+from mcv_api.resources.courses.models import Course
+from mcv_api.resources.materials.models import Material, MaterialFolder
+from mcv_api.resources.playlists.models import PlaylistCollection
+
 from mcv_cli.runtime.cache import CacheStore
 from mcv_cli.runtime.completion import (
     complete_course_filters,

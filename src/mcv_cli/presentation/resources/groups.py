@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from mcv_api.resources.groups.models import StudentGroup
 from rich.console import RenderableType
 
-from ...api.resources.groups.models import StudentGroup
 from ..common import fields_table
 from ..tables import table_for
 

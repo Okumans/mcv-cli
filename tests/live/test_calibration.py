@@ -5,8 +5,8 @@ from datetime import date
 from typing import Any
 
 import pytest
+from mcv_api.resources.courses.models import Course
 
-from mcv_cli.api.resources.courses.models import Course
 from mcv_cli.runtime.auth import AuthManager
 from mcv_cli.runtime.config import Settings
 

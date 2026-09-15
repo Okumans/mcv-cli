@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from rich.console import Group, RenderableType
-from rich.text import Text
-
-from ...api.resources.playlists.models import (
+from mcv_api.resources.playlists.models import (
     PlaylistCollection,
     PlaylistFolder,
     PlaylistNode,
     PlaylistVideo,
 )
+from rich.console import Group, RenderableType
+from rich.text import Text
+
 from ..common import fields_table, resource_ref
 from ..tables import table_for
 

@@ -1,35 +1,34 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import parse_qs
 
 import httpx
-
-from mcv_cli.api.core.constants import BASE_URL
-from mcv_cli.api.core.refs import ResourceRef, ResourceType
-from mcv_cli.api.facade import MCVAPI
-from mcv_cli.api.resources.playlists.models import (
+from mcv_api.core.constants import BASE_URL
+from mcv_api.core.refs import ResourceRef, ResourceType
+from mcv_api.facade import MCVAPI
+from mcv_api.resources.playlists.models import (
     PlaylistCollection,
     PlaylistVideo,
 )
-from mcv_cli.runtime.config import Settings
 
 
 class FakeAuth:
-    settings = Settings(timeout=1)
+    settings = SimpleNamespace(timeout=1.0)
 
     def get_session_cookies(self) -> dict[str, str]:
         return {"laravel_session": "session-cookie"}
 
 
 FIXTURE = (
-    Path(__file__).parents[3] / "fixtures" / "playlists" / "nested.html"
+    Path(__file__).parents[2] / "fixtures" / "playlists" / "nested.html"
 ).read_text()
 CVDLIT_FIXTURE = (
-    Path(__file__).parents[3] / "fixtures" / "playlists" / "cvdlit.html"
+    Path(__file__).parents[2] / "fixtures" / "playlists" / "cvdlit.html"
 ).read_text()
 CVDLIT_DETAIL_FIXTURE = (
-    Path(__file__).parents[3] / "fixtures" / "playlists" / "cvdlit_detail.html"
+    Path(__file__).parents[2] / "fixtures" / "playlists" / "cvdlit_detail.html"
 ).read_text()
 
 

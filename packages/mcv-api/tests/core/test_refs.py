@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import pytest
-
-from mcv_cli.api.core.errors import InvalidReferenceError
-from mcv_cli.api.core.refs import ResourceRef, ResourceType, ref_for_resource
-from mcv_cli.api.resources.assignments.models import Assignment
-from mcv_cli.api.resources.materials.models import Material
-from mcv_cli.api.resources.playlists.models import PlaylistCollection
+from mcv_api.core.errors import InvalidReferenceError
+from mcv_api.core.refs import ResourceRef, ResourceType, ref_for_resource
+from mcv_api.resources.assignments.models import Assignment
+from mcv_api.resources.materials.models import Material
+from mcv_api.resources.playlists.models import PlaylistCollection
 
 
 def test_resource_ref_round_trips() -> None:

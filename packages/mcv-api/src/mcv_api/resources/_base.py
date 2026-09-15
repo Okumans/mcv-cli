@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from typing import Protocol, TypeVar, cast
+from typing import TypeVar, cast
 
 import httpx
 
@@ -11,11 +11,7 @@ from ..core.errors import UpstreamError
 from ..core.parsing import html_from_payload, html_from_response
 from ..core.transport import MCVTransport
 from ..core.types import HttpParams, JsonValue
-
-
-class SessionProvider(Protocol):
-    def get_session_cookies(self) -> dict[str, str]: ...
-
+from ..protocols import SessionProvider
 
 _ResultT = TypeVar("_ResultT")
 

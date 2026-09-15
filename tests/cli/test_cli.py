@@ -5,14 +5,14 @@ from io import StringIO
 from zoneinfo import ZoneInfo
 
 import pytest
+from mcv_api.aggregates.status import StatusSnapshot
+from mcv_api.resources.assignments.models import Assignment
+from mcv_api.resources.courses.models import Course
+from mcv_api.resources.playlists.models import Playlist, PlaylistCollection, PlaylistVideo
 from rich.console import Console
 from rich.table import Table
 from typer.testing import CliRunner
 
-from mcv_cli.api.aggregates.status import StatusSnapshot
-from mcv_cli.api.resources.assignments.models import Assignment
-from mcv_cli.api.resources.courses.models import Course
-from mcv_cli.api.resources.playlists.models import Playlist, PlaylistCollection, PlaylistVideo
 from mcv_cli.cli.app import app
 from mcv_cli.cli.help import _minimal_panel
 
@@ -82,7 +82,7 @@ def test_version() -> None:
     result = runner.invoke(app, ["--version"])
 
     assert result.exit_code == 0
-    assert result.stdout.strip() == "0.5.0"
+    assert result.stdout.strip() == "0.6.0"
 
 
 def test_short_help_and_version_aliases() -> None:
@@ -92,7 +92,7 @@ def test_short_help_and_version_aliases() -> None:
     assert help_result.exit_code == 0
     assert "Usage: root" in help_result.stdout
     assert version_result.exit_code == 0
-    assert version_result.stdout.strip() == "0.5.0"
+    assert version_result.stdout.strip() == "0.6.0"
 
 
 def test_status_dashboard_has_a_human_and_machine_contract(monkeypatch) -> None:

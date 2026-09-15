@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from ..api.core.errors import APIError
+from mcv_api.core.errors import APIError
+
 from .auth import AuthManager
 from .cache import CacheStore
 from .completion.state import activate

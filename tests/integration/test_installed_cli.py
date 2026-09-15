@@ -7,8 +7,8 @@ from importlib.metadata import version
 from pathlib import Path
 
 import pytest
+from mcv_api.resources.courses.models import Course
 
-from mcv_cli.api.resources.courses.models import Course
 from mcv_cli.runtime.cache import CacheStore
 from mcv_cli.runtime.completion.state import activate
 
@@ -157,8 +157,8 @@ def test_installed_fzf_extra_selects_a_result(installed_cli: InstalledCLI) -> No
             str(installed_cli.python),
             "-c",
             """
-from mcv_cli.api.core.refs import ResourceRef, ResourceType
-from mcv_cli.api.search.models import SearchResult
+from mcv_api.core.refs import ResourceRef, ResourceType
+from mcv_api.search.models import SearchResult
 from mcv_cli.cli.fuzzy import select_search_result
 
 ref = ResourceRef(resource_type=ResourceType.ASSIGNMENT, cv_cid=86428, item_id=2160997)

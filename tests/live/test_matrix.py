@@ -6,9 +6,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
-from mcv_cli.api.core.refs import ResourceRef, ResourceType
-from mcv_cli.api.core.urls import parse_mcv_url
+from mcv_api.core.refs import ResourceRef, ResourceType
+from mcv_api.core.urls import parse_mcv_url
 
 from .support import (
     ITEM_FEATURES,

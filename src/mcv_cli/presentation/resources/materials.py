@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from rich.console import Group, RenderableType
-
-from ...api.resources.materials.models import (
+from mcv_api.resources.materials.models import (
     ArchiveResult,
     DownloadResult,
     Material,
     MaterialFolder,
 )
+from rich.console import Group, RenderableType
+
 from ..common import fields_table, resource_ref
 from ..tables import table_for
 

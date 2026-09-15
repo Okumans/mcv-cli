@@ -4,13 +4,13 @@ import hashlib
 import tarfile
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import parse_qsl
 
 import httpx
 import pytest
-
-from mcv_cli.api.core.constants import BASE_URL
-from mcv_cli.api.core.errors import (
+from mcv_api.core.constants import BASE_URL
+from mcv_api.core.errors import (
     AmbiguousError,
     AuthenticationRequired,
     InvalidReferenceError,
@@ -18,16 +18,15 @@ from mcv_cli.api.core.errors import (
     TransportError,
     UpstreamError,
 )
-from mcv_cli.api.facade import MCVAPI
-from mcv_cli.api.resources.assignments.models import Assignment
-from mcv_cli.api.resources.assignments.parser import parse_assignment_detail, parse_assignments
-from mcv_cli.api.resources.courses.models import Course
-from mcv_cli.runtime.config import Settings
+from mcv_api.facade import MCVAPI
+from mcv_api.resources.assignments.models import Assignment
+from mcv_api.resources.assignments.parser import parse_assignment_detail, parse_assignments
+from mcv_api.resources.courses.models import Course
 
 
 class FakeAuth:
     def __init__(self) -> None:
-        self.settings = Settings(timeout=1)
+        self.settings = SimpleNamespace(timeout=1.0)
         self.cookies = {"laravel_session": "session-cookie"}
 
     def get_session_cookies(self) -> dict[str, str]:
@@ -1051,7 +1050,7 @@ def test_resolve_course_rejects_ambiguous_title() -> None:
             ]
 
         def resolve(self, reference: str, *, semester: str | None = None) -> Course:
-            from mcv_cli.api.resources.courses.client import CourseClient
+            from mcv_api.resources.courses.client import CourseClient
 
             resolver = CourseClient.__new__(CourseClient)
             resolver.list = self.list  # type: ignore[method-assign]

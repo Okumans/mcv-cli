@@ -4,19 +4,18 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcv-cli"
-version = "0.5.0"
+version = "0.6.0"
 description = "A small command-line client for MyCourseVille"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "beautifulsoup4>=4.12,<5",
     "cryptography>=44,<51",
     "httpx>=0.27,<1",
     "keyring>=25,<26",
+    "mcv-api>=0.6,<0.7",
     "platformdirs>=4,<5",
     "pydantic>=2.7,<3",
     "pydantic-settings>=2.2,<3",
-    "rapidfuzz>=3,<4",
     "rich>=13.7,<15",
     "typer>=0.16,<1",
 ]
@@ -42,6 +41,12 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/mcv_cli"]
 
+[tool.uv.workspace]
+members = ["packages/mcv-api"]
+
+[tool.uv.sources]
+mcv-api = { workspace = true }
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100
@@ -51,7 +56,7 @@ select = ["E", "F", "I", "B", "UP"]
 ignore = ["B008"]
 
 [tool.pyright]
-include = ["src", "tests"]
+include = ["src", "packages/mcv-api/src", "tests", "packages/mcv-api/tests"]
 pythonVersion = "3.11"
 venvPath = "."
 venv = ".venv"
@@ -59,7 +64,7 @@ typeCheckingMode = "basic"
 
 [tool.pytest.ini_options]
 addopts = "--strict-markers"
-testpaths = ["tests"]
+testpaths = ["tests", "packages/mcv-api/tests"]
 markers = [
     "integration: installed-package and external-tool integration checks",
     "live: authenticated read-only MyCourseVille end-to-end checks (opt-in)",

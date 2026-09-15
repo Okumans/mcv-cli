@@ -58,24 +58,24 @@ def renderer_for(value: object) -> Renderer | None:
 
     # Imports are local so this registry remains cheap to import for callers
     # that only need JSON serialization.
-    from ..api.aggregates.status import StatusSnapshot
-    from ..api.resources.about.models import CourseAbout
-    from ..api.resources.announcements.models import Announcement
-    from ..api.resources.assignments.models import Assignment, QuestionSetSubmission
-    from ..api.resources.courses.models import Course
-    from ..api.resources.groups.models import StudentGroup
-    from ..api.resources.materials.models import (
+    from mcv_api.aggregates.status import StatusSnapshot
+    from mcv_api.resources.about.models import CourseAbout
+    from mcv_api.resources.announcements.models import Announcement
+    from mcv_api.resources.assignments.models import Assignment, QuestionSetSubmission
+    from mcv_api.resources.courses.models import Course
+    from mcv_api.resources.groups.models import StudentGroup
+    from mcv_api.resources.materials.models import (
         ArchiveResult,
         DownloadResult,
         Material,
         MaterialFolder,
     )
-    from ..api.resources.meetings.models import MeetingCollection, MeetingRecording, OnlineMeeting
-    from ..api.resources.playlists.models import PlaylistCollection
-    from ..api.resources.portfolio.models import Portfolio
-    from ..api.resources.schedule.models import ScheduleCollection, ScheduleEvent
-    from ..api.resources.web_resources.models import WebResource
-    from ..api.search.models import SearchResult
+    from mcv_api.resources.meetings.models import MeetingCollection, MeetingRecording, OnlineMeeting
+    from mcv_api.resources.playlists.models import PlaylistCollection
+    from mcv_api.resources.portfolio.models import Portfolio
+    from mcv_api.resources.schedule.models import ScheduleCollection, ScheduleEvent
+    from mcv_api.resources.web_resources.models import WebResource
+    from mcv_api.search.models import SearchResult
 
     mapping: tuple[tuple[type[BaseModel], Renderer], ...] = (
         (Course, Renderer(render_course, render_courses)),

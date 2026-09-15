@@ -5,10 +5,9 @@ from datetime import date, datetime
 from enum import Enum
 from pathlib import Path
 
+from mcv_api.core.refs import ref_for_resource
+from mcv_api.resources.assignments.models import QuestionSetChoice
 from rich.table import Table
-
-from ..api.core.refs import ref_for_resource
-from ..api.resources.assignments.models import QuestionSetChoice
 
 
 def human_value(value: object) -> str:

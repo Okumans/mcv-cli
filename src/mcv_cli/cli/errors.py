@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..api.core.errors import (
+from mcv_api.core.errors import (
     AmbiguousError,
     APIError,
     AuthenticationError,
@@ -13,6 +13,7 @@ from ..api.core.errors import (
     UpstreamError,
     ValidationError,
 )
+
 from ..runtime.errors import CacheError, ConfigurationError, StorageError
 
 MCVError = APIError

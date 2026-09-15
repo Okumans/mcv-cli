@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import pytest
-
-from mcv_cli.api.resources.materials.models import Material, MaterialFolder
+from mcv_api.resources.materials.models import Material, MaterialFolder
 
 from .support import FixtureConfig, collection_items
 

@@ -3,13 +3,13 @@ from __future__ import annotations
 from collections.abc import Iterable
 from datetime import datetime
 
+from mcv_api.aggregates.status import StatusSnapshot
+from mcv_api.resources.announcements.models import Announcement
+from mcv_api.resources.assignments.models import Assignment
+from mcv_api.resources.meetings.models import OnlineMeeting
 from rich.console import Group, RenderableType
 from rich.text import Text
 
-from ...api.aggregates.status import StatusSnapshot
-from ...api.resources.announcements.models import Announcement
-from ...api.resources.assignments.models import Assignment
-from ...api.resources.meetings.models import OnlineMeeting
 from ..common import resource_ref
 from ..tables import table_for
 

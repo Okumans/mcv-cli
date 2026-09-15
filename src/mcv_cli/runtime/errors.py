@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from ..api.core.errors import APIError
-from ..api.core.types import JsonValue
+from mcv_api.core.errors import APIError
+from mcv_api.core.types import JsonValue
 
 
 class RuntimeError(APIError):

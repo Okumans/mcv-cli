@@ -4,11 +4,11 @@ import json
 import subprocess
 
 import pytest
+from mcv_api.resources.assignments.models import Assignment
+from mcv_api.resources.courses.models import Course
+from mcv_api.resources.materials.models import Material
 from typer.testing import CliRunner
 
-from mcv_cli.api.resources.assignments.models import Assignment
-from mcv_cli.api.resources.courses.models import Course
-from mcv_cli.api.resources.materials.models import Material
 from mcv_cli.cli import fuzzy as fuzzy_cli
 from mcv_cli.cli.app import app
 from mcv_cli.runtime.cache import CacheStore

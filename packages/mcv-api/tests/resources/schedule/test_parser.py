@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import pytest
-
-from mcv_cli.api.core.errors import ParseError
-from mcv_cli.api.resources.schedule.models import ScheduleCollection
-from mcv_cli.api.resources.schedule.parser import parse_schedule
+from mcv_api.core.errors import ParseError
+from mcv_api.resources.schedule.models import ScheduleCollection
+from mcv_api.resources.schedule.parser import parse_schedule
 
 COURSE_SHELL = """
 <main id="courseville-content-course-main-column">

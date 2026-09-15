@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from mcv_api.resources.about.models import CourseAbout
 from rich.console import RenderableType
 
-from ...api.resources.about.models import CourseAbout
 from ..common import fields_table, year_semester
 
 

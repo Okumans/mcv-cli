@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from mcv_api.resources.portfolio.models import Portfolio
 from rich.console import RenderableType
 
-from ...api.resources.portfolio.models import Portfolio
 from ..common import fields_table
 
 

@@ -8,21 +8,21 @@ from collections.abc import Collection, Iterable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
+from mcv_api.core.refs import ResourceRef, ResourceType, ref_for_resource
+from mcv_api.core.resource import AddressableResource
+from mcv_api.core.types import JsonObject, SQLiteValue
+from mcv_api.resources.announcements.models import Announcement
+from mcv_api.resources.assignments.models import Assignment
+from mcv_api.resources.courses.models import Course
+from mcv_api.resources.groups.models import StudentGroup
+from mcv_api.resources.materials.models import Material, MaterialFolder
+from mcv_api.resources.meetings.models import MeetingCollection, OnlineMeeting
+from mcv_api.resources.playlists.models import PlaylistCollection
+from mcv_api.resources.schedule.models import ScheduleCollection
+from mcv_api.search.documents import searchable_document, snapshot_for_resource
+from mcv_api.search.models import SearchCandidate, SearchDocument
 from platformdirs import user_cache_dir
 
-from ..api.core.refs import ResourceRef, ResourceType, ref_for_resource
-from ..api.core.resource import AddressableResource
-from ..api.core.types import JsonObject, SQLiteValue
-from ..api.resources.announcements.models import Announcement
-from ..api.resources.assignments.models import Assignment
-from ..api.resources.courses.models import Course
-from ..api.resources.groups.models import StudentGroup
-from ..api.resources.materials.models import Material, MaterialFolder
-from ..api.resources.meetings.models import MeetingCollection, OnlineMeeting
-from ..api.resources.playlists.models import PlaylistCollection
-from ..api.resources.schedule.models import ScheduleCollection
-from ..api.search.documents import searchable_document, snapshot_for_resource
-from ..api.search.models import SearchCandidate, SearchDocument
 from .config import DEFAULT_PROFILE
 from .errors import CacheSchemaError
 from .models import (

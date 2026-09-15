@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from mcv_api.resources.courses.models import Course
 from rich.console import RenderableType
 
-from ...api.resources.courses.models import Course
 from ..common import fields_table, year_semester
 from ..tables import table_for
 

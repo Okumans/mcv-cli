@@ -4,7 +4,8 @@ import shutil
 import subprocess
 from collections.abc import Sequence
 
-from ..api.search.models import SearchResult
+from mcv_api.search.models import SearchResult
+
 from .errors import UsageError
 
 _INSTALL_HINT = (

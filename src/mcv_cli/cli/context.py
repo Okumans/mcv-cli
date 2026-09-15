@@ -4,13 +4,13 @@ from collections.abc import Callable, Iterable, Mapping
 from typing import TypedDict, TypeVar, cast
 
 import typer
+from mcv_api import MCVAPI
+from mcv_api.core.errors import APIError
+from mcv_api.core.refs import ResourceRef, ResourceType, ref_for_resource
+from mcv_api.core.resource import AddressableResource
+from mcv_api.resources.courses.models import Course
 from pydantic import BaseModel
 
-from ..api import MCVAPI
-from ..api.core.errors import APIError
-from ..api.core.refs import ResourceRef, ResourceType, ref_for_resource
-from ..api.core.resource import AddressableResource
-from ..api.resources.courses.models import Course
 from ..presentation.json import ShellIdList
 from ..presentation.output import DisplayMode, emit, emit_error
 from ..runtime.auth import AuthManager

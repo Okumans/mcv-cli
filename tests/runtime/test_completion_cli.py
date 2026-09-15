@@ -5,7 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from mcv_cli.api.resources.courses.models import Course
+from mcv_api.resources.courses.models import Course
+
 from mcv_cli.runtime.cache import CacheStore
 from mcv_cli.runtime.completion.cli import complete_arguments
 from mcv_cli.runtime.completion.state import activate

@@ -24,20 +24,21 @@ from pathlib import Path
 from typing import Any, Literal, Protocol
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
-from mcv_cli.api import MCVAPI
-from mcv_cli.api.core.refs import ResourceRef, ResourceType
-from mcv_cli.api.core.urls import parse_mcv_url
-from mcv_cli.api.resources.about.models import CourseAbout
-from mcv_cli.api.resources.announcements.models import Announcement
-from mcv_cli.api.resources.assignments.models import Assignment
-from mcv_cli.api.resources.courses.models import Course
-from mcv_cli.api.resources.groups.models import StudentGroup
-from mcv_cli.api.resources.materials.models import Material, MaterialFolder
-from mcv_cli.api.resources.meetings.models import MeetingCollection, OnlineMeeting
-from mcv_cli.api.resources.playlists.models import PlaylistCollection
-from mcv_cli.api.resources.portfolio.models import Portfolio
-from mcv_cli.api.resources.schedule.models import ScheduleCollection
-from mcv_cli.api.resources.web_resources.models import WebResource
+from mcv_api import MCVAPI
+from mcv_api.core.refs import ResourceRef, ResourceType
+from mcv_api.core.urls import parse_mcv_url
+from mcv_api.resources.about.models import CourseAbout
+from mcv_api.resources.announcements.models import Announcement
+from mcv_api.resources.assignments.models import Assignment
+from mcv_api.resources.courses.models import Course
+from mcv_api.resources.groups.models import StudentGroup
+from mcv_api.resources.materials.models import Material, MaterialFolder
+from mcv_api.resources.meetings.models import MeetingCollection, OnlineMeeting
+from mcv_api.resources.playlists.models import PlaylistCollection
+from mcv_api.resources.portfolio.models import Portfolio
+from mcv_api.resources.schedule.models import ScheduleCollection
+from mcv_api.resources.web_resources.models import WebResource
+
 from mcv_cli.presentation.json import to_jsonable
 from mcv_cli.runtime.auth import AuthManager
 from mcv_cli.runtime.cache import CacheStore

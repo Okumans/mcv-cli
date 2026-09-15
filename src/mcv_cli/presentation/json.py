@@ -8,13 +8,12 @@ from enum import Enum
 from pathlib import Path
 from typing import Literal, Protocol, TypedDict, overload
 
+from mcv_api.core.errors import APIError, InvalidReferenceError
+from mcv_api.core.refs import ResourceRef
+from mcv_api.core.resource import AddressableResource
+from mcv_api.core.types import ErrorPayload, JsonArray, JsonObject, JsonValue
+from mcv_api.resources.materials.models import MaterialFolder
 from pydantic import BaseModel
-
-from ..api.core.errors import APIError, InvalidReferenceError
-from ..api.core.refs import ResourceRef
-from ..api.core.resource import AddressableResource
-from ..api.core.types import ErrorPayload, JsonArray, JsonObject, JsonValue
-from ..api.resources.materials.models import MaterialFolder
 
 MACHINE_SCHEMA_VERSION = 1
 

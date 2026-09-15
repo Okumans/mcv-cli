@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from mcv_api.resources.schedule.models import ScheduleCollection, ScheduleEvent
 from rich.console import RenderableType
 
-from ...api.resources.schedule.models import ScheduleCollection, ScheduleEvent
 from ..common import fields_table
 from ..tables import table_for
 

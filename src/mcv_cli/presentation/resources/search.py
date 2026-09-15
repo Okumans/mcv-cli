@@ -3,12 +3,11 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 
+from mcv_api.search.models import SearchResult
 from rich import box
 from rich.console import RenderableType
 from rich.table import Table
 from rich.text import Text
-
-from ...api.search.models import SearchResult
 
 
 def _highlight(

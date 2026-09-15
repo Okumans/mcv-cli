@@ -4,12 +4,12 @@ from collections.abc import Callable, Iterable
 from typing import TypeVar, cast
 
 import typer
+from mcv_api.core.errors import APIError, NotFoundError
+from mcv_api.core.refs import ResourceType
+from mcv_api.core.types import JsonValue
+from mcv_api.facade import MCVAPI
+from mcv_api.resources.courses.models import Course
 
-from ...api.core.errors import APIError, NotFoundError
-from ...api.core.refs import ResourceType
-from ...api.core.types import JsonValue
-from ...api.facade import MCVAPI
-from ...api.resources.courses.models import Course
 from ...runtime.cache_access import active_cache
 from ...runtime.completion import complete_courses
 from ...runtime.errors import CacheError

@@ -12,14 +12,17 @@ _ANY_TOKEN = re.compile(r"\bAny\b")
 
 def main() -> int:
     project_root = Path(__file__).resolve().parents[1]
-    source_root = project_root / "src"
+    source_roots = (project_root / "src", project_root / "packages/mcv-api/src")
     violations: list[str] = []
-    for path in sorted(source_root.rglob("*.py")):
-        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            if _ANY_TOKEN.search(line):
-                violations.append(f"{path.relative_to(project_root)}:{line_number}: {line.strip()}")
+    for source_root in source_roots:
+        for path in sorted(source_root.rglob("*.py")):
+            for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if _ANY_TOKEN.search(line):
+                    violations.append(
+                        f"{path.relative_to(project_root)}:{line_number}: {line.strip()}"
+                    )
     if violations:
-        print("Explicit Any is not allowed under src/:", file=sys.stderr)
+        print("Explicit Any is not allowed under production source:", file=sys.stderr)
         print("\n".join(violations), file=sys.stderr)
         return 1
     return 0

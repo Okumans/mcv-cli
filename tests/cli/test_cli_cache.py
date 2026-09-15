@@ -1,17 +1,17 @@
 from __future__ import annotations
 
+from mcv_api.core.errors import UpstreamError
+from mcv_api.core.refs import ResourceType
+from mcv_api.resources.announcements.models import Announcement
+from mcv_api.resources.assignments.models import Assignment
+from mcv_api.resources.courses.models import Course
+from mcv_api.resources.groups.models import StudentGroup
+from mcv_api.resources.materials.models import Material, MaterialFolder
+from mcv_api.resources.meetings.models import MeetingCollection, OnlineMeeting
+from mcv_api.resources.playlists.models import PlaylistCollection
+from mcv_api.resources.schedule.models import ScheduleCollection
 from typer.testing import CliRunner
 
-from mcv_cli.api.core.errors import UpstreamError
-from mcv_cli.api.core.refs import ResourceType
-from mcv_cli.api.resources.announcements.models import Announcement
-from mcv_cli.api.resources.assignments.models import Assignment
-from mcv_cli.api.resources.courses.models import Course
-from mcv_cli.api.resources.groups.models import StudentGroup
-from mcv_cli.api.resources.materials.models import Material, MaterialFolder
-from mcv_cli.api.resources.meetings.models import MeetingCollection, OnlineMeeting
-from mcv_cli.api.resources.playlists.models import PlaylistCollection
-from mcv_cli.api.resources.schedule.models import ScheduleCollection
 from mcv_cli.cli.app import app
 
 runner = CliRunner(env={"NO_COLOR": "1", "FORCE_COLOR": None})

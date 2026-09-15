@@ -9,7 +9,8 @@ from .aggregates import AggregateClients
 from .core.errors import InvalidReferenceError, UnsupportedResourceError
 from .core.refs import ResourceRef, ResourceType
 from .core.resource import Resource
-from .resources._base import SessionProvider, make_download_client, make_transport
+from .protocols import LocalStore, SessionProvider
+from .resources._base import make_download_client, make_transport
 from .resources.about.client import AboutClient
 from .resources.announcements.client import AnnouncementsClient
 from .resources.assignments.client import AssignmentsClient
@@ -22,7 +23,6 @@ from .resources.portfolio.client import PortfolioClient
 from .resources.schedule.client import ScheduleClient
 from .resources.web_resources.client import WebResourcesClient
 from .search import SearchClient
-from .search.protocols import LocalStore
 
 
 class MCVAPI:
