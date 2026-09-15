@@ -66,10 +66,3 @@ class ProgressReporter(AbstractContextManager["ProgressReporter"]):
         if self._progress is not None and self._started:
             self._progress.stop()
             self._started = False
-
-
-class NullProgressReporter(ProgressReporter):
-    """Compatibility helper for callers that want an explicit no-op reporter."""
-
-    def __init__(self) -> None:
-        super().__init__(False)

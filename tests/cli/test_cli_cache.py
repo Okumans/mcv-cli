@@ -32,7 +32,8 @@ class FakeCacheClient:
 
 
 class FakeMaterials:
-    def folders(self, _cv_cid: int):
+    def folders(self, _cv_cid: int, *, detail: bool = False):
+        del detail
         return [
             MaterialFolder(
                 folder_id="folder-1",
@@ -43,17 +44,20 @@ class FakeMaterials:
 
 
 class FakeAssignments:
-    def list(self, _cv_cid: int):
+    def list(self, _cv_cid: int, *, detail: bool = False):
+        del detail
         return [Assignment(itemid=2160997, cv_cid=86428, title="Homework")]
 
 
 class FakeAnnouncements:
-    def list(self, _cv_cid: int):
+    def list(self, _cv_cid: int, *, detail: bool = False):
+        del detail
         return [Announcement(itemid=2177455, cv_cid=86428, title="Welcome")]
 
 
 class FakeMeetings:
-    def list(self, _cv_cid: int):
+    def list(self, _cv_cid: int, *, detail: bool = False):
+        del detail
         return MeetingCollection(
             cv_cid=86428,
             meetings=[OnlineMeeting(itemid=29632, cv_cid=86428, name="Lecture")],
@@ -103,7 +107,9 @@ def test_cache_refresh_indexes_targeted_course(monkeypatch, tmp_path) -> None:
     from mcv_cli.runtime.cache import CacheStore
 
     cache = CacheStore(profile_name="default", provider="chula", root=tmp_path)
-    monkeypatch.setattr("mcv_cli.cli.commands.cache.make_api", lambda: FakeAPI())
+    monkeypatch.setattr(
+        "mcv_cli.cli.commands.cache.make_api", lambda **_kwargs: FakeAPI()
+    )
     monkeypatch.setattr("mcv_cli.cli.commands.cache.active_cache", lambda: cache)
 
     result = runner.invoke(app, ["--quiet", "cache", "refresh", "2110575"])
@@ -139,13 +145,16 @@ def test_cache_refresh_keeps_old_resource_snapshot_when_scope_fails(
     )
 
     class FailingAssignments(FakeAssignments):
-        def list(self, _cv_cid: int):
+        def list(self, _cv_cid: int, *, detail: bool = False):
+            del detail
             raise UpstreamError("simulated upstream failure")
 
     class FailingAPI(FakeAPI):
         assignments = FailingAssignments()
 
-    monkeypatch.setattr("mcv_cli.cli.commands.cache.make_api", lambda: FailingAPI())
+    monkeypatch.setattr(
+        "mcv_cli.cli.commands.cache.make_api", lambda **_kwargs: FailingAPI()
+    )
     monkeypatch.setattr("mcv_cli.cli.commands.cache.active_cache", lambda: cache)
 
     result = runner.invoke(app, ["--quiet", "cache", "refresh", "2110575"])

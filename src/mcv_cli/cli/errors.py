@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from mcv_api.core.errors import (
     AmbiguousError,
-    APIError,
     AuthenticationError,
     AuthenticationRequired,
     DownloadError,
-    InvalidReferenceError,
+    MCVError,
     NotFoundError,
     ParseError,
     UnsupportedResourceError,
@@ -15,9 +14,6 @@ from mcv_api.core.errors import (
 )
 
 from ..runtime.errors import CacheError, ConfigurationError, StorageError
-
-MCVError = APIError
-InvalidRefError = InvalidReferenceError
 
 EXIT_CODES = {
     "usage": 2,
@@ -30,7 +26,7 @@ EXIT_CODES = {
 }
 
 
-def exit_code_for(error: APIError) -> int:
+def exit_code_for(error: MCVError) -> int:
     if isinstance(error, UsageError | ConfigurationError):
         return EXIT_CODES["usage"]
     if isinstance(error, AuthenticationRequired):
@@ -53,7 +49,7 @@ def exit_code_for(error: APIError) -> int:
     return EXIT_CODES["upstream"]
 
 
-class UsageError(APIError):
+class UsageError(MCVError):
     def __init__(self, message: str) -> None:
         super().__init__(message, code="usage", retryable=False)
 
@@ -74,25 +70,22 @@ class ReferenceCourseMismatchError(ValidationError):
         )
 
 
-def as_cli_error(error: Exception) -> APIError:
+def as_cli_error(error: Exception) -> MCVError:
     """Keep unexpected exceptions outside the expected CLI error protocol."""
 
-    if isinstance(error, APIError):
+    if isinstance(error, MCVError):
         return error
     return UpstreamError(str(error) or type(error).__name__)
 
 
 __all__ = [
     "AmbiguousError",
-    "APIError",
     "AuthenticationError",
     "AuthenticationRequired",
     "CacheError",
     "ConfigurationError",
     "DownloadError",
     "EXIT_CODES",
-    "InvalidRefError",
-    "MCVError",
     "NotFoundError",
     "ParseError",
     "ReferenceCourseMismatchError",

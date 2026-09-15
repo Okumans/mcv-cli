@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from mcv_api.core.errors import APIError
+from mcv_api.core.errors import MCVError
 from mcv_api.core.types import JsonValue
 
 
-class RuntimeError(APIError):
+class RuntimeError(MCVError):
     """An expected failure in local application runtime services."""
 
 

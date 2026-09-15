@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from mcv_api.core.errors import APIError
+from mcv_api.core.errors import MCVError
 
 from .auth import AuthManager
 from .cache import CacheStore
@@ -17,7 +17,7 @@ def active_cache() -> CacheStore | None:
     try:
         manager = AuthManager(settings=settings, output=lambda _message: None)
         profile = manager.profile()
-    except APIError:
+    except MCVError:
         return None
     except Exception:
         return None

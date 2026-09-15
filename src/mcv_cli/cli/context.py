@@ -5,7 +5,7 @@ from typing import TypedDict, TypeVar, cast
 
 import typer
 from mcv_api import MCVAPI
-from mcv_api.core.errors import APIError
+from mcv_api.core.errors import InvalidReferenceError, MCVError
 from mcv_api.core.refs import ResourceRef, ResourceType, ref_for_resource
 from mcv_api.core.resource import AddressableResource
 from mcv_api.resources.courses.models import Course
@@ -19,7 +19,6 @@ from ..runtime.cache_access import active_cache
 from ..runtime.config import Settings
 from ..runtime.progress import ProgressReporter
 from .errors import (
-    InvalidRefError,
     ReferenceCourseMismatchError,
     UnsupportedResourceError,
     UsageError,
@@ -38,7 +37,6 @@ class CLIContextState(TypedDict, total=False):
     jsonl: bool
     envelope: bool
     quiet: bool
-    semester: str
     semesters: tuple[str, ...]
     all_semesters: bool
     progress: ProgressReporter
@@ -78,8 +76,7 @@ def selected_semesters(ctx: typer.Context) -> tuple[str, ...]:
     value = object_for(ctx).get("semesters")
     if isinstance(value, (list, tuple)):
         return tuple(item for item in value if isinstance(item, str) and item)
-    legacy = object_for(ctx).get("semester")
-    return (legacy,) if isinstance(legacy, str) and legacy else ()
+    return ()
 
 
 def all_semester_scope(ctx: typer.Context) -> bool:
@@ -178,7 +175,7 @@ def cache_namespace(manager: AuthManager | None = None) -> CacheStore:
     manager = manager or make_manager()
     try:
         profile = manager.profile()
-    except APIError:
+    except MCVError:
         profile = None
     provider = profile.provider if profile is not None else None
     return CacheStore(
@@ -216,7 +213,7 @@ def run(
     display_mode: DisplayMode = "collection",
 ) -> None:
     result: _RunResult | None = None
-    caught_error: APIError | None = None
+    caught_error: MCVError | None = None
     with ProgressReporter(progress_enabled(ctx)) as progress:
         object_for(ctx)["progress"] = progress
         try:
@@ -247,7 +244,7 @@ def parse_resource_ref(value: str) -> ResourceRef:
     try:
         return ResourceRef.parse(value)
     except ValueError as error:
-        raise InvalidRefError(str(error), reference=value) from error
+        raise InvalidReferenceError(str(error), reference=value) from error
 
 
 def course_id(api: MCVAPI, reference: str, *, semester: str | None = None) -> int:
@@ -268,7 +265,7 @@ def resource_item_id_for_course(
     if reference.cv_cid != cv_cid:
         raise ReferenceCourseMismatchError(value, cv_cid, reference.cv_cid)
     if reference.item_id is None:
-        raise InvalidRefError(
+        raise InvalidReferenceError(
             f"{resource_type.value} references require an item id.",
             reference=value,
         )

@@ -278,8 +278,8 @@ With `--jsonl --envelope`, address fields below the wrapper instead:
 
 The versioned envelope is also the explicit discriminator for mixed JSONL
 batch records: successful lines have `{"ok": true, "data": ...}` and failed
-lines have `{"ok": false, "error": ...}`. Bare JSON and JSONL keep their
-convenient resource/error shapes for compatibility.
+lines have `{"ok": false, "error": ...}`. Bare JSON and JSONL use the direct
+resource/error shapes.
 
 ### Field projection
 
@@ -479,8 +479,8 @@ uv run mcv courses "$MCV_COURSE" materials show mcv:material:86428:2160993
 ```
 
 The course-scoped form accepts raw item ids or canonical resource refs. The
-reference must belong to the selected course. Legacy reference spellings are
-rejected; use the canonical `mcv:material:<cv_cid>:<item_id>` form.
+reference must belong to the selected course. Non-canonical reference spellings
+are rejected; use the canonical `mcv:material:<cv_cid>:<item_id>` form.
 
 ### Download one material
 
@@ -868,9 +868,8 @@ Addressable domain models (`Material`, `Assignment`, `Announcement`,
 values to machine records without changing `model_dump()` or the raw upstream
 field names.
 
-The public Python exception contract uses `MCVError` as the canonical name for
-its exception hierarchy; `APIError` remains a compatibility alias. Expected
-failures include `AuthenticationRequired`, `AuthenticationError`,
+The public Python exception contract uses `MCVError` as the base name for its
+exception hierarchy. Expected failures include `AuthenticationRequired`, `AuthenticationError`,
 `InvalidReferenceError`, `UnsupportedResourceError`, `NotFoundError`,
 `AmbiguousError`, `TransportError`, `ParseError`, `DownloadError`, and
 `SearchUnavailableError`. Callers can inspect `code`, `message`, `resource`, `operation`, `retryable`, and

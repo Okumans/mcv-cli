@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
-from typing import TypeVar, cast
+from collections.abc import Iterable
+from typing import cast
 
 import typer
-from mcv_api.core.errors import APIError, NotFoundError
+from mcv_api.core.errors import MCVError, NotFoundError
 from mcv_api.core.refs import ResourceType
 from mcv_api.core.types import JsonValue
-from mcv_api.facade import MCVAPI
 from mcv_api.resources.courses.models import Course
 
 from ...runtime.cache_access import active_cache
@@ -29,8 +28,6 @@ from ..context import (
     selected_semester,
 )
 from ..errors import UsageError
-
-_DetailResult = TypeVar("_DetailResult")
 
 
 def register(app: typer.Typer) -> None:
@@ -137,7 +134,7 @@ def _refresh_cache(
     if cache is None:
         raise CacheError("Log in before refreshing the local cache.", operation="refresh")
 
-    with _make_refresh_api() as api:
+    with make_api(cache_store=None) as api:
         discovered = api.courses.list(semester=semester, all_semesters=all_semesters)
         courses = (
             _unique_courses(discovered)
@@ -182,11 +179,11 @@ def _refresh_cache(
         refreshed: list[CacheRefreshItemPayload] = []
         for course in courses:
             try:
-                folders = _call_with_detail(api.materials.folders, course.cv_cid)
+                folders = api.materials.folders(course.cv_cid, detail=True)
                 materials = [material for folder in folders for material in folder.materials]
-                assignments = _call_with_detail(api.assignments.list, course.cv_cid)
-                announcements = _call_with_detail(api.announcements.list, course.cv_cid)
-                meetings = _call_with_detail(api.meetings.list, course.cv_cid)
+                assignments = api.assignments.list(course.cv_cid, detail=True)
+                announcements = api.announcements.list(course.cv_cid, detail=True)
+                meetings = api.meetings.list(course.cv_cid, detail=True)
                 playlists = api.playlists.list(course.cv_cid)
                 if search_only:
                     schedule = None
@@ -246,7 +243,7 @@ def _refresh_cache(
                         "groups": len(groups),
                     }
                 )
-            except APIError as error:
+            except MCVError as error:
                 failures.append(
                     {
                         "course": course.course_no or str(course.cv_cid),
@@ -265,27 +262,6 @@ def _refresh_cache(
             )
         cache.mark_refresh()
         return {"refreshed": refreshed, "failed": [], "count": len(refreshed)}
-
-
-def _make_refresh_api() -> MCVAPI:
-    try:
-        return make_api(cache_store=None)
-    except TypeError as error:
-        # Keep command-level test doubles and third-party wrappers that still
-        # expose the old zero-argument factory usable during the transition.
-        if "cache_store" not in str(error):
-            raise
-        return make_api()
-
-
-def _call_with_detail(method: Callable[..., _DetailResult], cv_cid: int) -> _DetailResult:
-    try:
-        return method(cv_cid, detail=True)
-    except TypeError as error:
-        if "detail" not in str(error):
-            raise
-        return method(cv_cid)
-
 
 def _select_courses(courses: list[Course], references: list[str]) -> list[Course]:
     selected: list[Course] = []

@@ -35,3 +35,10 @@ def test_importing_api_does_not_load_cli_or_rich() -> None:
         text=True,
     )
     assert probe.returncode == 0, probe.stderr
+
+
+def test_mcv_error_is_the_only_public_base_error_name() -> None:
+    import mcv_api
+
+    assert issubclass(mcv_api.AuthenticationError, mcv_api.MCVError)
+    assert not hasattr(mcv_api, "APIError")

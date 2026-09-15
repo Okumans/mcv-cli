@@ -7,7 +7,7 @@ import sys
 from collections.abc import Mapping
 from typing import Literal, cast
 
-from mcv_api.core.errors import APIError
+from mcv_api.core.errors import MCVError
 from pydantic import BaseModel
 from rich import box
 from rich.console import Console, RenderableType
@@ -48,7 +48,7 @@ def emit(
 
 
 def emit_error(
-    error: APIError,
+    error: MCVError,
     *,
     json_mode: bool,
     jsonl_mode: bool = False,

@@ -16,7 +16,6 @@ from .core.dates import (
 )
 from .core.errors import (
     AmbiguousError,
-    APIError,
     AuthenticationError,
     AuthenticationRequired,
     DownloadError,
@@ -40,7 +39,6 @@ __all__ = [
     "AmbiguousError",
     "AddressableResource",
     "AggregateClients",
-    "APIError",
     "AuthenticationError",
     "AuthenticationRequired",
     "COURSEVILLE_TIMEZONE",

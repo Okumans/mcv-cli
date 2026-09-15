@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 import typer
-from mcv_api.core.errors import APIError
+from mcv_api.core.errors import MCVError
 from mcv_api.core.refs import ResourceRef, ResourceType
 from mcv_api.core.resource import Resource
 from mcv_api.facade import MCVAPI
@@ -76,18 +76,18 @@ def _get_resources(
         run(ctx, action, display_mode="detail")
         return
 
-    parsed: list[ResourceRef | APIError] = []
+    parsed: list[ResourceRef | MCVError] = []
     for raw_reference in references:
         try:
             parsed.append(_parse_reference(raw_reference, expected_type))
-        except APIError as error:
+        except MCVError as error:
             parsed.append(error)
     valid = [item for item in parsed if isinstance(item, ResourceRef)]
-    failures: list[APIError] = []
+    failures: list[MCVError] = []
     with ProgressReporter(progress_enabled(ctx)) as progress:
         task = progress.add_task("Fetching resources", total=len(parsed))
         api: MCVAPI | None = None
-        api_error: APIError | None = None
+        api_error: MCVError | None = None
         if valid:
             try:
                 api = make_api()
@@ -96,11 +96,11 @@ def _get_resources(
         try:
             for item in parsed:
                 try:
-                    if isinstance(item, APIError):
+                    if isinstance(item, MCVError):
                         failures.append(item)
                         _emit_error_line(item, envelope=envelope_mode(ctx))
                     elif api is None:
-                        error = api_error or APIError(
+                        error = api_error or MCVError(
                             "Unable to create the MyCourseVille API client."
                         )
                         failures.append(error)
@@ -124,7 +124,7 @@ def _get_resources(
         raise typer.Exit(max(exit_code_for(error) for error in failures))
 
 
-def _emit_error_line(error: APIError, *, envelope: bool) -> None:
+def _emit_error_line(error: MCVError, *, envelope: bool) -> None:
     print(
         json.dumps(
             machine_error_payload(error, envelope=envelope),

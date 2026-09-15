@@ -55,9 +55,9 @@ def status(ctx: typer.Context) -> None:
         try:
             manager.check_session()
         except Exception as error:
-            from mcv_api.core.errors import APIError
+            from mcv_api.core.errors import MCVError
 
-            if isinstance(error, APIError) and error.code in {
+            if isinstance(error, MCVError) and error.code in {
                 "not_authenticated",
                 "authentication_failed",
             }:

@@ -8,7 +8,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Literal, Protocol, TypedDict, overload
 
-from mcv_api.core.errors import APIError, InvalidReferenceError
+from mcv_api.core.errors import InvalidReferenceError, MCVError
 from mcv_api.core.refs import ResourceRef
 from mcv_api.core.resource import AddressableResource
 from mcv_api.core.types import ErrorPayload, JsonArray, JsonObject, JsonValue
@@ -126,7 +126,7 @@ def machine_envelope(value: object) -> MachineEnvelope:
 
 
 def machine_error_payload(
-    error: APIError, *, envelope: bool
+    error: MCVError, *, envelope: bool
 ) -> ErrorPayload | MachineErrorEnvelope:
     payload = error.as_dict()
     return (

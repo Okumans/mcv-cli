@@ -10,7 +10,7 @@ from __future__ import annotations
 from .types import ErrorPayload, JsonValue
 
 
-class APIError(Exception):
+class MCVError(Exception):
     """An expected failure while talking to or parsing MyCourseVille."""
 
     def __init__(
@@ -44,7 +44,7 @@ class APIError(Exception):
         return value
 
 
-class ValidationError(APIError):
+class ValidationError(MCVError):
     """The caller supplied a value that cannot be used by the API."""
 
     def __init__(
@@ -96,7 +96,7 @@ class UnsupportedResourceError(ValidationError):
         )
 
 
-class TransportError(APIError):
+class TransportError(MCVError):
     """The HTTP transport failed before a usable upstream response arrived."""
 
     def __init__(
@@ -118,7 +118,7 @@ class TransportError(APIError):
         )
 
 
-class AuthenticationRequired(APIError):
+class AuthenticationRequired(MCVError):
     def __init__(
         self,
         message: str = "Run mcv auth login first.",
@@ -134,7 +134,7 @@ class AuthenticationRequired(APIError):
         )
 
 
-class AuthenticationError(APIError):
+class AuthenticationError(MCVError):
     def __init__(
         self,
         message: str,
@@ -152,7 +152,7 @@ class AuthenticationError(APIError):
         )
 
 
-class UpstreamError(APIError):
+class UpstreamError(MCVError):
     def __init__(
         self,
         message: str,
@@ -172,7 +172,7 @@ class UpstreamError(APIError):
         )
 
 
-class ParseError(APIError):
+class ParseError(MCVError):
     def __init__(
         self,
         message: str,
@@ -191,7 +191,7 @@ class ParseError(APIError):
         )
 
 
-class NotFoundError(APIError):
+class NotFoundError(MCVError):
     def __init__(
         self,
         message: str,
@@ -210,7 +210,7 @@ class NotFoundError(APIError):
         )
 
 
-class AmbiguousError(APIError):
+class AmbiguousError(MCVError):
     def __init__(
         self,
         message: str,
@@ -229,7 +229,7 @@ class AmbiguousError(APIError):
         )
 
 
-class DownloadError(APIError):
+class DownloadError(MCVError):
     def __init__(
         self,
         message: str,
@@ -257,6 +257,3 @@ class SearchUnavailableError(ValidationError):
             resource="search",
             operation="search",
         )
-
-
-MCVError = APIError

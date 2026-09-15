@@ -3,7 +3,7 @@
 Before creating a GitHub Release:
 
 - run the locked quality checks and the authenticated CLI/API live suite;
-- inspect migration, both package builds, isolated API/CLI wheel-install, and
+- inspect cache-schema handling, both package builds, isolated API/CLI wheel-install, and
   Git URL checks;
 - review `RELEASE_NOTES.md`, `SECURITY.md`, CI setup, fixture refresh, and
   account-rotation documentation;

@@ -188,8 +188,7 @@ def deactivate(config_dir: Path | None = None) -> CompletionState:
 
 def ensure_state(config_dir: Path | None = None) -> CompletionState:
     state = read_state(config_dir)
-    # There is deliberately no legacy-profile lookup here.  The marker is a
-    # clean-break activation contract for the current release; an absent
+    # The marker is the activation contract for the current release; an absent
     # marker means completion is disabled until the next successful login.
     return state if state is not None else _disabled_state()
 

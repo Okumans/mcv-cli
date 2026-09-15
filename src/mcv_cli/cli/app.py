@@ -98,8 +98,7 @@ class CourseAwareGroup(TyperGroup):
             if target is not None and any(value in {"--help", "-h"} for value in resource_args):
                 self._show_route_help(ctx, target, resource, action)
             if target is None:
-                # Unknown/missing actions intentionally remain invalid; the
-                # demo grammar no longer routes legacy flat aliases.
+                # Unknown or missing actions intentionally remain invalid.
                 args = [resource, course, *resource_args]
             else:
                 args = [target, course, *(resource_args if direct_search else resource_args[1:])]
@@ -214,7 +213,6 @@ def main(
         jsonl=jsonl_output,
         envelope=envelope,
         quiet=quiet,
-        semester=semester[0] if len(semester) == 1 else None,
         semesters=tuple(semester),
         all_semesters=all_semesters,
     )

@@ -9,7 +9,6 @@ from .dates import (
 )
 from .errors import (
     AmbiguousError,
-    APIError,
     AuthenticationError,
     AuthenticationRequired,
     DownloadError,
@@ -26,7 +25,6 @@ from .refs import ResourceRef, ResourceType, ref_for_resource
 from .resource import AddressableResource, Resource
 
 __all__ = [
-    "APIError",
     "AmbiguousError",
     "AddressableResource",
     "AuthenticationError",
