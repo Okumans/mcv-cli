@@ -13,6 +13,14 @@ import sys
 
 _FAST_COMPLETION = bool(os.environ.get("_MCV_COMPLETE"))
 
+if _FAST_COMPLETION:
+    TYPE_CHECKING = False
+else:
+    from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
 _VERSION = 1
 _DEFAULT_PROFILE = "default"
 _DEFAULT_PROVIDER = "chula"
@@ -138,16 +146,16 @@ def _set_private_directory(path: PathValue) -> None:
         os.chmod(path, 0o700)
 
 
-def state_path(config_dir: PathValue | None = None) -> PathValue:
+def state_path(config_dir: PathValue | None = None) -> Path:
     path = os.path.join(os.fspath(_config_root(config_dir)), "completion-state.json")
-    return _as_path(path)
+    return _as_path(path)  # type: ignore[reportReturnType]
 
 
 def cache_path(
     state: CompletionState,
     *,
     cache_dir: PathValue | None = None,
-) -> PathValue:
+) -> Path:
     profile = _component(state.profile)
     provider = _component(state.provider)
     path = os.path.join(
@@ -157,7 +165,7 @@ def cache_path(
         provider,
         "completion.sqlite3",
     )
-    return _as_path(path)
+    return _as_path(path)  # type: ignore[reportReturnType]
 
 
 def _component(value: str) -> str:
@@ -305,7 +313,7 @@ def ensure_state(config_dir: PathValue | None = None) -> CompletionState:
     return state if state is not None else _disabled_state()
 
 
-def active_cache_path() -> PathValue | None:
+def active_cache_path() -> Path | None:
     state = ensure_state()
     if not state.enabled:
         return None

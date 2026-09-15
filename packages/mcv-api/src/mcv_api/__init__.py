@@ -5,9 +5,39 @@ symbols retain their historical top-level imports through ``__getattr__``.
 """
 
 from importlib import import_module
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 __version__ = "0.6.1"
+
+if TYPE_CHECKING:
+    from .aggregates import AggregateClients, StatusSnapshot
+    from .core.dates import (
+        COURSEVILLE_TIMEZONE,
+        combine_courseville_datetime,
+        parse_courseville_date,
+        parse_courseville_datetime,
+        parse_courseville_time,
+    )
+    from .core.errors import (
+        AmbiguousError,
+        AuthenticationError,
+        AuthenticationRequired,
+        DownloadError,
+        InvalidReferenceError,
+        MCVError,
+        NotFoundError,
+        ParseError,
+        SearchUnavailableError,
+        TransportError,
+        UnsupportedResourceError,
+        UpstreamError,
+        ValidationError,
+    )
+    from .core.refs import ResourceRef, ResourceType, ref_for_resource
+    from .core.resource import AddressableResource, Resource
+    from .facade import MCVAPI
+    from .protocols import LocalStore, SessionProvider
+    from .search import SearchClient, SearchDocument, SearchResult, SearchService
 
 _LAZY_EXPORTS: Final[dict[str, tuple[str, str]]] = {
     "AggregateClients": (".aggregates", "AggregateClients"),

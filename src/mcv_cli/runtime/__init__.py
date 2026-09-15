@@ -5,6 +5,19 @@ this package initializer light is important because shell completion imports
 small runtime modules before the normal authentication and storage stack.
 """
 
+import os
+
+if os.environ.get("_MCV_COMPLETE"):
+    TYPE_CHECKING = False
+else:
+    from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .auth import AuthManager
+    from .config import Settings
+    from .models import AuthProvider, StoredProfile
+    from .storage import CredentialStore
+
 __all__ = [
     "AuthManager",
     "AuthProvider",
