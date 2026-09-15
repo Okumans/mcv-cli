@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import sqlite3
 from collections.abc import Collection, Iterable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
+from mcv_api.core.filesystem import set_private_directory, set_private_file
 from mcv_api.core.refs import ResourceRef, ResourceType, ref_for_resource
 from mcv_api.core.resource import AddressableResource
 from mcv_api.core.types import JsonObject, SQLiteValue
@@ -25,6 +25,7 @@ from platformdirs import user_cache_dir
 
 from .config import DEFAULT_PROFILE
 from .errors import CacheSchemaError
+from .filesystem import sqlite_read_only_uri
 from .models import (
     AuthProvider,
     CacheCompletionPayload,
@@ -286,7 +287,7 @@ class CacheStore:
 
     def _connect(self, *, read_only: bool = False) -> sqlite3.Connection:
         if read_only:
-            uri = f"file:{self.path.as_posix()}?mode=ro"
+            uri = sqlite_read_only_uri(self.path)
             connection = sqlite3.connect(uri, uri=True, timeout=0.1)
         else:
             self._ensure_parent()
@@ -313,7 +314,7 @@ class CacheStore:
         )
         for directory in directories:
             try:
-                os.chmod(directory, 0o700)
+                set_private_directory(directory)
             except OSError:
                 pass
 
@@ -411,7 +412,7 @@ class CacheStore:
             raise
         if self.path.exists():
             try:
-                os.chmod(self.path, 0o600)
+                set_private_file(self.path)
             except OSError:
                 pass
         return connection

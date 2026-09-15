@@ -9,6 +9,13 @@ the API and CLI wheels together, verifies the `mcv` entry point and optional
 `fzf` extra, and runs installed-package integration checks for CLI smoke
 behavior, shell completion, and fuzzy search.
 
+The `windows-quality` job runs the same Python-version matrix on
+`windows-latest`. It exercises the non-live suite, builds native Windows
+distributions, verifies the `mcv.exe` and `fzf.exe` entry points, and runs the
+installed-package integration checks through PowerShell. The authenticated
+live suite remains on Ubuntu because its protected terminal harness uses POSIX
+pseudo-terminals.
+
 For non-pull-request events, CI also installs both distributions from the Git
 URL at the checked-out commit. This catches broken `#subdirectory` metadata for
 the standalone API package and the root CLI package.

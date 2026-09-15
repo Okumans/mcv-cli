@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 import stat
 from pathlib import Path
@@ -97,8 +98,9 @@ def test_cache_isolated_by_profile_and_provider(tmp_path: Path) -> None:
     assert chula.candidates("courses")[0]["value"] == "2110575"
     assert platform.status()["exists"] is False
     assert other_user.status()["exists"] is False
-    assert stat.S_IMODE(chula.path.stat().st_mode) == 0o600
-    assert stat.S_IMODE(chula.path.parent.stat().st_mode) == 0o700
+    if os.name != "nt":
+        assert stat.S_IMODE(chula.path.stat().st_mode) == 0o600
+        assert stat.S_IMODE(chula.path.parent.stat().st_mode) == 0o700
 
 
 def test_cache_indexes_completion_values_without_resource_content(tmp_path: Path) -> None:

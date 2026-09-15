@@ -116,7 +116,7 @@ class CourseAwareGroup(TyperGroup):
 
 
 app = typer.Typer(
-    help="Access MyCourseVille from a Unix command line.",
+    help="Access MyCourseVille from the command line.",
     no_args_is_help=False,
     invoke_without_command=True,
     context_settings=_HELP_CONTEXT_SETTINGS,

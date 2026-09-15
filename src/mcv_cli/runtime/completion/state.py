@@ -14,6 +14,9 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from mcv_api.core.filesystem import set_private_directory, set_private_fd, set_private_file
+from platformdirs import user_cache_dir, user_config_dir
+
 _VERSION = 1
 _DEFAULT_PROFILE = "default"
 _DEFAULT_PROVIDER = "platform"
@@ -37,7 +40,7 @@ def _config_root(config_dir: Path | None = None) -> Path:
     xdg_root = os.environ.get("XDG_CONFIG_HOME")
     if xdg_root:
         return Path(xdg_root) / "mcv"
-    return Path.home() / ".config" / "mcv"
+    return Path(user_config_dir("mcv"))
 
 
 def _cache_root(cache_dir: Path | None = None) -> Path:
@@ -49,7 +52,7 @@ def _cache_root(cache_dir: Path | None = None) -> Path:
     xdg_root = os.environ.get("XDG_CACHE_HOME")
     if xdg_root:
         return Path(xdg_root) / "mcv"
-    return Path.home() / ".cache" / "mcv"
+    return Path(user_cache_dir("mcv"))
 
 
 def state_path(config_dir: Path | None = None) -> Path:
@@ -122,7 +125,7 @@ def write_state(state: CompletionState, config_dir: Path | None = None) -> None:
 
     path = state_path(config_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
-    os.chmod(path.parent, 0o700)
+    set_private_directory(path.parent)
     payload = {
         "version": _VERSION,
         "enabled": state.enabled,
@@ -137,13 +140,13 @@ def write_state(state: CompletionState, config_dir: Path | None = None) -> None:
     )
     temporary_path = Path(temporary_name)
     try:
-        os.fchmod(fd, 0o600)
+        set_private_fd(fd)
         with os.fdopen(fd, "w", encoding="utf-8") as temporary_file:
             json.dump(payload, temporary_file, separators=(",", ":"))
             temporary_file.flush()
             os.fsync(temporary_file.fileno())
         os.replace(temporary_path, path)
-        os.chmod(path, 0o600)
+        set_private_file(path)
     except Exception:
         try:
             os.close(fd)

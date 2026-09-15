@@ -10,6 +10,8 @@ from pathlib import Path
 
 from mcv_api.core.types import SQLiteValue
 
+from ..filesystem import sqlite_read_only_uri
+
 _CACHE_SCHEMA_VERSION = 3
 _SAFE_COMPONENT = re.compile(r"[^A-Za-z0-9_.-]+")
 
@@ -65,7 +67,7 @@ class CompletionIndex:
         self.path = path
 
     def _connect(self) -> sqlite3.Connection:
-        uri = f"file:{self.path.as_posix()}?mode=ro"
+        uri = sqlite_read_only_uri(self.path)
         connection = sqlite3.connect(uri, uri=True, timeout=0.1)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA busy_timeout = 1000")

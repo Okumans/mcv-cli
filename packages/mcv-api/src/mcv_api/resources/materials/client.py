@@ -14,6 +14,7 @@ import httpx
 
 from ...core.constants import BASE_URL
 from ...core.errors import AuthenticationRequired, DownloadError, NotFoundError
+from ...core.filesystem import set_private_fd, set_private_file
 from ...core.parsing import html_from_response
 from ...core.progress import ProgressLike
 from ...core.transport import MCVTransport
@@ -112,13 +113,13 @@ class MaterialsClient(ResourceClient):
             fd, temporary_name = tempfile.mkstemp(
                 prefix=f".{output.name}.", suffix=".part", dir=output.parent
             )
-            os.fchmod(fd, 0o600)
+            set_private_fd(fd)
             temporary_path = Path(temporary_name)
             with os.fdopen(fd, "wb") as destination:
                 total = self._download_url(material.filepath, destination, digest)
             os.replace(temporary_path, output)
             temporary_path = None
-            os.chmod(output, 0o600)
+            set_private_file(output)
             return DownloadResult(path=str(output), bytes=total, sha256=digest.hexdigest())
         except (AuthenticationRequired, DownloadError):
             raise
@@ -220,7 +221,7 @@ class MaterialsClient(ResourceClient):
                 raise DownloadError(f'Material folder "{selected.name}" has no downloadable files.')
             os.replace(temporary_path, output)
             temporary_path = None
-            os.chmod(output, 0o600)
+            set_private_file(output)
             return ArchiveResult(
                 path=str(output),
                 format=resolved_format,

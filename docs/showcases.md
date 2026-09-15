@@ -218,7 +218,7 @@ output keeps those strings plain. `--refresh` fetches the relevant course
 scope first and then executes the same local search. Use `--exact` to match a
 complete query phrase literally and disable fuzzy matching.
 
-## 4. Output contracts for Unix tools
+## 4. Output contracts for command-line tools
 
 The CLI has five useful output styles:
 

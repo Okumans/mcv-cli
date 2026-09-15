@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import stat
 
 import pytest
@@ -16,8 +17,9 @@ def test_encrypted_file_round_trip_does_not_expose_secrets(file_store, profile) 
     assert "session-cookie" not in raw
     assert "session-key" not in raw
     assert file_store.load() == profile
-    assert stat.S_IMODE(file_store.file_path.stat().st_mode) == 0o600
-    assert stat.S_IMODE(file_store.file_path.parent.stat().st_mode) == 0o700
+    if os.name != "nt":
+        assert stat.S_IMODE(file_store.file_path.stat().st_mode) == 0o600
+        assert stat.S_IMODE(file_store.file_path.parent.stat().st_mode) == 0o700
 
 
 def test_encrypted_file_rejects_wrong_passphrase(file_store, profile, tmp_path) -> None:

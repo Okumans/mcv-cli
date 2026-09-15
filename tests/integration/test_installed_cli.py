@@ -36,7 +36,7 @@ def installed_cli(tmp_path: Path) -> InstalledCLI:
     python = Path(python_value)
     fzf = Path(fzf_value)
     for path in (executable, python, fzf):
-        if not path.is_file() or not os.access(path, os.X_OK):
+        if not path.is_file() or (os.name != "nt" and not os.access(path, os.X_OK)):
             pytest.fail(f"integration executable is not runnable: {path}")
 
     config_dir = tmp_path / "config"

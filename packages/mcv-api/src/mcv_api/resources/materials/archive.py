@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 from ...core.errors import DownloadError
 from .models import ArchiveFormat, Material
+
+_INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+_WINDOWS_RESERVED_NAMES = frozenset(
+    {"con", "prn", "aux", "nul"}
+    | {f"com{index}" for index in range(1, 10)}
+    | {f"lpt{index}" for index in range(1, 10)}
+)
 
 
 def resolve_archive_format(output: Path, requested: str | None) -> ArchiveFormat:
@@ -24,7 +32,7 @@ def resolve_archive_format(output: Path, requested: str | None) -> ArchiveFormat
 
 def archive_filename(material: Material) -> str:
     if material.filepath:
-        name = _safe_basename(Path(unquote(urlparse(material.filepath).path)).name)
+        name = _safe_basename(unquote(urlparse(material.filepath).path))
         if name:
             return name
     return f"{material.itemid}.bin"
@@ -39,7 +47,7 @@ def default_archive_path(folder_name: str, requested: ArchiveFormat | None) -> P
 
 
 def unique_archive_name(name: str, used_names: set[str]) -> str:
-    safe_name = Path(name).name or "material.bin"
+    safe_name = _safe_basename(name) or "material.bin"
     if safe_name not in used_names:
         used_names.add(safe_name)
         return safe_name
@@ -53,8 +61,16 @@ def unique_archive_name(name: str, used_names: set[str]) -> str:
 
 
 def _safe_basename(value: str) -> str:
-    name = Path(value).name
-    return "" if name in {"", ".", ".."} else name
+    name = value.replace("\\", "/").rsplit("/", 1)[-1]
+    if name in {"", ".", ".."}:
+        return ""
+    name = _INVALID_FILENAME_CHARS.sub("_", name).rstrip(" .")
+    if not name:
+        return ""
+    device_name = name.partition(".")[0].casefold()
+    if device_name in _WINDOWS_RESERVED_NAMES:
+        name = f"_{name}"
+    return name
 
 
 __all__ = [

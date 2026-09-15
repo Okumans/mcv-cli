@@ -13,6 +13,7 @@ import keyring
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
+from mcv_api.core.filesystem import set_private_directory, set_private_fd, set_private_file
 from platformdirs import user_config_dir
 
 from .config import DEFAULT_PROFILE, STORE_SERVICE, Settings
@@ -122,7 +123,7 @@ class CredentialStore:
     def _save_file(self, serialized: str) -> None:
         passphrase = self._get_passphrase()
         self.file_path.parent.mkdir(parents=True, exist_ok=True)
-        os.chmod(self.file_path.parent, 0o700)
+        set_private_directory(self.file_path.parent)
         salt = secrets.token_bytes(self._SALT_SIZE)
         nonce = secrets.token_bytes(self._NONCE_SIZE)
         ciphertext = AESGCM(self._derive_key(passphrase, salt)).encrypt(
@@ -140,13 +141,13 @@ class CredentialStore:
         )
         temporary_path = Path(temporary_name)
         try:
-            os.fchmod(fd, 0o600)
+            set_private_fd(fd)
             with os.fdopen(fd, "w", encoding="utf-8") as temporary_file:
                 json.dump(envelope, temporary_file, separators=(",", ":"))
                 temporary_file.flush()
                 os.fsync(temporary_file.fileno())
             os.replace(temporary_path, self.file_path)
-            os.chmod(self.file_path, 0o600)
+            set_private_file(self.file_path)
         except Exception:
             try:
                 os.close(fd)

@@ -124,9 +124,92 @@ jobs:
             "$repository_url"
           "$tool_bin/mcv" --version
 
+  windows-quality:
+    name: Windows (Python ${{ matrix.python-version }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: latest
+
+      - name: Install locked dependencies
+        run: uv sync --locked
+
+      - name: Run Windows-compatible tests
+        run: uv run pytest -q --ignore=tests/live
+
+      - name: Check formatting and lint
+        run: uv run ruff check .
+
+      - name: Reject explicit Any in production source
+        run: python scripts/check_no_explicit_any.py
+
+      - name: Type check
+        run: uv run pyright
+
+      - name: Build CLI and API packages
+        run: |
+          uv build
+          uv build --package mcv-api
+
+      - name: Install API wheel by itself
+        shell: pwsh
+        run: |
+          $apiWheel = (Get-ChildItem dist\mcv_api-*.whl | Select-Object -First 1).FullName
+          if (-not $apiWheel) { throw "API wheel was not built" }
+          $apiEnv = Join-Path $env:RUNNER_TEMP "mcv-api-wheel-${{ matrix.python-version }}"
+          python -m venv $apiEnv
+          $apiPython = Join-Path $apiEnv "Scripts\python.exe"
+          uv pip install --python $apiPython $apiWheel
+          & $apiPython -c "import importlib.util; import mcv_api; from mcv_api import MCVAPI, SessionProvider; assert mcv_api.__version__ == '0.6.0'; assert MCVAPI is not None and SessionProvider is not None; assert importlib.util.find_spec('typer') is None; assert importlib.util.find_spec('rich') is None; assert importlib.util.find_spec('mcv_cli') is None"
+
+      - name: Install CLI and API wheels in an isolated environment
+        shell: pwsh
+        run: |
+          $apiWheel = (Get-ChildItem dist\mcv_api-*.whl | Select-Object -First 1).FullName
+          $cliWheel = (Get-ChildItem dist\mcv_cli-*.whl | Select-Object -First 1).FullName
+          if (-not $apiWheel -or -not $cliWheel) { throw "CLI or API wheel was not built" }
+          $wheelEnv = Join-Path $env:RUNNER_TEMP "mcv-wheel-${{ matrix.python-version }}"
+          python -m venv $wheelEnv
+          $wheelPython = Join-Path $wheelEnv "Scripts\python.exe"
+          uv pip install --python $wheelPython $apiWheel $cliWheel
+          $mcv = Join-Path $wheelEnv "Scripts\mcv.exe"
+          & $mcv --version
+          & $mcv --help | Out-Null
+
+      - name: Run installed-package integration checks
+        shell: pwsh
+        run: |
+          $apiWheel = (Get-ChildItem dist\mcv_api-*.whl | Select-Object -First 1).FullName
+          $cliWheel = (Get-ChildItem dist\mcv_cli-*.whl | Select-Object -First 1).FullName
+          $wheelEnv = Join-Path $env:RUNNER_TEMP "mcv-wheel-${{ matrix.python-version }}"
+          $wheelPython = Join-Path $wheelEnv "Scripts\python.exe"
+          uv pip install --python $wheelPython $apiWheel "$($cliWheel)[fzf]"
+          $mcv = Join-Path $wheelEnv "Scripts\mcv.exe"
+          $fzf = Join-Path $wheelEnv "Scripts\fzf.exe"
+          if (-not (Test-Path $fzf)) { throw "fzf.exe was not installed" }
+          $env:PATH = "$(Split-Path $fzf);$env:PATH"
+          $env:MCV_INTEGRATION_MCV = $mcv
+          $env:MCV_INTEGRATION_PYTHON = $wheelPython
+          $env:MCV_INTEGRATION_FZF = $fzf
+          uv run pytest -q -m integration tests/integration
+
   live-e2e:
     name: authenticated CLI/API live suite
-    needs: quality
+    needs: [quality, windows-quality]
     if: >-
       github.event_name != 'pull_request' &&
       (
@@ -204,7 +287,7 @@ jobs:
 
   release-gate:
     name: release gate
-    needs: [quality, live-e2e]
+    needs: [quality, windows-quality, live-e2e]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:

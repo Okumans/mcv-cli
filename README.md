@@ -5,7 +5,7 @@ time, wrestling with its interface, or simply wishing you could use a
 terminal?
 
 `mcv` is a small, unofficial command-line client for reading and organizing
-MyCourseVille course content from Unix systems.
+MyCourseVille course content on Linux, macOS, and Windows.
 
 Its basic workflow is:
 
@@ -44,6 +44,15 @@ uv tool install \
 mcv --version
 ```
 
+On Windows, run the same installation from PowerShell. `uv` creates the
+native `mcv.exe` entry point:
+
+```powershell
+uv tool install --with "git+https://github.com/Okumans/mcv-cli.git#subdirectory=packages/mcv-api" "git+https://github.com/Okumans/mcv-cli.git"
+mcv --version
+mcv --install-completion powershell
+```
+
 Install only the API in an application environment:
 
 ```bash
@@ -61,7 +70,8 @@ cd mcv-cli
 uv tool install --editable .
 ```
 
-For fuzzy search, add `--with fzf-bin` to the CLI command above.
+For fuzzy search, add `--with fzf-bin` to the CLI command above. The optional
+extra provides `fzf.exe` on supported Windows architectures.
 
 ## Authentication
 

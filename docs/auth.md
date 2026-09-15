@@ -38,6 +38,11 @@ If no keyring backend is available, the session is stored in an AES-GCM
 encrypted local file. Set `MCV_STORAGE_PASSPHRASE` when that fallback must be
 used non-interactively.
 
+On Windows, the default credential and cache locations use the operating
+system's per-user application directories. The Windows keyring is preferred
+when available; the encrypted file fallback remains available for headless or
+explicitly configured environments.
+
 Treat the stored session as a bearer-like credential. Do not share the keyring,
 credential file, passphrase, or cache directory with untrusted users.
 
