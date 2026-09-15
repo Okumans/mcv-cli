@@ -36,7 +36,9 @@ jobs:
         run: uv sync --locked
 
       - name: Run tests with coverage
-        run: uv run pytest -q --cov=mcv_cli --cov-report=term-missing --cov-fail-under=80
+        run: >-
+          uv run pytest -q --cov=mcv_cli --cov=mcv_api
+          --cov-report=term-missing --cov-fail-under=80
 
       - name: Check formatting and lint
         run: uv run ruff check .
@@ -50,33 +52,77 @@ jobs:
       - name: Audit dependencies
         run: uv run pip-audit
 
-      - name: Build package
-        run: uv build
+      - name: Build CLI and API packages
+        run: |
+          uv build
+          uv build --package mcv-api
 
-      - name: Install wheel in an isolated environment
+      - name: Install API wheel by itself
         shell: bash
         run: |
-          wheel_path="$(find dist -maxdepth 1 -type f -name '*.whl' -print -quit)"
-          test -n "$wheel_path"
+          api_wheel="$(find dist -maxdepth 1 -type f -name 'mcv_api-*.whl' -print -quit)"
+          test -n "$api_wheel"
+          api_env="$RUNNER_TEMP/mcv-api-wheel-${{ matrix.python-version }}"
+          python -m venv "$api_env"
+          uv pip install --python "$api_env/bin/python" "$api_wheel"
+          "$api_env/bin/python" -c '
+          import importlib.util
+          import mcv_api
+          from mcv_api import MCVAPI, SessionProvider
+          assert mcv_api.__version__ == "0.6.0"
+          assert MCVAPI is not None and SessionProvider is not None
+          assert importlib.util.find_spec("typer") is None
+          assert importlib.util.find_spec("rich") is None
+          assert importlib.util.find_spec("mcv_cli") is None
+          '
+
+      - name: Install CLI and API wheels in an isolated environment
+        shell: bash
+        run: |
+          api_wheel="$(find dist -maxdepth 1 -type f -name 'mcv_api-*.whl' -print -quit)"
+          cli_wheel="$(find dist -maxdepth 1 -type f -name 'mcv_cli-*.whl' -print -quit)"
+          test -n "$api_wheel"
+          test -n "$cli_wheel"
           wheel_env="$RUNNER_TEMP/mcv-wheel-${{ matrix.python-version }}"
           python -m venv "$wheel_env"
-          uv pip install --python "$wheel_env/bin/python" "$wheel_path"
+          uv pip install --python "$wheel_env/bin/python" "$api_wheel" "$cli_wheel"
           "$wheel_env/bin/mcv" --version
           "$wheel_env/bin/mcv" --help >/dev/null
 
       - name: Run installed-package integration checks
         shell: bash
         run: |
-          wheel_path="$(find dist -maxdepth 1 -type f -name '*.whl' -print -quit)"
-          test -n "$wheel_path"
+          api_wheel="$(find dist -maxdepth 1 -type f -name 'mcv_api-*.whl' -print -quit)"
+          cli_wheel="$(find dist -maxdepth 1 -type f -name 'mcv_cli-*.whl' -print -quit)"
+          test -n "$api_wheel"
+          test -n "$cli_wheel"
           wheel_env="$RUNNER_TEMP/mcv-wheel-${{ matrix.python-version }}"
-          uv pip install --python "$wheel_env/bin/python" "$wheel_path[fzf]"
+          uv pip install --python "$wheel_env/bin/python" "$api_wheel" "$cli_wheel[fzf]"
           test -x "$wheel_env/bin/fzf"
           PATH="$wheel_env/bin:$PATH" \
             MCV_INTEGRATION_MCV="$wheel_env/bin/mcv" \
             MCV_INTEGRATION_PYTHON="$wheel_env/bin/python" \
             MCV_INTEGRATION_FZF="$wheel_env/bin/fzf" \
             uv run pytest -q -m integration tests/integration
+
+      - name: Install from Git URLs
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          repository_url="git+https://github.com/${GITHUB_REPOSITORY}.git@${GITHUB_SHA}"
+          api_git_url="${repository_url}#subdirectory=packages/mcv-api"
+          api_git_env="$RUNNER_TEMP/mcv-api-git-${{ matrix.python-version }}"
+          python -m venv "$api_git_env"
+          uv pip install --python "$api_git_env/bin/python" "$api_git_url"
+          "$api_git_env/bin/python" -c 'from mcv_api import MCVAPI; assert MCVAPI'
+
+          tool_dir="$RUNNER_TEMP/mcv-tools-${{ matrix.python-version }}"
+          tool_bin="$RUNNER_TEMP/mcv-tool-bin-${{ matrix.python-version }}"
+          mkdir -p "$tool_dir" "$tool_bin"
+          UV_TOOL_DIR="$tool_dir" UV_TOOL_BIN_DIR="$tool_bin" uv tool install \
+            --with "mcv-api @ ${api_git_url}" \
+            "$repository_url"
+          "$tool_bin/mcv" --version
 
   live-e2e:
     name: authenticated CLI/API live suite
