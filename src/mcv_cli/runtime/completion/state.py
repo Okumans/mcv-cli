@@ -19,7 +19,7 @@ from platformdirs import user_cache_dir, user_config_dir
 
 _VERSION = 1
 _DEFAULT_PROFILE = "default"
-_DEFAULT_PROVIDER = "platform"
+_DEFAULT_PROVIDER = "chula"
 _SAFE_COMPONENT = re.compile(r"[^A-Za-z0-9_.-]+")
 
 
@@ -91,8 +91,8 @@ def _parse_state(payload: object) -> CompletionState:
     provider = payload.get("provider")
     if not isinstance(profile, str) or not profile:
         raise ValueError("completion state profile is invalid")
-    if not isinstance(provider, str) or not provider:
-        raise ValueError("completion state provider is invalid")
+    if provider != _DEFAULT_PROVIDER:
+        raise ValueError("completion state provider is unsupported")
     return CompletionState(
         version=_VERSION,
         enabled=bool(payload.get("enabled", False)),
@@ -162,6 +162,8 @@ def activate(
     provider: str,
     config_dir: Path | None = None,
 ) -> CompletionState:
+    if provider != _DEFAULT_PROVIDER:
+        raise ValueError("completion state provider is unsupported")
     state = CompletionState(
         version=_VERSION,
         enabled=True,

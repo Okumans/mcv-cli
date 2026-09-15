@@ -9,13 +9,7 @@ the client.
 Log in with a Chula account:
 
 ```bash
-mcv auth login --type chula
-```
-
-For a MyCourseVille platform account:
-
-```bash
-mcv auth login --type platform --email
+mcv auth login
 ```
 
 The login command prompts for the password. Passwords are not accepted as
@@ -58,12 +52,6 @@ For isolated automation:
 
 These settings are useful for ephemeral CI jobs and live checks. Do not point
 them at a shared credential directory when rotating accounts.
-
-## Authentication boundary
-
-This credential-based MVP does not implement Google login or require a
-MyCourseVille OAuth client. Browser OAuth and the public mobile API are outside
-the current authentication boundary.
 
 The reusable `mcv-api` package has no login flow or credential storage. It
 accepts an injected session-cookie provider; see the [Python API

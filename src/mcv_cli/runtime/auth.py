@@ -5,14 +5,12 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from html.parser import HTMLParser
-from typing import Literal
 from urllib.parse import urljoin, urlparse
 
 import httpx
 from mcv_api.core.constants import (
     BASE_URL,
     CHULA_LOGIN_URL,
-    PLATFORM_LOGIN_URL,
     PUBLIC_AUTHORIZATION_URL,
     PUBLIC_CLIENT_ID,
     PUBLIC_REDIRECT_URI,
@@ -23,25 +21,20 @@ from mcv_api.core.types import JsonObject
 from .. import __version__
 from .completion.state import activate, deactivate
 from .config import Settings
-from .errors import ConfigurationError
 from .models import AuthProvider, StoredProfile
 from .storage import CredentialStore
 
-LoginField = Literal["name", "email"]
 _REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 _MYCOURSEVILLE_HOSTS = {"mycourseville.com", "www.mycourseville.com"}
 
 
-def build_public_authorization_url(provider: AuthProvider) -> str:
+def build_public_authorization_url() -> str:
     params = {
         "response_type": "code",
         "client_id": PUBLIC_CLIENT_ID,
         "redirect_uri": PUBLIC_REDIRECT_URI,
+        "login_page": "itchula",
     }
-    if provider is AuthProvider.CHULA:
-        params["login_page"] = "itchula"
-    elif provider is AuthProvider.GOOGLE:
-        params["login_page"] = "google"
     return str(httpx.URL(PUBLIC_AUTHORIZATION_URL, params=params))
 
 
@@ -166,20 +159,10 @@ class AuthManager:
 
     def login(
         self,
-        provider: AuthProvider,
         *,
         username: str,
         password: str,
-        login_field: LoginField = "name",
     ) -> StoredProfile:
-        selected = provider
-        if selected is AuthProvider.GOOGLE:
-            raise ConfigurationError(
-                "Google login is not supported by the cookie-login MVP. "
-                "It requires a browser OAuth flow and an approved MyCourseVille client."
-            )
-        if selected is AuthProvider.CHULA and login_field != "name":
-            raise ConfigurationError("--email is only supported with platform login.")
         if not username.strip():
             raise AuthenticationError("The MyCourseVille username cannot be empty.")
         if not password:
@@ -193,14 +176,9 @@ class AuthManager:
                 "User-Agent": f"mcv-cli/{__version__}",
             },
         ) as client:
-            form = self._load_login_form(client, selected)
+            form = self._load_login_form(client)
             form_data = dict(form.hidden_fields)
-            if selected is AuthProvider.CHULA:
-                form_data.update({"username": username, "password": password})
-            else:
-                form_data.update(
-                    {"loginfield": login_field, "name": username, "password": password}
-                )
+            form_data.update({"username": username, "password": password})
             response = client.post(
                 form.action,
                 data=form_data,
@@ -230,7 +208,7 @@ class AuthManager:
             raise AuthenticationError(
                 "MyCourseVille did not return an authenticated session cookie."
             )
-        profile = StoredProfile(provider=selected, cookies=cookies)
+        profile = StoredProfile(provider=AuthProvider.CHULA, cookies=cookies)
         self.store.save(profile)
         self._activate_completion(profile)
         return profile
@@ -278,9 +256,9 @@ class AuthManager:
             # marker cannot be written.
             pass
 
-    def _load_login_form(self, client: httpx.Client, provider: AuthProvider) -> LoginForm:
+    def _load_login_form(self, client: httpx.Client) -> LoginForm:
         response = client.get(
-            build_public_authorization_url(provider),
+            build_public_authorization_url(),
             follow_redirects=False,
             headers={"Accept": "text/html"},
         )
@@ -289,8 +267,7 @@ class AuthManager:
             raise _authentication_http_error("MyCourseVille did not open its login page", response)
         parser = _LoginPageParser()
         parser.feed(response.text)
-        expected_url = CHULA_LOGIN_URL if provider is AuthProvider.CHULA else PLATFORM_LOGIN_URL
-        expected_path = urlparse(expected_url).path
+        expected_path = urlparse(CHULA_LOGIN_URL).path
         for form in parser.forms:
             action = urljoin(str(response.url), form.action)
             if urlparse(action).path == expected_path:

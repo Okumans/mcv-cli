@@ -561,11 +561,11 @@ def test_each_resource_has_human_display(resource, marker: str) -> None:
 def test_human_mapping_display_is_not_json() -> None:
     console = Console(record=True)
 
-    emit({"authenticated": True, "provider": "chula"}, json_mode=False, console=console)
+    emit({"authenticated": True}, json_mode=False, console=console)
 
     rendered = console.export_text()
     assert "authenticated" in rendered
-    assert "provider" in rendered
+    assert "provider" not in rendered
     assert "{" not in rendered
 
 

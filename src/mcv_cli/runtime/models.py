@@ -8,27 +8,23 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class AuthProvider(StrEnum):
-    PLATFORM = "platform"
     CHULA = "chula"
-    GOOGLE = "google"
 
 
 class StoredProfile(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     version: int = 2
-    provider: AuthProvider = AuthProvider.PLATFORM
+    provider: AuthProvider = AuthProvider.CHULA
     cookies: dict[str, str] = Field(default_factory=dict, repr=False)
 
 
 class AuthLoginPayload(TypedDict):
     authenticated: bool
-    provider: str
 
 
 class AuthStatusPayload(TypedDict, total=False):
     authenticated: bool
-    provider: str
     session_expired: bool
 
 

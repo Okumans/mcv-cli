@@ -220,7 +220,6 @@ jobs:
       )
     runs-on: ubuntu-latest
     env:
-      MCV_E2E_PROVIDER: ${{ secrets.MCV_E2E_PROVIDER }}
       MCV_E2E_USERNAME: ${{ secrets.MCV_E2E_USERNAME }}
       MCV_E2E_PASSWORD: ${{ secrets.MCV_E2E_PASSWORD }}
       MCV_STORAGE_PASSPHRASE: ${{ secrets.MCV_STORAGE_PASSPHRASE }}
@@ -272,9 +271,8 @@ jobs:
           test -n "$MCV_E2E_PASSWORD"
           test -n "$MCV_E2E_SEMESTER"
           test -n "$MCV_E2E_PRIMARY_COURSE"
-          provider="${MCV_E2E_PROVIDER:-chula}"
           printf '%s\n' "$MCV_E2E_PASSWORD" | uv run mcv auth login \
-            --type "$provider" --username "$MCV_E2E_USERNAME" --password-stdin
+            --username "$MCV_E2E_USERNAME" --password-stdin
           uv run mcv auth status
 
       - name: Run authenticated read-only CLI/API matrix

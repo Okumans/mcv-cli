@@ -26,20 +26,7 @@ Login is interactive and stores the authenticated session cookies, not the
 raw password:
 
 ```bash
-uv run mcv auth login --type chula
-```
-
-Other supported credential login forms are:
-
-```bash
-uv run mcv auth login --type platform --email
-```
-
-Google is intentionally rejected in this MVP because it requires a browser
-OAuth flow and an approved client registration:
-
-```bash
-uv run mcv auth login --type google
+uv run mcv auth login
 ```
 
 Session commands:
@@ -1031,7 +1018,6 @@ uv run mcv --json get mcv:assignment:86428:2160997 | jq '{resource_type, ref, ti
 | Meeting join | May record attendance; deliberately not called |
 | Assignment submission/upload | State-changing and outside the student read-only scope |
 | Course/material/group edits | State-changing and not implemented |
-| Google login | Requires browser OAuth/client registration |
 
 ## 21. Error and safety behavior
 

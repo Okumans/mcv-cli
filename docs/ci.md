@@ -24,7 +24,6 @@ The `live-e2e` job runs only on protected default-branch pushes, `v*` tags,
 the daily schedule, and manual dispatch. Configure these protected secrets:
 
 ```text
-MCV_E2E_PROVIDER
 MCV_E2E_USERNAME
 MCV_E2E_PASSWORD
 MCV_STORAGE_PASSPHRASE

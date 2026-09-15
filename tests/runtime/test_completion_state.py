@@ -56,13 +56,13 @@ def test_activation_writes_only_non_secret_state_and_selects_cache_namespace(
 def test_logout_disables_completion_without_changing_namespace(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("MCV_CONFIG_DIR", str(tmp_path / "config"))
     monkeypatch.setenv("MCV_CACHE_DIR", str(tmp_path / "cache"))
-    activate(profile_name="alice", provider="platform")
+    activate(profile_name="alice", provider="chula")
 
     state = deactivate()
 
     assert state.enabled is False
     assert state.profile == "alice"
-    assert state.provider == "platform"
+    assert state.provider == "chula"
     assert active_cache_path() is None
 
 

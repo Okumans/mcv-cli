@@ -85,18 +85,15 @@ def test_future_cache_schema_is_rejected_without_overwriting_it(tmp_path: Path) 
         ).fetchone() == ("999",)
     connection.close()
 
-def test_cache_isolated_by_profile_and_provider(tmp_path: Path) -> None:
+def test_cache_isolated_by_profile(tmp_path: Path) -> None:
     chula = CacheStore(profile_name="alice", provider="chula", root=tmp_path)
-    platform = CacheStore(profile_name="alice", provider="platform", root=tmp_path)
     other_user = CacheStore(profile_name="bob", provider="chula", root=tmp_path)
 
-    assert chula.path != platform.path
     assert chula.path != other_user.path
 
     chula.upsert_courses([Course(cv_cid=86428, course_no="2110575", title="IoT")])
 
     assert chula.candidates("courses")[0]["value"] == "2110575"
-    assert platform.status()["exists"] is False
     assert other_user.status()["exists"] is False
     if os.name != "nt":
         assert stat.S_IMODE(chula.path.stat().st_mode) == 0o600

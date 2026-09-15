@@ -52,17 +52,11 @@ _AUTH_COMMANDS = {
     "logout": "Log out",
 }
 _AUTH_OPTIONS = {
-    "--type": "Authentication provider",
     "--username": "Account username",
     "-u": "Account username",
-    "--email": "Use an email address",
     "--password-stdin": "Read the password from stdin",
     "--help": "Show help",
     "-h": "Show help",
-}
-_AUTH_PROVIDERS = {
-    "platform": "MyCourseVille platform account",
-    "chula": "Chula account",
 }
 
 _RESOURCE_COMMANDS = {
@@ -344,14 +338,6 @@ def _complete_auth(
         return _static(_AUTH_COMMANDS, incomplete)
     if route[0] != "login":
         return []
-    if _pending_value(route, "--type"):
-        return _static(_AUTH_PROVIDERS, incomplete)
-    if incomplete.startswith("--type="):
-        prefix = "--type="
-        return [
-            CompletionCandidate(prefix + item.value, item.help)
-            for item in _static(_AUTH_PROVIDERS, incomplete[len(prefix) :])
-        ]
     if incomplete.startswith("-") or not incomplete:
         return _static(_AUTH_OPTIONS, incomplete)
     return []

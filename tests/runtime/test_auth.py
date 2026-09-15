@@ -8,14 +8,12 @@ import respx
 from mcv_api.core.constants import (
     BASE_URL,
     CHULA_LOGIN_URL,
-    PLATFORM_LOGIN_URL,
     PUBLIC_AUTHORIZATION_URL,
 )
 from mcv_api.core.errors import AuthenticationError
 
 from mcv_cli.runtime.auth import AuthManager, build_public_authorization_url
 from mcv_cli.runtime.completion.state import read_state
-from mcv_cli.runtime.errors import ConfigurationError
 from mcv_cli.runtime.models import AuthProvider
 
 
@@ -31,14 +29,12 @@ def _form_page(action: str, token: str, field: str) -> str:
     """
 
 
-def test_public_authorization_url_uses_the_site_client_and_provider_hint() -> None:
-    platform_query = parse_qs(urlparse(build_public_authorization_url(AuthProvider.PLATFORM)).query)
-    chula_query = parse_qs(urlparse(build_public_authorization_url(AuthProvider.CHULA)).query)
+def test_public_authorization_url_targets_chula() -> None:
+    query = parse_qs(urlparse(build_public_authorization_url()).query)
 
-    assert platform_query["client_id"] == ["mycourseville.com"]
-    assert platform_query["redirect_uri"] == [BASE_URL]
-    assert "login_page" not in platform_query
-    assert chula_query["login_page"] == ["itchula"]
+    assert query["client_id"] == ["mycourseville.com"]
+    assert query["redirect_uri"] == [BASE_URL]
+    assert query["login_page"] == ["itchula"]
 
 
 @respx.mock
@@ -66,7 +62,6 @@ def test_chula_login_posts_credentials_and_persists_session(file_store) -> None:
 
     manager = AuthManager(store=file_store, settings=file_store.settings)
     profile = manager.login(
-        AuthProvider.CHULA,
         username="2300000000",
         password="secret-password",
     )
@@ -104,42 +99,6 @@ def test_session_check_repairs_completion_marker_for_existing_profile(file_store
 
 
 @respx.mock
-def test_platform_login_can_use_email_field(file_store) -> None:
-    respx.get(PUBLIC_AUTHORIZATION_URL).mock(
-        return_value=httpx.Response(302, headers={"location": PLATFORM_LOGIN_URL})
-    )
-    respx.get(PLATFORM_LOGIN_URL).mock(
-        return_value=httpx.Response(
-            200,
-            text=_form_page(PLATFORM_LOGIN_URL, "platform-csrf", "name"),
-            headers={"set-cookie": "laravel_session=initial; Path=/"},
-        )
-    )
-    login = respx.post(PLATFORM_LOGIN_URL).mock(
-        return_value=httpx.Response(
-            302,
-            headers={
-                "location": BASE_URL,
-                "set-cookie": "SESS_platform=session-key; Path=/",
-            },
-        )
-    )
-    respx.get(f"{BASE_URL}/").mock(return_value=httpx.Response(200, text="logout"))
-
-    manager = AuthManager(store=file_store, settings=file_store.settings)
-    manager.login(
-        AuthProvider.PLATFORM,
-        username="student@example.com",
-        password="secret-password",
-        login_field="email",
-    )
-
-    body = parse_qs(login.calls[0].request.content.decode("utf-8"))
-    assert body["loginfield"] == ["email"]
-    assert body["name"] == ["student@example.com"]
-
-
-@respx.mock
 def test_login_rejects_invalid_session(file_store) -> None:
     respx.get(PUBLIC_AUTHORIZATION_URL).mock(
         return_value=httpx.Response(302, headers={"location": CHULA_LOGIN_URL})
@@ -158,7 +117,7 @@ def test_login_rejects_invalid_session(file_store) -> None:
 
     manager = AuthManager(store=file_store, settings=file_store.settings)
     with pytest.raises(AuthenticationError, match="did not establish"):
-        manager.login(AuthProvider.CHULA, username="bad", password="bad")
+        manager.login(username="bad", password="bad")
 
     assert file_store.load() is None
 
@@ -183,20 +142,13 @@ def test_login_surfaces_server_message_for_bad_request(file_store) -> None:
 
     manager = AuthManager(store=file_store, settings=file_store.settings)
     with pytest.raises(AuthenticationError, match="The login form token is invalid") as caught:
-        manager.login(AuthProvider.CHULA, username="user", password="password")
+        manager.login(username="user", password="password")
 
     assert caught.value.details == {
         "status_code": 400,
         "endpoint": "/api/chulalogin",
         "server_message": "The login form token is invalid.",
     }
-
-
-def test_google_login_requires_oauth_registration(file_store) -> None:
-    manager = AuthManager(store=file_store, settings=file_store.settings)
-
-    with pytest.raises(ConfigurationError, match="Google login"):
-        manager.login(AuthProvider.GOOGLE, username="ignored", password="ignored")
 
 
 def test_logout_deletes_the_stored_profile(file_store, profile) -> None:

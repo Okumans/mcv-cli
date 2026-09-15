@@ -75,13 +75,10 @@ extra provides `fzf.exe` on supported Windows architectures.
 
 ## Authentication
 
-Log in with either account type:
+Log in with a Chula account:
 
 ```bash
-# Chula account
-mcv auth login --type chula
-# MyCourseVille platform account
-mcv auth login --type platform --email
+mcv auth login
 ```
 
 Passwords are requested interactively and never accepted as command-line

@@ -4,7 +4,6 @@ BASE_URL = "https://www.mycourseville.com"
 PUBLIC_AUTHORIZATION_URL = f"{BASE_URL}/api/oauth/authorize"
 PUBLIC_CLIENT_ID = "mycourseville.com"
 PUBLIC_REDIRECT_URI = BASE_URL
-PLATFORM_LOGIN_URL = f"{BASE_URL}/api/login"
 CHULA_LOGIN_URL = f"{BASE_URL}/api/chulalogin"
 API_PREFIX = "/api/v1/public"
 COURSE_HOME_URL = f"{BASE_URL}/?q=courseville"

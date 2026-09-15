@@ -51,14 +51,11 @@ If the user requests login, use the credential flow and never pass a password
 on the command line:
 
 ```bash
-mcv auth login --type chula
-mcv auth login --type platform
-mcv auth login --type platform --email
+mcv auth login
 ```
 
-Do not invent OAuth credentials or replace this browser-free flow with browser
-automation. If host execution is unavailable, report that boundary instead of
-treating a sandbox authentication result as authoritative.
+If host execution is unavailable, report that boundary instead of treating a
+sandbox authentication result as authoritative.
 
 ## Command grammar and course lookup
 

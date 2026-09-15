@@ -154,23 +154,23 @@ def test_status_all_selects_expanded_display(monkeypatch) -> None:
     assert "canonical references" in help_result.stdout
 
 
-def test_login_requires_the_type_option() -> None:
-    result = runner.invoke(app, ["auth", "login"])
+def test_login_has_no_provider_option() -> None:
+    result = runner.invoke(app, ["auth", "login", "--help"])
 
-    assert result.exit_code == 2
-    assert "Missing option '--type'" in result.output
+    assert result.exit_code == 0
+    assert "--type" not in result.output
+    assert "--email" not in result.output
 
 
 def test_login_can_read_password_from_stdin(monkeypatch) -> None:
-    from mcv_cli.runtime.models import AuthProvider, StoredProfile
+    from mcv_cli.runtime.models import StoredProfile
 
-    calls: list[tuple[AuthProvider, str, str]] = []
+    calls: list[tuple[str, str]] = []
 
     class FakeManager:
-        def login(self, provider, *, username, password, login_field="name"):
-            assert login_field == "name"
-            calls.append((provider, username, password))
-            return StoredProfile(provider=provider, cookies={"laravel_session": "test"})
+        def login(self, *, username, password):
+            calls.append((username, password))
+            return StoredProfile(cookies={"laravel_session": "test"})
 
     monkeypatch.setattr("mcv_cli.cli.commands.auth.make_manager", lambda: FakeManager())
 
@@ -180,8 +180,6 @@ def test_login_can_read_password_from_stdin(monkeypatch) -> None:
             "--json",
             "auth",
             "login",
-            "--type",
-            "chula",
             "--username",
             "student",
             "--password-stdin",
@@ -190,29 +188,16 @@ def test_login_can_read_password_from_stdin(monkeypatch) -> None:
     )
 
     assert result.exit_code == 0, result.output
-    assert calls == [(AuthProvider.CHULA, "student", "secret-password")]
+    assert calls == [("student", "secret-password")]
     assert "secret-password" not in result.output
+    assert '"provider"' not in result.output
 
 
-def test_login_shortcuts_are_removed() -> None:
-    result = runner.invoke(app, ["auth", "login", "--chula"])
+def test_login_rejects_removed_type_option() -> None:
+    result = runner.invoke(app, ["auth", "login", "--type", "chula"])
 
     assert result.exit_code == 2
     assert "No such option" in result.output
-
-
-def test_legacy_auth_provider_value_is_rejected() -> None:
-    result = runner.invoke(app, ["auth", "login", "--type", "mcv"])
-
-    assert result.exit_code == 2
-    assert "Invalid value for '--type'" in result.output
-
-
-def test_google_login_explains_missing_oauth_registration() -> None:
-    result = runner.invoke(app, ["auth", "login", "--type", "google"])
-
-    assert result.exit_code == 2
-    assert "approved MyCourseVille OAuth client" in result.output
 
 
 def test_courses_list_accepts_global_semester_selection() -> None:

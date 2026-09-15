@@ -7,8 +7,8 @@ When rotating it:
 
 - create and verify the replacement account before changing CI variables;
 - run host calibration and review the sanitized report;
-- update the protected username, provider, password, storage passphrase, and
-  fixture values together;
+- update the protected username, password, storage passphrase, and fixture
+  values together;
 - run the configured CLI/API matrix manually;
 - revoke the old session and remove its CI secret;
 - check the logs and artifacts for accidental credential exposure.

@@ -10,7 +10,7 @@ Authenticate the host first and verify the session without printing cookies:
 
 ```bash
 mcv auth status
-mcv auth login --type chula
+mcv auth login
 ```
 
 Run discovery with a temporary cache root:

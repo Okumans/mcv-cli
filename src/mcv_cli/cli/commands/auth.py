@@ -4,7 +4,7 @@ import sys
 
 import typer
 
-from ...runtime.models import AuthLoginPayload, AuthProvider, AuthStatusPayload, LogoutPayload
+from ...runtime.models import AuthLoginPayload, AuthStatusPayload, LogoutPayload
 from ..context import make_manager, run
 from ..errors import UsageError
 
@@ -17,13 +17,7 @@ def register(app: typer.Typer) -> None:
 
 def login(
     ctx: typer.Context,
-    provider: AuthProvider = typer.Option(
-        ..., "--type", case_sensitive=False, help="Account provider to use for login."
-    ),
     username: str | None = typer.Option(None, "--username", "-u"),
-    email: bool = typer.Option(
-        False, "--email", help="Treat the platform login value as an email address."
-    ),
     password_stdin: bool = typer.Option(
         False,
         "--password-stdin",
@@ -31,21 +25,11 @@ def login(
     ),
 ) -> None:
     def action() -> AuthLoginPayload:
-        selected = provider
-        if selected is AuthProvider.GOOGLE:
-            raise UsageError(
-                "Google login is unavailable without an approved MyCourseVille OAuth client. "
-                "Use --type chula or --type platform for the credential-based MVP."
-            )
-        if email and selected is AuthProvider.CHULA:
-            raise UsageError("--email is only supported with platform login.")
         manager = make_manager()
         username_value = (
             username
             or manager.settings.username
-            or typer.prompt(
-                "Chula username" if selected is AuthProvider.CHULA else "MyCourseVille username"
-            )
+            or typer.prompt("Chula username")
         )
         if password_stdin:
             password_value = sys.stdin.readline().rstrip("\r\n")
@@ -53,13 +37,11 @@ def login(
                 raise UsageError("--password-stdin received an empty password.")
         else:
             password_value = typer.prompt("MyCourseVille password", hide_input=True)
-        profile = manager.login(
-            selected,
+        manager.login(
             username=username_value,
             password=password_value,
-            login_field="email" if email else "name",
         )
-        return {"authenticated": True, "provider": profile.provider.value}
+        return {"authenticated": True}
 
     run(ctx, action)
 
@@ -81,11 +63,10 @@ def status(ctx: typer.Context) -> None:
             }:
                 return {
                     "authenticated": False,
-                    "provider": profile.provider.value,
                     "session_expired": True,
                 }
             raise
-        return {"authenticated": True, "provider": profile.provider.value}
+        return {"authenticated": True}
 
     run(ctx, action)
 
