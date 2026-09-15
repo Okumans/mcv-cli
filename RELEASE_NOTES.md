@@ -1,5 +1,20 @@
 # Release notes
 
+## 0.6.0
+
+This release splits the reusable client from the terminal application while
+keeping both distributions in this Git repository.
+
+- Added the standalone `mcv-api` distribution, installable from
+  `#subdirectory=packages/mcv-api`.
+- Moved the public Python namespace from `mcv_cli.api` to `mcv_api` without a
+  compatibility alias.
+- Kept `mcv-cli` as the CLI distribution and `mcv` entry point; it depends on
+  `mcv-api` and retains authentication storage, SQLite cache, presentation, and
+  terminal features.
+- Made `SessionProvider` and the optional `LocalStore` protocol public from
+  `mcv_api` so applications can inject authentication and caching policy.
+
 ## 0.5.0
 
 This release makes shell completion independent of the normal Typer command

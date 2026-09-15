@@ -2,9 +2,16 @@
 
 The `quality` job runs on pushes and pull requests. It tests Python 3.11,
 3.12, 3.13, and 3.14, enforces the coverage threshold, runs Ruff and Pyright,
-audits dependencies, builds the package, installs the wheel into an isolated
-environment, verifies the optional `fzf` extra, and runs installed-package
-integration checks for CLI smoke behavior, shell completion, and fuzzy search.
+audits dependencies, builds both repository distributions, and tests each wheel
+in an isolated environment. The API wheel is installed by itself to verify that
+`mcv_api` imports without CLI/runtime modules. A separate environment installs
+the API and CLI wheels together, verifies the `mcv` entry point and optional
+`fzf` extra, and runs installed-package integration checks for CLI smoke
+behavior, shell completion, and fuzzy search.
+
+For non-pull-request events, CI also installs both distributions from the Git
+URL at the checked-out commit. This catches broken `#subdirectory` metadata for
+the standalone API package and the root CLI package.
 
 The `live-e2e` job runs only on protected default-branch pushes, `v*` tags,
 the daily schedule, and manual dispatch. Configure these protected secrets:

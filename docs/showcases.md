@@ -798,7 +798,7 @@ authentication and storage are supplied by the caller; the API itself has no
 Typer, Rich, cache, completion, or terminal-output dependency:
 
 ```python
-from mcv_cli.api import MCVAPI
+from mcv_api import MCVAPI
 from mcv_cli.runtime.auth import AuthManager
 from mcv_cli.runtime.config import Settings
 
@@ -989,7 +989,7 @@ Pyright: 0 errors, 0 warnings
 
 No authenticated live result is asserted in this showcase. Account-specific
 course ids and content are selected by the two-pass host calibration described
-in [docs/live-e2e.md](docs/live-e2e.md). To run it after authenticating:
+in [live-e2e.md](live-e2e.md). To run it after authenticating:
 
 ```bash
 MCV_LIVE_E2E=1 \
