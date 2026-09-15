@@ -2,24 +2,50 @@
 
 from __future__ import annotations
 
-import re
+import os
 import sqlite3
 from collections.abc import Collection
-from dataclasses import dataclass
-from pathlib import Path
 
-from mcv_api.core.types import SQLiteValue
-
-from ..filesystem import sqlite_read_only_uri
+SQLiteValue = str | int | float | bytes | None
 
 _CACHE_SCHEMA_VERSION = 3
-_SAFE_COMPONENT = re.compile(r"[^A-Za-z0-9_.-]+")
 
 
-@dataclass(frozen=True)
+def _uri_quote(value: str) -> str:
+    safe = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789/-_.~:"
+    rendered: list[str] = []
+    for character in value:
+        if character in safe:
+            rendered.append(character)
+        else:
+            rendered.extend(f"%{byte:02X}" for byte in character.encode("utf-8"))
+    return "".join(rendered)
+
+
 class CompletionRecord:
+    __slots__ = ("value", "help")
     value: str
-    help: str | None = None
+    help: str | None
+
+    def __init__(self, value: str, help: str | None = None) -> None:
+        object.__setattr__(self, "value", value)
+        object.__setattr__(self, "help", help)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError(f"cannot assign to field {name!r}")
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            type(other) is CompletionRecord
+            and self.value == other.value
+            and self.help == other.help
+        )
+
+    def __hash__(self) -> int:
+        return hash((self.value, self.help))
+
+    def __repr__(self) -> str:
+        return f"CompletionRecord(value={self.value!r}, help={self.help!r})"
 
 
 def _normalized_semesters(values: Collection[str] | None) -> tuple[str, ...]:
@@ -63,11 +89,16 @@ def _semester_condition(
 class CompletionIndex:
     """Read completion labels without importing the normal cache service."""
 
-    def __init__(self, path: Path) -> None:
-        self.path = path
+    def __init__(self, path: os.PathLike[str] | str) -> None:
+        self.path = os.fspath(path)
 
     def _connect(self) -> sqlite3.Connection:
-        uri = sqlite_read_only_uri(self.path)
+        path = os.path.abspath(self.path)
+        if os.name == "nt":
+            path = path.replace("\\", "/")
+            if not path.startswith("/"):
+                path = "/" + path
+        uri = f"file://{_uri_quote(path)}?mode=ro"
         connection = sqlite3.connect(uri, uri=True, timeout=0.1)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA busy_timeout = 1000")

@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import os
-import re
 import shlex
 import sys
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 
 from . import (
     CompletionCandidate,
@@ -43,7 +41,6 @@ _TOP_LEVEL = {
     "search": "Search cached course content",
     "get": "Fetch resources by canonical reference",
     "status": "Show client status",
-    "today": "Show today’s schedule",
 }
 
 _AUTH_COMMANDS = {
@@ -76,6 +73,27 @@ _LIST_OPTIONS = {
     "-a": "Show expanded rows",
     "--help": "Show help",
     "-h": "Show help",
+}
+
+_OPTION_ALIAS_GROUPS = {
+    "-a": ("-a", "--all"),
+    "--all": ("-a", "--all"),
+    "-f": ("-f", "--folder"),
+    "--folder": ("-f", "--folder"),
+    "-h": ("-h", "--help"),
+    "--help": ("-h", "--help"),
+    "-o": ("-o", "--output"),
+    "--output": ("-o", "--output"),
+    "-q": ("-q", "--quiet"),
+    "--quiet": ("-q", "--quiet"),
+    "-r": ("-r", "--refs"),
+    "--refs": ("-r", "--refs"),
+    "-u": ("-u", "--username"),
+    "--username": ("-u", "--username"),
+    "-v": ("-v", "--version"),
+    "--version": ("-v", "--version"),
+    "-z": ("-z", "--fuzzy"),
+    "--fuzzy": ("-z", "--fuzzy"),
 }
 _SEARCH_OPTIONS = {
     "--courses": "Limit results to courses",
@@ -188,21 +206,56 @@ _COURSE_OPTIONS = {
 }
 
 
-@dataclass(frozen=True)
 class _CompletionContext:
-    args: tuple[str, ...] = ()
-    params: Mapping[str, object] | None = None
-    obj: Mapping[str, object] | None = None
-    parent: object | None = None
+    __slots__ = ("args", "params", "obj", "parent")
+    args: tuple[str, ...]
+    params: Mapping[str, object] | None
+    obj: Mapping[str, object] | None
+    parent: object | None
+
+    def __init__(
+        self,
+        args: tuple[str, ...] = (),
+        params: Mapping[str, object] | None = None,
+        obj: Mapping[str, object] | None = None,
+        parent: object | None = None,
+    ) -> None:
+        object.__setattr__(self, "args", args)
+        object.__setattr__(self, "params", params)
+        object.__setattr__(self, "obj", obj)
+        object.__setattr__(self, "parent", parent)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError(f"cannot assign to field {name!r}")
 
 
 def _static(values: Mapping[str, str], incomplete: str) -> list[CompletionCandidate]:
     prefix = incomplete.casefold()
-    return [
-        CompletionCandidate(value, help=help_text)
-        for value, help_text in values.items()
-        if value.casefold().startswith(prefix)
-    ]
+    result: list[CompletionCandidate] = []
+    seen: set[str] = set()
+    for value, help_text in values.items():
+        aliases = tuple(
+            alias
+            for alias in _OPTION_ALIAS_GROUPS.get(value, (value,))
+            if alias in values
+        )
+        canonical = next((alias for alias in aliases if alias.startswith("--")), value)
+        if canonical in seen or not any(
+            alias.casefold().startswith(prefix) for alias in aliases
+        ):
+            continue
+        seen.add(canonical)
+        if prefix.startswith("--"):
+            selected = canonical
+        else:
+            selected = next(
+                (alias for alias in aliases if not alias.startswith("--")), canonical
+            )
+        description = help_text
+        if len(aliases) > 1:
+            description = f"{', '.join(aliases)}: {help_text}"
+        result.append(CompletionCandidate(selected, help=description))
+    return result
 
 
 def _candidate(value: object) -> CompletionCandidate:
@@ -355,7 +408,9 @@ def _complete_resource_group(
     resource_type = _RESOURCE_COMMANDS[command]
     context = _CompletionContext(args=tuple(route), params=params)
     if subcommand == "show":
-        return _candidates(complete_refs_for(resource_type)(context, list(route), incomplete))
+        return _candidates(
+            complete_refs_for(resource_type)(context, list(route), incomplete)
+        )
     if subcommand == "search":
         if _pending_value(route, "--courses"):
             return _course_filter_values(params, route, incomplete)
@@ -378,7 +433,9 @@ def _complete_courses(
     if incomplete.startswith("--folder=") or incomplete.startswith("--grouping="):
         option, fragment = incomplete.split("=", 1)
         values = complete_course_group(context, fragment)
-        return [CompletionCandidate(f"{option}={item.value}", item.help) for item in values]
+        return [
+            CompletionCandidate(f"{option}={item.value}", item.help) for item in values
+        ]
     if len(route) >= 3 and (incomplete.startswith("-") or not incomplete):
         resource = route[1]
         action = route[2]
@@ -442,11 +499,15 @@ def _complete_command(
     if command == "search":
         return _complete_search(route, params, incomplete)
     if command == "status":
-        return _static({"--all": "Show expanded status", "-a": "Show expanded status"}, incomplete)
+        return _static(
+            {"--all": "Show expanded status", "-a": "Show expanded status"}, incomplete
+        )
     return []
 
 
-def complete_arguments(args: Sequence[str], incomplete: str) -> list[CompletionCandidate]:
+def complete_arguments(
+    args: Sequence[str], incomplete: str
+) -> list[CompletionCandidate]:
     """Return candidates for the parsed shell-completion position."""
 
     if args and args[-1] == "--semester":
@@ -485,9 +546,11 @@ def _format_zsh(candidates: Sequence[CompletionCandidate]) -> str:
     if not candidates:
         return "_files"
     values = ",".join(
-        f'"{_escape_zsh(item.value)}":"{_escape_zsh(item.help)}"'
-        if item.help
-        else f'"{_escape_zsh(item.value)}"'
+        (
+            f'"{_escape_zsh(item.value)}":"{_escape_zsh(item.help)}"'
+            if item.help
+            else f'"{_escape_zsh(item.value)}"'
+        )
         for item in candidates
     )
     return f"_arguments '*: :(({values}))'"
@@ -497,7 +560,9 @@ def _format_fish(candidates: Sequence[CompletionCandidate]) -> str:
     rendered: list[str] = []
     for item in candidates:
         if item.help:
-            help_text = re.sub(r"\s", " ", item.help)
+            help_text = "".join(
+                " " if character.isspace() else character for character in item.help
+            )
             rendered.append(f"{item.value}\t{help_text}")
         else:
             rendered.append(item.value)

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcv-api"
-version = "0.6.0"
+version = "0.6.1"
 description = "A reusable Python client for reading MyCourseVille content"
 readme = "README.md"
 requires-python = ">=3.11"

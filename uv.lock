@@ -734,7 +734,7 @@ wheels = [
 
 [[package]]
 name = "mcv-api"
-version = "0.6.0"
+version = "0.6.1"
 source = { editable = "packages/mcv-api" }
 dependencies = [
     { name = "beautifulsoup4" },
@@ -767,7 +767,7 @@ dev = [
 
 [[package]]
 name = "mcv-cli"
-version = "0.6.0"
+version = "0.6.1"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography" },

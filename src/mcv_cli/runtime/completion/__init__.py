@@ -2,31 +2,53 @@
 
 from __future__ import annotations
 
-import difflib
-import re
 from collections.abc import Callable, Collection, Mapping
-from dataclasses import dataclass
 
 from .index import CompletionIndex, CompletionRecord
 from .state import active_cache_path
 
-_COMPLETION_SPACE = re.compile(r"\s+")
-_COMPLETION_SEPARATOR = re.compile(r"[^\w]+", flags=re.UNICODE)
 _FUZZY_TOKEN_MIN_LENGTH = 3
 _FUZZY_TOKEN_THRESHOLD = 75.0
 _NO_MATCHING_COURSE = -1
 
 
-@dataclass(frozen=True)
 class CompletionCandidate:
+    __slots__ = ("value", "help")
     value: str
-    help: str | None = None
+    help: str | None
+
+    def __init__(self, value: str, help: str | None = None) -> None:
+        object.__setattr__(self, "value", value)
+        object.__setattr__(self, "help", help)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError(f"cannot assign to field {name!r}")
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            type(other) is CompletionCandidate
+            and self.value == other.value
+            and self.help == other.help
+        )
+
+    def __hash__(self) -> int:
+        return hash((self.value, self.help))
+
+    def __repr__(self) -> str:
+        return f"CompletionCandidate(value={self.value!r}, help={self.help!r})"
 
 
-@dataclass(frozen=True)
 class _CompletionScope:
-    semesters: tuple[str, ...] = ()
-    all_semesters: bool = False
+    __slots__ = ("semesters", "all_semesters")
+    semesters: tuple[str, ...]
+    all_semesters: bool
+
+    def __init__(self, semesters: tuple[str, ...] = (), all_semesters: bool = False) -> None:
+        object.__setattr__(self, "semesters", semesters)
+        object.__setattr__(self, "all_semesters", all_semesters)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError(f"cannot assign to field {name!r}")
 
 
 def _context_mapping(ctx: object) -> dict[str, object]:
@@ -146,8 +168,16 @@ def _active_index() -> CompletionIndex | None:
 
 
 def _normalize_completion_text(value: object) -> str:
-    text = _COMPLETION_SEPARATOR.sub(" ", str(value).casefold())
-    return _COMPLETION_SPACE.sub(" ", text).strip()
+    result: list[str] = []
+    separator = False
+    for character in str(value).casefold():
+        if character == "_" or character.isalnum():
+            result.append(character)
+            separator = False
+        elif not separator:
+            result.append(" ")
+            separator = True
+    return "".join(result).strip()
 
 
 def _fuzzy_token_match(query: str, candidate: str) -> bool:
@@ -155,6 +185,8 @@ def _fuzzy_token_match(query: str, candidate: str) -> bool:
         return False
     if query in candidate or candidate in query:
         return True
+    import difflib
+
     score = difflib.SequenceMatcher(None, query, candidate).ratio() * 100
     return score >= _FUZZY_TOKEN_THRESHOLD
 

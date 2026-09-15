@@ -1,5 +1,21 @@
 # Release notes
 
+## 0.6.1
+
+This patch release makes shell completion fast enough for interactive use.
+
+- Added the shared `mcv --completion` entry point without adding a separate
+  `mcv-completion` executable.
+- Changed Fish completion to make one completion request per Tab press.
+- Removed the normal API and runtime import graph from the completion hot path
+  and made public API exports lazy.
+- Replaced completion-only dataclass records with immutable, slotted value
+  classes while preserving their value semantics.
+- Merged short and long option aliases into one completion candidate, such as
+  `-a, --all`.
+- Added a shell completion latency regression test with a 100 ms limit and a
+  warning threshold at 67 ms.
+
 ## 0.6.0
 
 This release splits the reusable client from the terminal application while

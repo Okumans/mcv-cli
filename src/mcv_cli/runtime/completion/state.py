@@ -9,68 +9,173 @@ from __future__ import annotations
 
 import json
 import os
-import re
-import tempfile
-from dataclasses import dataclass
-from pathlib import Path
+import sys
 
-from mcv_api.core.filesystem import set_private_directory, set_private_fd, set_private_file
-from platformdirs import user_cache_dir, user_config_dir
+_FAST_COMPLETION = bool(os.environ.get("_MCV_COMPLETE"))
 
 _VERSION = 1
 _DEFAULT_PROFILE = "default"
 _DEFAULT_PROVIDER = "chula"
-_SAFE_COMPONENT = re.compile(r"[^A-Za-z0-9_.-]+")
+PathValue = str | os.PathLike[str]
 
 
-@dataclass(frozen=True)
 class CompletionState:
+    __slots__ = ("version", "enabled", "profile", "provider")
     version: int
     enabled: bool
     profile: str
     provider: str
 
+    def __init__(
+        self, version: int, enabled: bool, profile: str, provider: str
+    ) -> None:
+        object.__setattr__(self, "version", version)
+        object.__setattr__(self, "enabled", enabled)
+        object.__setattr__(self, "profile", profile)
+        object.__setattr__(self, "provider", provider)
 
-def _config_root(config_dir: Path | None = None) -> Path:
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError(f"cannot assign to field {name!r}")
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            type(other) is CompletionState
+            and self.version == other.version
+            and self.enabled == other.enabled
+            and self.profile == other.profile
+            and self.provider == other.provider
+        )
+
+    def __hash__(self) -> int:
+        return hash((self.version, self.enabled, self.profile, self.provider))
+
+    def __repr__(self) -> str:
+        return (
+            f"CompletionState(version={self.version!r}, enabled={self.enabled!r}, "
+            f"profile={self.profile!r}, provider={self.provider!r})"
+        )
+
+
+def _as_path(value: str) -> PathValue:
+    if _FAST_COMPLETION:
+        return value
+    from pathlib import Path
+
+    return Path(value)
+
+
+def _config_root(config_dir: PathValue | None = None) -> PathValue:
     if config_dir is not None:
-        return Path(config_dir)
+        root = os.fspath(config_dir)
+        return _as_path(root)
+
     configured = os.environ.get("MCV_CONFIG_DIR")
     if configured:
-        return Path(configured)
+        return _as_path(configured)
+
     xdg_root = os.environ.get("XDG_CONFIG_HOME")
     if xdg_root:
-        return Path(xdg_root) / "mcv"
-    return Path(user_config_dir("mcv"))
+        root = os.path.join(xdg_root, "mcv")
+        return _as_path(root)
+
+    if os.name == "nt":
+        root = os.environ.get("APPDATA") or os.path.join(
+            os.path.expanduser("~"), "AppData", "Roaming"
+        )
+    elif sys.platform == "darwin":
+        root = os.path.join(os.path.expanduser("~"), "Library", "Application Support")
+    else:
+        root = os.environ.get("XDG_CONFIG_HOME") or os.path.join(
+            os.path.expanduser("~"), ".config"
+        )
+
+    root = os.path.join(root, "mcv")
+    return _as_path(root)
 
 
-def _cache_root(cache_dir: Path | None = None) -> Path:
+def _cache_root(cache_dir: PathValue | None = None) -> PathValue:
     if cache_dir is not None:
-        return Path(cache_dir)
+        root = os.fspath(cache_dir)
+        return _as_path(root)
+
     configured = os.environ.get("MCV_CACHE_DIR")
     if configured:
-        return Path(configured)
+        return _as_path(configured)
+
     xdg_root = os.environ.get("XDG_CACHE_HOME")
     if xdg_root:
-        return Path(xdg_root) / "mcv"
-    return Path(user_cache_dir("mcv"))
+        root = os.path.join(xdg_root, "mcv")
+        return _as_path(root)
+
+    if os.name == "nt":
+        root = os.environ.get("LOCALAPPDATA") or os.path.join(
+            os.path.expanduser("~"), "AppData", "Local"
+        )
+    elif sys.platform == "darwin":
+        root = os.path.join(os.path.expanduser("~"), "Library", "Caches")
+    else:
+        root = os.environ.get("XDG_CACHE_HOME") or os.path.join(
+            os.path.expanduser("~"), ".cache"
+        )
+
+    root = os.path.join(root, "mcv")
+
+    return _as_path(root)
 
 
-def state_path(config_dir: Path | None = None) -> Path:
-    return _config_root(config_dir) / "completion-state.json"
+def _set_private_fd(file_descriptor: int) -> None:
+    if os.name != "nt":
+        os.fchmod(file_descriptor, 0o600)
+
+
+def _set_private_file(path: PathValue) -> None:
+    if os.name != "nt":
+        os.chmod(path, 0o600)
+
+
+def _set_private_directory(path: PathValue) -> None:
+    if os.name != "nt":
+        os.chmod(path, 0o700)
+
+
+def state_path(config_dir: PathValue | None = None) -> PathValue:
+    path = os.path.join(os.fspath(_config_root(config_dir)), "completion-state.json")
+    return _as_path(path)
 
 
 def cache_path(
     state: CompletionState,
     *,
-    cache_dir: Path | None = None,
-) -> Path:
+    cache_dir: PathValue | None = None,
+) -> PathValue:
     profile = _component(state.profile)
     provider = _component(state.provider)
-    return _cache_root(cache_dir) / "profiles" / profile / provider / "completion.sqlite3"
+    path = os.path.join(
+        os.fspath(_cache_root(cache_dir)),
+        "profiles",
+        profile,
+        provider,
+        "completion.sqlite3",
+    )
+    return _as_path(path)
 
 
 def _component(value: str) -> str:
-    return _SAFE_COMPONENT.sub("_", value).strip("._") or "unknown"
+    result: list[str] = []
+    invalid = False
+    for character in value:
+        if (
+            "a" <= character <= "z"
+            or "A" <= character <= "Z"
+            or "0" <= character <= "9"
+            or character in "_.-"
+        ):
+            result.append(character)
+            invalid = False
+        elif not invalid:
+            result.append("_")
+            invalid = True
+    return "".join(result).strip("._") or "unknown"
 
 
 def _disabled_state() -> CompletionState:
@@ -101,7 +206,7 @@ def _parse_state(payload: object) -> CompletionState:
     )
 
 
-def read_state(config_dir: Path | None = None) -> CompletionState | None:
+def read_state(config_dir: PathValue | None = None) -> CompletionState | None:
     """Read the marker without importing the normal runtime.
 
     A malformed marker fails closed and is retained as a disabled state.
@@ -109,7 +214,8 @@ def read_state(config_dir: Path | None = None) -> CompletionState | None:
 
     path = state_path(config_dir)
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        with open(os.fspath(path), encoding="utf-8") as state_file:
+            payload = json.load(state_file)
     except FileNotFoundError:
         return None
     except (OSError, ValueError, TypeError, json.JSONDecodeError):
@@ -120,12 +226,16 @@ def read_state(config_dir: Path | None = None) -> CompletionState | None:
         return _disabled_state()
 
 
-def write_state(state: CompletionState, config_dir: Path | None = None) -> None:
+def write_state(state: CompletionState, config_dir: PathValue | None = None) -> None:
     """Atomically persist the non-secret completion marker."""
 
+    import tempfile
+
     path = state_path(config_dir)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    set_private_directory(path.parent)
+    path_text = os.fspath(path)
+    parent = os.path.dirname(path_text) or "."
+    os.makedirs(parent, exist_ok=True)
+    _set_private_directory(parent)
     payload = {
         "version": _VERSION,
         "enabled": state.enabled,
@@ -135,24 +245,26 @@ def write_state(state: CompletionState, config_dir: Path | None = None) -> None:
     fd, temporary_name = tempfile.mkstemp(
         prefix=".completion-state.",
         suffix=".tmp",
-        dir=path.parent,
+        dir=parent,
         text=True,
     )
-    temporary_path = Path(temporary_name)
     try:
-        set_private_fd(fd)
+        _set_private_fd(fd)
         with os.fdopen(fd, "w", encoding="utf-8") as temporary_file:
             json.dump(payload, temporary_file, separators=(",", ":"))
             temporary_file.flush()
             os.fsync(temporary_file.fileno())
-        os.replace(temporary_path, path)
-        set_private_file(path)
+        os.replace(temporary_name, path_text)
+        _set_private_file(path_text)
     except Exception:
         try:
             os.close(fd)
         except OSError:
             pass
-        temporary_path.unlink(missing_ok=True)
+        try:
+            os.unlink(temporary_name)
+        except FileNotFoundError:
+            pass
         raise
 
 
@@ -160,7 +272,7 @@ def activate(
     *,
     profile_name: str = _DEFAULT_PROFILE,
     provider: str,
-    config_dir: Path | None = None,
+    config_dir: PathValue | None = None,
 ) -> CompletionState:
     if provider != _DEFAULT_PROVIDER:
         raise ValueError("completion state provider is unsupported")
@@ -174,7 +286,7 @@ def activate(
     return state
 
 
-def deactivate(config_dir: Path | None = None) -> CompletionState:
+def deactivate(config_dir: PathValue | None = None) -> CompletionState:
     previous = read_state(config_dir)
     state = CompletionState(
         version=_VERSION,
@@ -186,14 +298,14 @@ def deactivate(config_dir: Path | None = None) -> CompletionState:
     return state
 
 
-def ensure_state(config_dir: Path | None = None) -> CompletionState:
+def ensure_state(config_dir: PathValue | None = None) -> CompletionState:
     state = read_state(config_dir)
     # The marker is the activation contract for the current release; an absent
     # marker means completion is disabled until the next successful login.
     return state if state is not None else _disabled_state()
 
 
-def active_cache_path() -> Path | None:
+def active_cache_path() -> PathValue | None:
     state = ensure_state()
     if not state.enabled:
         return None
