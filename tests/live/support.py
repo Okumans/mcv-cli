@@ -11,17 +11,16 @@ from __future__ import annotations
 import errno
 import json
 import os
-import pty
 import select
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, cast
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from mcv_api import MCVAPI
@@ -496,13 +495,21 @@ class CLIAdapter:
 
     def _run_human(self, args: list[str]) -> str:
         command = [*self._command, "--quiet", *args]
-        master_fd, slave_fd = pty.openpty()
+        human_env = self._env.copy()
+        human_env["TERM"] = "xterm-256color"
+        human_env.pop("NO_COLOR", None)
+        try:
+            import pty
+        except ImportError:
+            return self._run_human_without_pty(command, human_env)
+        openpty = getattr(pty, "openpty", None)
+        if not callable(openpty):
+            return self._run_human_without_pty(command, human_env)
+        openpty_fn = cast(Callable[[], tuple[int, int]], openpty)
+        master_fd, slave_fd = openpty_fn()
         process: Any | None = None
         output = bytearray()
         try:
-            human_env = self._env.copy()
-            human_env["TERM"] = "xterm-256color"
-            human_env.pop("NO_COLOR", None)
             process = subprocess.Popen(
                 command,
                 stdin=subprocess.DEVNULL,
@@ -545,6 +552,22 @@ class CLIAdapter:
             error_text = stderr.decode("utf-8", errors="replace")
             raise LiveAdapterError("CLI human command", code=_cli_error_code(error_text))
         return bytes(output).decode("utf-8", errors="replace")
+
+    def _run_human_without_pty(self, command: list[str], env: dict[str, str]) -> str:
+        try:
+            result = subprocess.run(
+                command,
+                check=False,
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=self._timeout,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise LiveAdapterError("CLI human command", code=type(error).__name__) from error
+        if result.returncode != 0:
+            raise LiveAdapterError("CLI human command", code=_cli_error_code(result.stderr))
+        return result.stdout
 
 
     def download(self, fixture: CourseFixture, item_id: int, output: Path, semester: str) -> Any:
