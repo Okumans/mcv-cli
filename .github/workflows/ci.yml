@@ -69,7 +69,7 @@ jobs:
           import importlib.util
           import mcv_api
           from mcv_api import MCVAPI, SessionProvider
-          assert mcv_api.__version__ == "0.6.0"
+          assert mcv_api.__version__ == "0.6.1"
           assert MCVAPI is not None and SessionProvider is not None
           assert importlib.util.find_spec("typer") is None
           assert importlib.util.find_spec("rich") is None
@@ -174,7 +174,7 @@ jobs:
           python -m venv $apiEnv
           $apiPython = Join-Path $apiEnv "Scripts\python.exe"
           uv pip install --python $apiPython $apiWheel
-          & $apiPython -c "import importlib.util; import mcv_api; from mcv_api import MCVAPI, SessionProvider; assert mcv_api.__version__ == '0.6.0'; assert MCVAPI is not None and SessionProvider is not None; assert importlib.util.find_spec('typer') is None; assert importlib.util.find_spec('rich') is None; assert importlib.util.find_spec('mcv_cli') is None"
+          & $apiPython -c "import importlib.util; import mcv_api; from mcv_api import MCVAPI, SessionProvider; assert mcv_api.__version__ == '0.6.1'; assert MCVAPI is not None and SessionProvider is not None; assert importlib.util.find_spec('typer') is None; assert importlib.util.find_spec('rich') is None; assert importlib.util.find_spec('mcv_cli') is None"
 
       - name: Install CLI and API wheels in an isolated environment
         shell: pwsh
