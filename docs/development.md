@@ -28,6 +28,12 @@ references, errors, aggregates, and local-search protocols. The CLI package
 contains command orchestration, terminal presentation, authentication,
 credential storage, SQLite cache, completion, and progress reporting.
 
+Network-bearing API methods are asynchronous. The shared transport uses one
+`httpx.AsyncClient`, applies a bounded request semaphore to aggregate fan-out,
+and exposes `async with MCVAPI(...)`/`await api.aclose()` lifecycle management.
+Local `SearchClient` queries remain synchronous because they only read the
+injected local store.
+
 ## Local development
 
 From the repository root:

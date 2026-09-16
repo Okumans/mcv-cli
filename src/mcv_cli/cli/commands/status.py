@@ -23,9 +23,9 @@ def status(
         help="Show expanded tables with ids and canonical references.",
     ),
 ) -> None:
-    def action() -> StatusSnapshot:
-        with make_api() as api:
-            return api.aggregates.status.snapshot(
+    async def action() -> StatusSnapshot:
+        async with make_api() as api:
+            return await api.aggregates.status.snapshot(
                 **semester_scope_kwargs(ctx),
                 **progress_options(ctx),
             )

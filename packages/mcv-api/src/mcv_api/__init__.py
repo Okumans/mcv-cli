@@ -7,7 +7,7 @@ symbols retain their historical top-level imports through ``__getattr__``.
 from importlib import import_module
 from typing import TYPE_CHECKING, Final
 
-__version__ = "0.6.1"
+__version__ = "0.6.2"
 
 if TYPE_CHECKING:
     from .aggregates import AggregateClients, StatusSnapshot

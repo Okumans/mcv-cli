@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import TypeVar, cast
 
 import httpx
@@ -22,7 +22,7 @@ class ResourceClient:
     def __init__(
         self,
         transport: MCVTransport,
-        http_client: httpx.Client,
+        http_client: httpx.AsyncClient,
         *,
         cache_sink: Callable[[object, str], None] | None = None,
     ) -> None:
@@ -37,7 +37,7 @@ class ResourceClient:
             self._cache_sink(value, detail_level)
         return value
 
-    def request(
+    async def request(
         self,
         method: str,
         url: str,
@@ -45,10 +45,10 @@ class ResourceClient:
         params: HttpParams | None = None,
         data: dict[str, str] | None = None,
     ) -> httpx.Response:
-        return self.transport.request(method, url, params=params, data=data)
+        return await self.transport.request(method, url, params=params, data=data)
 
-    def post_json(self, url: str, *, data: dict[str, str]) -> JsonValue:
-        response = self.request("POST", url, data=data)
+    async def post_json(self, url: str, *, data: dict[str, str]) -> JsonValue:
+        response = await self.request("POST", url, data=data)
         try:
             return cast(JsonValue, response.json())
         except (json.JSONDecodeError, ValueError) as exc:
@@ -58,10 +58,10 @@ class ResourceClient:
                 operation="request",
             ) from exc
 
-    def course_home_html(self, cv_cid: int) -> str:
+    async def course_home_html(self, cv_cid: int) -> str:
         from ..core.constants import COURSE_AJAX_URL
 
-        response = self.request(
+        response = await self.request(
             "POST",
             COURSE_AJAX_URL,
             data={"ocv_mode": "", "cv_cid": str(cv_cid)},
@@ -84,14 +84,14 @@ class ResourceClient:
 def make_http_client(
     auth: SessionProvider,
     *,
-    http_client: httpx.Client | None = None,
+    http_client: httpx.AsyncClient | None = None,
     timeout: float | None = None,
-) -> tuple[httpx.Client, bool]:
+) -> tuple[httpx.AsyncClient, bool]:
     cookies = auth.get_session_cookies()
     if http_client is None:
         configured_timeout = getattr(getattr(auth, "settings", None), "timeout", 20.0)
         client_timeout = timeout or configured_timeout
-        client = httpx.Client(
+        client = httpx.AsyncClient(
             base_url=BASE_URL,
             timeout=client_timeout,
             follow_redirects=False,
@@ -106,9 +106,9 @@ def make_http_client(
 def make_download_client(
     auth: SessionProvider,
     *,
-    http_client: httpx.Client | None = None,
+    http_client: httpx.AsyncClient | None = None,
     timeout: float | None = None,
-) -> tuple[httpx.Client, bool]:
+) -> tuple[httpx.AsyncClient, bool]:
     """Create a client that never receives MyCourseVille session cookies."""
 
     if http_client is not None:
@@ -116,7 +116,7 @@ def make_download_client(
     configured_timeout = getattr(getattr(auth, "settings", None), "timeout", 20.0)
     client_timeout = timeout or configured_timeout
     return (
-        httpx.Client(
+        httpx.AsyncClient(
             timeout=client_timeout,
             follow_redirects=False,
             headers={"Accept": "*/*"},
@@ -128,9 +128,14 @@ def make_download_client(
 def make_transport(
     auth: SessionProvider,
     *,
-    http_client: httpx.Client | None = None,
+    http_client: httpx.AsyncClient | None = None,
     timeout: float | None = None,
-    sleeper: Callable[[float], None],
-) -> tuple[MCVTransport, httpx.Client, bool]:
+    sleeper: Callable[[float], Awaitable[None]],
+    max_concurrency: int = 8,
+) -> tuple[MCVTransport, httpx.AsyncClient, bool]:
     client, owns_client = make_http_client(auth, http_client=http_client, timeout=timeout)
-    return MCVTransport(client, sleeper), client, owns_client
+    return (
+        MCVTransport(client, sleeper, max_concurrency=max_concurrency),
+        client,
+        owns_client,
+    )

@@ -13,8 +13,8 @@ from .parser import parse_portfolio
 
 
 class PortfolioClient(ResourceClient):
-    def get(self, cv_cid: int) -> Portfolio:
-        home = BeautifulSoup(self.course_home_html(cv_cid), "html.parser")
+    async def get(self, cv_cid: int) -> Portfolio:
+        home = BeautifulSoup(await self.course_home_html(cv_cid), "html.parser")
         link = home.select_one('a[aria-label="Portfolio"]')
         if link is None:
             raise NotFoundError(
@@ -29,5 +29,5 @@ class PortfolioClient(ResourceClient):
                 resource="portfolio",
                 operation="get",
             )
-        response = self.request("GET", urljoin(f"{BASE_URL}/", href))
+        response = await self.request("GET", urljoin(f"{BASE_URL}/", href))
         return self.record_result(parse_portfolio(html_from_response(response), cv_cid))

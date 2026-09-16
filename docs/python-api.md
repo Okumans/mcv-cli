@@ -25,6 +25,7 @@ The API does not implement login. Applications provide a `SessionProvider`
 whose `get_session_cookies()` method returns the authenticated session cookies.
 
 ```python
+import asyncio
 from dataclasses import dataclass
 
 from mcv_api import MCVAPI
@@ -39,15 +40,23 @@ class CookieSession:
 
 
 session = CookieSession({"laravel_session": "..."})
-with MCVAPI(session) as api:
-    courses = api.courses.list()
-    materials = api.materials.list(courses[0].cv_cid) if courses else []
+
+
+async def main() -> None:
+    async with MCVAPI(session, max_concurrency=8) as api:
+        courses = await api.courses.list()
+        materials = await api.materials.list(courses[0].cv_cid) if courses else []
+
+
+asyncio.run(main())
 ```
 
 `MCVAPI` accepts optional injected HTTP clients, a timeout, a sleeper for
-transport retry control, and an optional `cache_store`. Omit `cache_store` when
-local caching and search are not needed. The API never creates or manages a
-credential store itself.
+transport retry control, `max_concurrency` for bounded aggregate fan-out, and
+an optional `cache_store`. Omit `cache_store` when local caching and search are
+not needed. Network-bearing resource, aggregate, and dereferencing methods are
+awaitable. Use `async with MCVAPI(...)` or `await api.aclose()` for lifecycle
+management; the API never creates or manages a credential store itself.
 
 ## Resource clients
 
@@ -55,14 +64,21 @@ The facade exposes clients for courses, materials, assignments, announcements,
 meetings, schedules, groups, portfolios, playlists, and web resources:
 
 ```python
-course = api.courses.resolve("2110575")
-assignments = api.assignments.list(course.cv_cid)
-material = api.materials.get(course.cv_cid, 2160993)
+async def resource_example() -> None:
+    async with MCVAPI(session) as api:
+        course = await api.courses.resolve("2110575")
+        assignments = await api.assignments.list(course.cv_cid)
+        material = await api.materials.get(course.cv_cid, 2160993)
+
+
+asyncio.run(resource_example())
 ```
 
 Cross-course services are available under `api.aggregates`. `api.get()` accepts
 a canonical `ResourceRef` or supported official MyCourseVille URL, and
-`api.get_many()` resolves references sequentially in input order.
+`api.get_many()` resolves references sequentially in input order. Aggregate
+methods fan out per-course requests concurrently while preserving deterministic
+result ordering and honoring `max_concurrency`.
 
 ## Search
 
@@ -72,9 +88,13 @@ requires an injected object implementing the public `LocalStore` protocol:
 ```python
 from mcv_api import MCVAPI
 
-with MCVAPI(session, cache_store=store) as api:
-    results = api.search.search("docker", cv_cid=86428, limit=20)
-    resource = api.get(results[0].ref) if results else None
+async def search_example() -> None:
+    async with MCVAPI(session, cache_store=store) as api:
+        results = api.search.search("docker", cv_cid=86428, limit=20)
+        resource = await api.get(results[0].ref) if results else None
+
+
+asyncio.run(search_example())
 ```
 
 Search results are `SearchResult` summaries with typed `resource_type`, a

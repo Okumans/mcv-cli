@@ -26,13 +26,13 @@ class FakeCacheClient:
         semester="1",
     )
 
-    def list(self, *, semester=None, all_semesters: bool = False):
+    async def list(self, *, semester=None, all_semesters: bool = False):
         del semester, all_semesters
         return [self.course]
 
 
 class FakeMaterials:
-    def folders(self, _cv_cid: int, *, detail: bool = False):
+    async def folders(self, _cv_cid: int, *, detail: bool = False):
         del detail
         return [
             MaterialFolder(
@@ -44,19 +44,19 @@ class FakeMaterials:
 
 
 class FakeAssignments:
-    def list(self, _cv_cid: int, *, detail: bool = False):
+    async def list(self, _cv_cid: int, *, detail: bool = False):
         del detail
         return [Assignment(itemid=2160997, cv_cid=86428, title="Homework")]
 
 
 class FakeAnnouncements:
-    def list(self, _cv_cid: int, *, detail: bool = False):
+    async def list(self, _cv_cid: int, *, detail: bool = False):
         del detail
         return [Announcement(itemid=2177455, cv_cid=86428, title="Welcome")]
 
 
 class FakeMeetings:
-    def list(self, _cv_cid: int, *, detail: bool = False):
+    async def list(self, _cv_cid: int, *, detail: bool = False):
         del detail
         return MeetingCollection(
             cv_cid=86428,
@@ -65,17 +65,17 @@ class FakeMeetings:
 
 
 class FakeSchedule:
-    def list(self, _cv_cid: int):
+    async def list(self, _cv_cid: int):
         return ScheduleCollection(cv_cid=86428, available=False)
 
 
 class FakePlaylists:
-    def list(self, _cv_cid: int):
+    async def list(self, _cv_cid: int):
         return PlaylistCollection(cv_cid=86428, title="IoT playlist")
 
 
 class FakeGroups:
-    def list(self, _cv_cid: int):
+    async def list(self, _cv_cid: int):
         return [
             StudentGroup(
                 grouping_id=54791,
@@ -96,10 +96,10 @@ class FakeAPI:
     playlists = FakePlaylists()
     groups = FakeGroups()
 
-    def __enter__(self):
+    async def __aenter__(self):
         return self
 
-    def __exit__(self, *_args) -> None:
+    async def __aexit__(self, *_args) -> None:
         return None
 
 
@@ -145,7 +145,7 @@ def test_cache_refresh_keeps_old_resource_snapshot_when_scope_fails(
     )
 
     class FailingAssignments(FakeAssignments):
-        def list(self, _cv_cid: int, *, detail: bool = False):
+        async def list(self, _cv_cid: int, *, detail: bool = False):
             del detail
             raise UpstreamError("simulated upstream failure")
 

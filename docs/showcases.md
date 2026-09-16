@@ -785,24 +785,30 @@ authentication and storage are supplied by the caller; the API itself has no
 Typer, Rich, cache, completion, or terminal-output dependency:
 
 ```python
+import asyncio
+
 from mcv_api import MCVAPI
 from mcv_cli.runtime.auth import AuthManager
 from mcv_cli.runtime.config import Settings
 
 manager = AuthManager(settings=Settings())
 
-with MCVAPI(manager) as api:
-    course = api.courses.resolve("2110575")
-    selected_courses = api.courses.list(semesters=("2025/1", "2026/1"))
-    all_courses = api.courses.list(all_semesters=True)
-    playlists = api.playlists.list(course.cv_cid)
-    schedule = api.schedule.list(course.cv_cid)
-    meetings = api.meetings.list(course.cv_cid)
-    materials = api.materials.list(course.cv_cid)
-    assignment = api.get("mcv:assignment:86428:2160997")
-    assignments = api.get_many(
-        ["mcv:assignment:86428:2160997", "mcv:assignment:86428:2160998"]
-    )
+async def main() -> None:
+    async with MCVAPI(manager, max_concurrency=8) as api:
+        course = await api.courses.resolve("2110575")
+        selected_courses = await api.courses.list(semesters=("2025/1", "2026/1"))
+        all_courses = await api.courses.list(all_semesters=True)
+        playlists = await api.playlists.list(course.cv_cid)
+        schedule = await api.schedule.list(course.cv_cid)
+        meetings = await api.meetings.list(course.cv_cid)
+        materials = await api.materials.list(course.cv_cid)
+        assignment = await api.get("mcv:assignment:86428:2160997")
+        assignments = await api.get_many(
+            ["mcv:assignment:86428:2160997", "mcv:assignment:86428:2160998"]
+        )
+
+
+asyncio.run(main())
 ```
 
 Resource clients expose domain operations under their resource namespace:
@@ -824,12 +830,15 @@ Resource clients expose domain operations under their resource namespace:
 Cross-course operations are grouped under the API facade's aggregate services:
 
 ```python
-with MCVAPI(manager) as api:
-    pending = api.aggregates.assignments.list(pending=True)
-    selected = api.aggregates.assignments.list(semesters=("2025/1", "2026/1"))
-    all_assignments = api.aggregates.assignments.list(all_semesters=True)
-    announcements = api.aggregates.announcements.list()
-    meetings = api.aggregates.meetings.list()
+async def aggregate_example() -> None:
+    async with MCVAPI(manager, max_concurrency=8) as api:
+        pending = await api.aggregates.assignments.list(pending=True)
+        selected = await api.aggregates.assignments.list(
+            semesters=("2025/1", "2026/1")
+        )
+        all_assignments = await api.aggregates.assignments.list(all_semesters=True)
+        announcements = await api.aggregates.announcements.list()
+        meetings = await api.aggregates.meetings.list()
 ```
 
 Search is a local, cross-resource service. Inject the optional local store
@@ -840,14 +849,15 @@ projections:
 from mcv_cli.runtime.cache import CacheStore
 
 store = CacheStore(profile_name="default", provider="chula")
-with MCVAPI(manager, cache_store=store) as api:
-    results = api.search.search(
-        "docker",
-        cv_cids=[course.cv_cid],  # add another selected cv_cid to broaden scope
-        resource_types={"material", "assignment"},
-        limit=20,
-    )
-    resource = api.get(results[0].ref) if results else None
+async def search_example() -> None:
+    async with MCVAPI(manager, cache_store=store) as api:
+        results = api.search.search(
+            "docker",
+            cv_cids=[course.cv_cid],  # add another selected cv_cid to broaden scope
+            resource_types={"material", "assignment"},
+            limit=20,
+        )
+        resource = await api.get(results[0].ref) if results else None
 ```
 
 `api.search.search()` never performs network I/O and raises

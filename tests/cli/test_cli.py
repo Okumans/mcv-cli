@@ -82,7 +82,7 @@ def test_version() -> None:
     result = runner.invoke(app, ["--version"])
 
     assert result.exit_code == 0
-    assert result.stdout.strip() == "0.6.1"
+    assert result.stdout.strip() == "0.6.2"
 
 
 def test_short_help_and_version_aliases() -> None:
@@ -92,7 +92,7 @@ def test_short_help_and_version_aliases() -> None:
     assert help_result.exit_code == 0
     assert "Usage: root" in help_result.stdout
     assert version_result.exit_code == 0
-    assert version_result.stdout.strip() == "0.6.1"
+    assert version_result.stdout.strip() == "0.6.2"
 
 
 def test_status_dashboard_has_a_human_and_machine_contract(monkeypatch) -> None:
@@ -104,17 +104,17 @@ def test_status_dashboard_has_a_human_and_machine_contract(monkeypatch) -> None:
     )
 
     class FakeStatus:
-        def snapshot(self, **kwargs: object) -> StatusSnapshot:
+        async def snapshot(self, **kwargs: object) -> StatusSnapshot:
             calls.append(kwargs)
             return snapshot
 
     class FakeAPI:
         aggregates = type("Aggregates", (), {"status": FakeStatus()})()
 
-        def __enter__(self):
+        async def __aenter__(self):
             return self
 
-        def __exit__(self, *_args) -> None:
+        async def __aexit__(self, *_args) -> None:
             return None
 
     monkeypatch.setattr("mcv_cli.cli.commands.status.make_api", lambda: FakeAPI())
@@ -219,17 +219,17 @@ def test_global_semester_is_passed_to_course_listing(monkeypatch) -> None:
     calls: list[tuple[str | None, bool]] = []
 
     class FakeCourses:
-        def list(self, *, semester=None, all_semesters=False):
+        async def list(self, *, semester=None, all_semesters=False):
             calls.append((semester, all_semesters))
             return []
 
     class FakeAPI:
         courses = FakeCourses()
 
-        def __enter__(self):
+        async def __aenter__(self):
             return self
 
-        def __exit__(self, *_args) -> None:
+        async def __aexit__(self, *_args) -> None:
             return None
 
     monkeypatch.setattr("mcv_cli.cli.commands.courses.make_api", lambda: FakeAPI())
@@ -244,17 +244,17 @@ def test_global_all_lists_all_semesters(monkeypatch) -> None:
     calls: list[tuple[object, object, bool]] = []
 
     class FakeCourses:
-        def list(self, *, semester=None, semesters=None, all_semesters=False):
+        async def list(self, *, semester=None, semesters=None, all_semesters=False):
             calls.append((semester, semesters, all_semesters))
             return []
 
     class FakeAPI:
         courses = FakeCourses()
 
-        def __enter__(self):
+        async def __aenter__(self):
             return self
 
-        def __exit__(self, *_args) -> None:
+        async def __aexit__(self, *_args) -> None:
             return None
 
     monkeypatch.setattr("mcv_cli.cli.commands.courses.make_api", lambda: FakeAPI())
@@ -269,7 +269,7 @@ def test_global_all_can_be_combined_with_expanded_course_output(monkeypatch) -> 
     calls: list[bool] = []
 
     class FakeCourses:
-        def list(self, *, semester=None, semesters=None, all_semesters=False):
+        async def list(self, *, semester=None, semesters=None, all_semesters=False):
             del semester, semesters
             calls.append(all_semesters)
             return [
@@ -287,10 +287,10 @@ def test_global_all_can_be_combined_with_expanded_course_output(monkeypatch) -> 
     class FakeAPI:
         courses = FakeCourses()
 
-        def __enter__(self):
+        async def __aenter__(self):
             return self
 
-        def __exit__(self, *_args) -> None:
+        async def __aexit__(self, *_args) -> None:
             return None
 
     monkeypatch.setattr("mcv_cli.cli.commands.courses.make_api", lambda: FakeAPI())
@@ -307,17 +307,17 @@ def test_repeated_global_semesters_are_passed_to_course_listing(monkeypatch) -> 
     calls: list[tuple[object, object, bool]] = []
 
     class FakeCourses:
-        def list(self, *, semester=None, semesters=None, all_semesters=False):
+        async def list(self, *, semester=None, semesters=None, all_semesters=False):
             calls.append((semester, semesters, all_semesters))
             return []
 
     class FakeAPI:
         courses = FakeCourses()
 
-        def __enter__(self):
+        async def __aenter__(self):
             return self
 
-        def __exit__(self, *_args) -> None:
+        async def __aexit__(self, *_args) -> None:
             return None
 
     monkeypatch.setattr("mcv_cli.cli.commands.courses.make_api", lambda: FakeAPI())
@@ -343,17 +343,17 @@ def test_repeated_global_semesters_are_passed_to_aggregates(monkeypatch) -> None
     calls: list[dict[str, object]] = []
 
     class FakeAssignments:
-        def list(self, **kwargs):
+        async def list(self, **kwargs):
             calls.append(kwargs)
             return []
 
     class FakeAPI:
         aggregates = type("Aggregates", (), {"assignments": FakeAssignments()})()
 
-        def __enter__(self):
+        async def __aenter__(self):
             return self
 
-        def __exit__(self, *_args) -> None:
+        async def __aexit__(self, *_args) -> None:
             return None
 
     monkeypatch.setattr("mcv_cli.cli.commands.assignments.make_api", lambda: FakeAPI())
@@ -418,7 +418,7 @@ def test_courses_list_all_expands_the_selected_semester(monkeypatch) -> None:
     calls: list[tuple[str | None, bool]] = []
 
     class FakeCourses:
-        def list(self, *, semester=None, all_semesters=False):
+        async def list(self, *, semester=None, all_semesters=False):
             calls.append((semester, all_semesters))
             return [
                 Course(
@@ -435,10 +435,10 @@ def test_courses_list_all_expands_the_selected_semester(monkeypatch) -> None:
     class FakeAPI:
         courses = FakeCourses()
 
-        def __enter__(self):
+        async def __aenter__(self):
             return self
 
-        def __exit__(self, *_args) -> None:
+        async def __aexit__(self, *_args) -> None:
             return None
 
     monkeypatch.setattr("mcv_cli.cli.commands.courses.make_api", lambda: FakeAPI())
@@ -465,13 +465,13 @@ def test_courses_accepts_playlists_after_course(monkeypatch) -> None:
     calls: list[int] = []
 
     class FakeCourses:
-        def resolve(self, reference, *, semester=None):
+        async def resolve(self, reference, *, semester=None):
             assert reference == "2110575"
             assert semester is None
             return Course(cv_cid=78748, course_no="2110575", title="Computer Networks")
 
     class FakePlaylists:
-        def list(self, cv_cid):
+        async def list(self, cv_cid):
             calls.append(cv_cid)
             return PlaylistCollection(
                 cv_cid=cv_cid,
@@ -483,10 +483,10 @@ def test_courses_accepts_playlists_after_course(monkeypatch) -> None:
         courses = FakeCourses()
         playlists = FakePlaylists()
 
-        def __enter__(self):
+        async def __aenter__(self):
             return self
 
-        def __exit__(self, *_args) -> None:
+        async def __aexit__(self, *_args) -> None:
             return None
 
     monkeypatch.setattr("mcv_cli.cli.commands.courses.make_api", lambda: FakeAPI())
@@ -590,12 +590,12 @@ def test_course_scoped_multi_id_show_uses_progress(monkeypatch) -> None:
     calls: list[int] = []
 
     class FakeCourses:
-        def resolve(self, _reference, *, semester=None):
+        async def resolve(self, _reference, *, semester=None):
             assert semester is None
             return Course(cv_cid=86428, course_no="2110575", title="Networks")
 
     class FakeAssignments:
-        def get(self, cv_cid: int, item_id: int) -> Assignment:
+        async def get(self, cv_cid: int, item_id: int) -> Assignment:
             calls.append(item_id)
             return Assignment(itemid=item_id, cv_cid=cv_cid, title=f"Assignment {item_id}")
 
@@ -603,10 +603,10 @@ def test_course_scoped_multi_id_show_uses_progress(monkeypatch) -> None:
         courses = FakeCourses()
         assignments = FakeAssignments()
 
-        def __enter__(self):
+        async def __aenter__(self):
             return self
 
-        def __exit__(self, *_args) -> None:
+        async def __aexit__(self, *_args) -> None:
             return None
 
     monkeypatch.setattr("mcv_cli.cli.commands.courses.make_api", lambda: FakeAPI())
@@ -721,13 +721,13 @@ def test_get_help_accepts_multiple_references() -> None:
 
 def test_get_renders_multiple_human_resources_with_detail_displays(monkeypatch) -> None:
     class FakeAPI:
-        def __enter__(self):
+        async def __aenter__(self):
             return self
 
-        def __exit__(self, *_args) -> None:
+        async def __aexit__(self, *_args) -> None:
             return None
 
-        def get(self, reference):
+        async def get(self, reference):
             return Assignment(
                 itemid=reference.item_id,
                 cv_cid=reference.cv_cid,
@@ -757,13 +757,13 @@ def test_get_accepts_a_playlist_reference(monkeypatch) -> None:
     received: list[tuple[str, int, int | None]] = []
 
     class FakeAPI:
-        def __enter__(self):
+        async def __aenter__(self):
             return self
 
-        def __exit__(self, *_args) -> None:
+        async def __aexit__(self, *_args) -> None:
             return None
 
-        def get(self, reference):
+        async def get(self, reference):
             received.append((reference.resource_type.value, reference.cv_cid, reference.item_id))
             return PlaylistCollection(
                 cv_cid=reference.cv_cid,
@@ -793,13 +793,13 @@ def test_get_accepts_a_playlist_reference(monkeypatch) -> None:
 
 def test_get_accepts_an_actual_mycourseville_assignment_url(monkeypatch) -> None:
     class FakeAPI:
-        def __enter__(self):
+        async def __aenter__(self):
             return self
 
-        def __exit__(self, *_args) -> None:
+        async def __aexit__(self, *_args) -> None:
             return None
 
-        def get(self, reference):
+        async def get(self, reference):
             received.append((reference.resource_type.value, reference.cv_cid, reference.item_id))
             return Assignment(
                 itemid=reference.item_id,

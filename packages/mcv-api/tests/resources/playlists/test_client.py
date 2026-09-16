@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 from urllib.parse import parse_qs
 
 import httpx
@@ -35,17 +37,20 @@ CVDLIT_DETAIL_FIXTURE = (
 def test_playlist_client_fetches_the_course_playlist_route() -> None:
     requests: list[str] = []
 
-    def handler(request: httpx.Request) -> httpx.Response:
+    async def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request.url.params["q"])
         return httpx.Response(200, text=FIXTURE, request=request)
 
-    with httpx.Client(
-        base_url=BASE_URL,
-        transport=httpx.MockTransport(handler),
-        follow_redirects=False,
-    ) as http_client:
-        with MCVAPI(FakeAuth(), http_client=http_client) as api:
-            playlist = api.playlists.list(78748)
+    async def exercise() -> PlaylistCollection:
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            transport=httpx.MockTransport(handler),
+            follow_redirects=False,
+        ) as http_client:
+            async with MCVAPI(FakeAuth(), http_client=http_client) as api:
+                return await api.playlists.list(78748)
+
+    playlist = asyncio.run(exercise())
 
     assert isinstance(playlist, PlaylistCollection)
     assert requests == ["courseville/course/78748/playlist"]
@@ -55,7 +60,7 @@ def test_playlist_client_fetches_the_course_playlist_route() -> None:
 def test_playlist_client_hydrates_cvdlit_deferred_clips() -> None:
     requests: list[tuple[str, str, dict[str, list[str]]]] = []
 
-    def handler(request: httpx.Request) -> httpx.Response:
+    async def handler(request: httpx.Request) -> httpx.Response:
         query = request.url.params["q"]
         form = parse_qs(request.content.decode()) if request.content else {}
         requests.append((request.method, query, form))
@@ -67,13 +72,16 @@ def test_playlist_client_hydrates_cvdlit_deferred_clips() -> None:
             request=request,
         )
 
-    with httpx.Client(
-        base_url=BASE_URL,
-        transport=httpx.MockTransport(handler),
-        follow_redirects=False,
-    ) as http_client:
-        with MCVAPI(FakeAuth(), http_client=http_client) as api:
-            playlist = api.playlists.list(78748)
+    async def exercise() -> PlaylistCollection:
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            transport=httpx.MockTransport(handler),
+            follow_redirects=False,
+        ) as http_client:
+            async with MCVAPI(FakeAuth(), http_client=http_client) as api:
+                return await api.playlists.list(78748)
+
+    playlist = asyncio.run(exercise())
 
     assert requests == [
         ("GET", "courseville/course/78748/playlist", {}),
@@ -95,20 +103,25 @@ def test_playlist_client_hydrates_cvdlit_deferred_clips() -> None:
 def test_facade_get_dispatches_playlist_refs_and_urls() -> None:
     requests: list[str] = []
 
-    def handler(request: httpx.Request) -> httpx.Response:
+    async def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request.url.params["q"])
         return httpx.Response(200, text=FIXTURE, request=request)
 
     reference = ResourceRef(resource_type=ResourceType.PLAYLIST, cv_cid=78748)
     url = "https://www.mycourseville.com/?q=courseville/course/78748/playlist"
-    with httpx.Client(
-        base_url=BASE_URL,
-        transport=httpx.MockTransport(handler),
-        follow_redirects=False,
-    ) as http_client:
-        with MCVAPI(FakeAuth(), http_client=http_client) as api:
-            by_ref = api.get(reference)
-            by_url = api.get(url)
+    async def exercise() -> tuple[PlaylistCollection, PlaylistCollection]:
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            transport=httpx.MockTransport(handler),
+            follow_redirects=False,
+        ) as http_client:
+            async with MCVAPI(FakeAuth(), http_client=http_client) as api:
+                return (
+                    cast(PlaylistCollection, await api.get(reference)),
+                    cast(PlaylistCollection, await api.get(url)),
+                )
+
+    by_ref, by_url = asyncio.run(exercise())
 
     assert by_ref.model_dump() == by_url.model_dump()
     assert requests == [

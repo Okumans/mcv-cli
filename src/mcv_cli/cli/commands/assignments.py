@@ -47,9 +47,9 @@ def list_assignments(
         help="Show expanded rows with ids and canonical references.",
     ),
 ) -> None:
-    def action() -> list[Assignment] | ShellIdList:
-        with make_api() as api:
-            values = api.aggregates.assignments.list(
+    async def action() -> list[Assignment] | ShellIdList:
+        async with make_api() as api:
+            values = await api.aggregates.assignments.list(
                 **semester_scope_kwargs(ctx),
                 **progress_options(ctx),
                 pending=pending,

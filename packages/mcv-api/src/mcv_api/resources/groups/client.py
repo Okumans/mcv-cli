@@ -8,8 +8,8 @@ from .parser import parse_groups
 
 
 class GroupsClient(ResourceClient):
-    def list(self, cv_cid: int, grouping_id: int | None = None) -> list[StudentGroup]:
-        response = self.request("GET", page_url(cv_cid))
+    async def list(self, cv_cid: int, grouping_id: int | None = None) -> list[StudentGroup]:
+        response = await self.request("GET", page_url(cv_cid))
         page_html = html_from_response(response)
         from bs4 import BeautifulSoup
 
@@ -26,7 +26,7 @@ class GroupsClient(ResourceClient):
         selected_id = _as_int(selected.get("value")) if selected is not None else grouping_id
         if selected_id is None:
             return self.record_result([])
-        payload = self.post_json(
+        payload = await self.post_json(
             listing_url(),
             data={"cid": str(cv_cid), "grouping": str(selected_id)},
         )

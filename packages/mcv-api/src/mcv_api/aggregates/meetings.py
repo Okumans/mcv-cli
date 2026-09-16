@@ -6,16 +6,22 @@ from typing import cast
 
 from ..core.dates import COURSEVILLE_TIMEZONE
 from ..core.progress import ProgressLike
+from ..resources.courses.models import Course
 from ..resources.meetings.models import MeetingCollection, OnlineMeeting
 from ._protocols import AggregateAPI
-from .assignments import _course_sort_key, _semester_kwargs, _with_course_context
+from .assignments import (
+    _course_sort_key,
+    _gather_fail_fast,
+    _semester_kwargs,
+    _with_course_context,
+)
 
 
 class MeetingsAggregate:
     def __init__(self, api: object) -> None:
         self.api = cast(AggregateAPI, api)
 
-    def list_for_course(
+    async def list_for_course(
         self,
         cv_cid: int,
         *,
@@ -23,14 +29,16 @@ class MeetingsAggregate:
         today_only: bool = True,
         now: datetime | None = None,
     ) -> list[OnlineMeeting]:
-        return self.collection_for_course(
-            cv_cid,
-            include_past=include_past,
-            today_only=today_only,
-            now=now,
+        return (
+            await self.collection_for_course(
+                cv_cid,
+                include_past=include_past,
+                today_only=today_only,
+                now=now,
+            )
         ).meetings
 
-    def collection_for_course(
+    async def collection_for_course(
         self,
         cv_cid: int,
         *,
@@ -38,7 +46,7 @@ class MeetingsAggregate:
         today_only: bool = True,
         now: datetime | None = None,
     ) -> MeetingCollection:
-        collection = self.api.meetings.list(cv_cid)
+        collection = await self.api.meetings.list(cv_cid)
         return collection.model_copy(
             update={
                 "meetings": self._filter(
@@ -50,7 +58,7 @@ class MeetingsAggregate:
             }
         )
 
-    def list(
+    async def list(
         self,
         *,
         semester: str | None = None,
@@ -63,7 +71,7 @@ class MeetingsAggregate:
     ) -> list[OnlineMeeting]:
         results: list[OnlineMeeting] = []
         courses = sorted(
-            self.api.courses.list(
+            await self.api.courses.list(
                 **_semester_kwargs(
                     semester=semester,
                     semesters=semesters,
@@ -77,15 +85,19 @@ class MeetingsAggregate:
             if progress is not None
             else None
         )
-        for course in courses:
+
+        async def fetch_course(course: Course) -> list[OnlineMeeting]:
             try:
-                results.extend(
+                return [
                     _with_course_context(item, course)
-                    for item in self.api.meetings.list(course.cv_cid).meetings
-                )
+                    for item in (await self.api.meetings.list(course.cv_cid)).meetings
+                ]
             finally:
                 if progress is not None:
                     progress.advance(task)
+
+        grouped = await _gather_fail_fast(fetch_course(course) for course in courses)
+        results = [item for group in grouped for item in group]
         return self._filter(
             results,
             include_past=include_past,

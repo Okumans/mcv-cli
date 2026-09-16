@@ -89,9 +89,9 @@ def list_courses(
         help="Show expanded course columns including section and role.",
     ),
 ) -> None:
-    def action() -> list[Course]:
-        with make_api() as api:
-            return api.courses.list(**semester_scope_kwargs(ctx))
+    async def action() -> list[Course]:
+        async with make_api() as api:
+            return await api.courses.list(**semester_scope_kwargs(ctx))
 
     run(ctx, action, display_mode="expanded" if all_fields else "collection")
 
@@ -100,10 +100,10 @@ def show_course(
     ctx: typer.Context,
     course: str = typer.Argument(..., autocompletion=complete_courses),
 ) -> None:
-    def action() -> Course:
+    async def action() -> Course:
         semester = selected_semester(ctx)
-        with make_api() as api:
-            return api.courses.resolve(course, semester=semester)
+        async with make_api() as api:
+            return await api.courses.resolve(course, semester=semester)
 
     run(ctx, action)
 
@@ -142,19 +142,19 @@ def materials_list(
         help="Show expanded rows with ids and canonical references.",
     ),
 ) -> None:
-    def action() -> ShellIdList | list[Material] | list[dict[str, object]]:
+    async def action() -> ShellIdList | list[Material] | list[dict[str, object]]:
         if sum((ids, refs, select_fields is not None)) > 1:
             raise UsageError("Choose only one of --ids, --refs, or --select.")
         semester = selected_semester(ctx)
-        with make_api() as api:
-            cv_cid = course_id(api, course, semester=semester)
+        async with make_api() as api:
+            cv_cid = await course_id(api, course, semester=semester)
             if folder is None:
-                materials = api.materials.list(cv_cid)
+                materials = await api.materials.list(cv_cid)
             else:
                 selected = next(
                     (
                         item
-                        for item in api.materials.folders(cv_cid)
+                        for item in await api.materials.folders(cv_cid)
                         if item.folder_id.casefold() == folder.casefold()
                         or item.name.casefold() == folder.casefold()
                     ),
@@ -198,11 +198,11 @@ def materials_show(
         autocompletion=complete_refs_for(ResourceType.MATERIAL),
     ),
 ) -> None:
-    def action() -> Material | list[Material]:
+    async def action() -> Material | list[Material]:
         semester = selected_semester(ctx)
-        with make_api() as api:
-            cv_cid = course_id(api, course, semester=semester)
-            values = fetch_many(
+        async with make_api() as api:
+            cv_cid = await course_id(api, course, semester=semester)
+            values = await fetch_many(
                 ctx,
                 item_ids,
                 lambda value: api.materials.get(
@@ -221,11 +221,11 @@ def materials_show(
 def materials_folders(
     ctx: typer.Context, course: str = typer.Argument(..., autocompletion=complete_courses)
 ) -> None:
-    def action() -> list[MaterialFolder]:
+    async def action() -> list[MaterialFolder]:
         semester = selected_semester(ctx)
-        with make_api() as api:
-            return api.materials.folders(
-                course_id(api, course, semester=semester)
+        async with make_api() as api:
+            return await api.materials.folders(
+                await course_id(api, course, semester=semester)
             )
 
     run(ctx, action)
@@ -246,11 +246,11 @@ def materials_archive(
     ),
     force: bool = typer.Option(False, "--force"),
 ) -> None:
-    def action() -> ArchiveResult:
+    async def action() -> ArchiveResult:
         semester = selected_semester(ctx)
-        with make_api() as api:
-            return api.materials.archive(
-                course_id(api, course, semester=semester),
+        async with make_api() as api:
+            return await api.materials.archive(
+                await course_id(api, course, semester=semester),
                 folder,
                 output,
                 archive_format=archive_format,
@@ -277,11 +277,11 @@ def materials_download(
     ),
     force: bool = typer.Option(False, "--force"),
 ) -> None:
-    def action() -> DownloadResult:
+    async def action() -> DownloadResult:
         semester = selected_semester(ctx)
-        with make_api() as api:
-            cv_cid = course_id(api, course, semester=semester)
-            return api.materials.download(
+        async with make_api() as api:
+            cv_cid = await course_id(api, course, semester=semester)
+            return await api.materials.download(
                 cv_cid,
                 resource_item_id_for_course(
                     item_id, cv_cid=cv_cid, resource_type=ResourceType.MATERIAL
@@ -310,12 +310,14 @@ def assignments_list(
         help="Show expanded rows with ids and canonical references.",
     ),
 ) -> None:
-    def action() -> ShellIdList | list[Assignment]:
+    async def action() -> ShellIdList | list[Assignment]:
         if ids and refs:
             raise UsageError("Choose either --ids or --refs.")
         semester = selected_semester(ctx)
-        with make_api() as api:
-            values = api.assignments.list(course_id(api, course, semester=semester))
+        async with make_api() as api:
+            values = await api.assignments.list(
+                await course_id(api, course, semester=semester)
+            )
             if ids:
                 return ShellIdList(item.itemid for item in values)
             return resource_refs(values) if refs else values
@@ -335,11 +337,11 @@ def assignments_show(
         False, "--full", help="Show full assignment and question-set details."
     ),
 ) -> None:
-    def action() -> Assignment | list[Assignment]:
+    async def action() -> Assignment | list[Assignment]:
         semester = selected_semester(ctx)
-        with make_api() as api:
-            cv_cid = course_id(api, course, semester=semester)
-            values = fetch_many(
+        async with make_api() as api:
+            cv_cid = await course_id(api, course, semester=semester)
+            values = await fetch_many(
                 ctx,
                 item_ids,
                 lambda value: api.assignments.get(
@@ -372,12 +374,14 @@ def announcements_list(
         help="Show expanded rows with ids and canonical references.",
     ),
 ) -> None:
-    def action() -> ShellIdList | list[Announcement]:
+    async def action() -> ShellIdList | list[Announcement]:
         if ids and refs:
             raise UsageError("Choose either --ids or --refs.")
         semester = selected_semester(ctx)
-        with make_api() as api:
-            values = api.announcements.list(course_id(api, course, semester=semester))
+        async with make_api() as api:
+            values = await api.announcements.list(
+                await course_id(api, course, semester=semester)
+            )
             if ids:
                 return ShellIdList(item.itemid for item in values)
             return resource_refs(values) if refs else values
@@ -394,11 +398,11 @@ def announcements_show(
         autocompletion=complete_refs_for(ResourceType.ANNOUNCEMENT),
     ),
 ) -> None:
-    def action() -> Announcement | list[Announcement]:
+    async def action() -> Announcement | list[Announcement]:
         semester = selected_semester(ctx)
-        with make_api() as api:
-            cv_cid = course_id(api, course, semester=semester)
-            values = fetch_many(
+        async with make_api() as api:
+            cv_cid = await course_id(api, course, semester=semester)
+            values = await fetch_many(
                 ctx,
                 item_ids,
                 lambda value: api.announcements.get(
@@ -436,13 +440,13 @@ def meetings_list(
         help="Show expanded rows with ids and canonical references.",
     ),
 ) -> None:
-    def action() -> ShellIdList | MeetingCollection:
+    async def action() -> ShellIdList | MeetingCollection:
         if ids and refs:
             raise UsageError("Choose either --ids or --refs.")
         semester = selected_semester(ctx)
-        with make_api() as api:
-            collection = api.aggregates.meetings.collection_for_course(
-                course_id(api, course, semester=semester),
+        async with make_api() as api:
+            collection = await api.aggregates.meetings.collection_for_course(
+                await course_id(api, course, semester=semester),
                 include_past=include_past,
             )
             if ids:
@@ -463,11 +467,11 @@ def meetings_show(
         autocompletion=complete_refs_for(ResourceType.MEETING),
     ),
 ) -> None:
-    def action() -> OnlineMeeting | list[OnlineMeeting]:
+    async def action() -> OnlineMeeting | list[OnlineMeeting]:
         semester = selected_semester(ctx)
-        with make_api() as api:
-            cv_cid = course_id(api, course, semester=semester)
-            values = fetch_many(
+        async with make_api() as api:
+            cv_cid = await course_id(api, course, semester=semester)
+            values = await fetch_many(
                 ctx,
                 item_ids,
                 lambda value: api.meetings.get(
@@ -486,10 +490,10 @@ def meetings_show(
 def schedule_list(
     ctx: typer.Context, course: str = typer.Argument(..., autocompletion=complete_courses)
 ) -> None:
-    def action() -> ScheduleCollection:
+    async def action() -> ScheduleCollection:
         semester = selected_semester(ctx)
-        with make_api() as api:
-            return api.schedule.list(course_id(api, course, semester=semester))
+        async with make_api() as api:
+            return await api.schedule.list(await course_id(api, course, semester=semester))
 
     run(ctx, action)
 
@@ -497,10 +501,10 @@ def schedule_list(
 def about_show(
     ctx: typer.Context, course: str = typer.Argument(..., autocompletion=complete_courses)
 ) -> None:
-    def action() -> CourseAbout:
+    async def action() -> CourseAbout:
         semester = selected_semester(ctx)
-        with make_api() as api:
-            return api.about.get(course_id(api, course, semester=semester))
+        async with make_api() as api:
+            return await api.about.get(await course_id(api, course, semester=semester))
 
     run(ctx, action)
 
@@ -512,11 +516,11 @@ def groups_list(
         None, "--grouping", help="Grouping id.", autocompletion=complete_groupings
     ),
 ) -> None:
-    def action() -> list[StudentGroup]:
+    async def action() -> list[StudentGroup]:
         semester = selected_semester(ctx)
-        with make_api() as api:
-            return api.groups.list(
-                course_id(api, course, semester=semester), grouping_id=grouping
+        async with make_api() as api:
+            return await api.groups.list(
+                await course_id(api, course, semester=semester), grouping_id=grouping
             )
 
     run(ctx, action)
@@ -525,10 +529,10 @@ def groups_list(
 def portfolio_show(
     ctx: typer.Context, course: str = typer.Argument(..., autocompletion=complete_courses)
 ) -> None:
-    def action() -> Portfolio:
+    async def action() -> Portfolio:
         semester = selected_semester(ctx)
-        with make_api() as api:
-            return api.portfolio.get(course_id(api, course, semester=semester))
+        async with make_api() as api:
+            return await api.portfolio.get(await course_id(api, course, semester=semester))
 
     run(ctx, action)
 
@@ -536,10 +540,10 @@ def portfolio_show(
 def playlists_show(
     ctx: typer.Context, course: str = typer.Argument(..., autocompletion=complete_courses)
 ) -> None:
-    def action() -> PlaylistCollection:
+    async def action() -> PlaylistCollection:
         semester = selected_semester(ctx)
-        with make_api() as api:
-            return api.playlists.list(course_id(api, course, semester=semester))
+        async with make_api() as api:
+            return await api.playlists.list(await course_id(api, course, semester=semester))
 
     run(ctx, action, display_mode="detail")
 
@@ -547,9 +551,9 @@ def playlists_show(
 def web_resources_list(
     ctx: typer.Context, course: str = typer.Argument(..., autocompletion=complete_courses)
 ) -> None:
-    def action() -> list[WebResource]:
+    async def action() -> list[WebResource]:
         semester = selected_semester(ctx)
-        with make_api() as api:
-            return api.web_resources.list(course_id(api, course, semester=semester))
+        async with make_api() as api:
+            return await api.web_resources.list(await course_id(api, course, semester=semester))
 
     run(ctx, action)

@@ -40,9 +40,9 @@ def list_meetings(
         help="Show expanded rows with ids and canonical references.",
     ),
 ) -> None:
-    def action() -> list[OnlineMeeting] | ShellIdList:
-        with make_api() as api:
-            values = api.aggregates.meetings.list(
+    async def action() -> list[OnlineMeeting] | ShellIdList:
+        async with make_api() as api:
+            values = await api.aggregates.meetings.list(
                 **semester_scope_kwargs(ctx),
                 **progress_options(ctx),
                 include_past=include_past,

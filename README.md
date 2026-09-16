@@ -193,7 +193,8 @@ overwritten unless `--force` is supplied.
 ## Python API
 
 The reusable client is provided by the separate `mcv-api` distribution; import
-it with `from mcv_api import MCVAPI`.
+it with `from mcv_api import MCVAPI`. Its network and aggregate methods are
+async and use `async with MCVAPI(...)` for lifecycle management.
 
 See [Python API documentation](docs/python-api.md) for authentication
 injection, models, errors, and timestamp behavior.

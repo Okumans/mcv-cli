@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import re
-from collections.abc import Collection
+from collections.abc import Awaitable, Collection, Iterable
 from typing import TypedDict, TypeVar, cast
 
 from ..core.progress import ProgressLike
@@ -18,6 +19,20 @@ def _course_sort_key(course: Course) -> tuple[str, str, int]:
 
 
 _CourseResource = TypeVar("_CourseResource", Assignment, Announcement, OnlineMeeting)
+_ResultT = TypeVar("_ResultT")
+
+
+async def _gather_fail_fast(awaitables: Iterable[Awaitable[_ResultT]]) -> list[_ResultT]:
+    tasks = [asyncio.ensure_future(awaitable) for awaitable in awaitables]
+    if not tasks:
+        return []
+    try:
+        return list(await asyncio.gather(*tasks))
+    except BaseException:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
 
 
 def _with_course_context(resource: _CourseResource, course: Course) -> _CourseResource:
@@ -40,7 +55,7 @@ class AssignmentsAggregate:
     def __init__(self, api: object) -> None:
         self.api = cast(AggregateAPI, api)
 
-    def list(
+    async def list(
         self,
         *,
         semester: str | None = None,
@@ -52,7 +67,7 @@ class AssignmentsAggregate:
     ) -> list[Assignment]:
         results: list[Assignment] = []
         courses = sorted(
-            self.api.courses.list(
+            await self.api.courses.list(
                 **_semester_kwargs(
                     semester=semester,
                     semesters=semesters,
@@ -66,18 +81,24 @@ class AssignmentsAggregate:
             if progress is not None
             else None
         )
-        for course in courses:
+
+        async def fetch_course(course: Course) -> list[Assignment]:
             try:
-                for assignment in self.api.assignments.list(course.cv_cid):
+                results: list[Assignment] = []
+                for assignment in await self.api.assignments.list(course.cv_cid):
                     assignment = _with_course_context(assignment, course)
                     if pending and not is_pending(assignment):
                         continue
                     if due and assignment.duedate is None and assignment.duetime is None:
                         continue
                     results.append(assignment)
+                return results
             finally:
                 if progress is not None:
                     progress.advance(task)
+
+        grouped = await _gather_fail_fast(fetch_course(course) for course in courses)
+        results = [assignment for group in grouped for assignment in group]
         return sorted(
             results,
             key=lambda item: (

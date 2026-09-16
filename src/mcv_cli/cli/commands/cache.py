@@ -83,8 +83,8 @@ def refresh(
         help="Index courses from every available semester instead of the current one.",
     ),
 ) -> None:
-    def action() -> CacheRefreshPayload:
-        return _refresh_cache(
+    async def action() -> CacheRefreshPayload:
+        return await _refresh_cache(
             ctx,
             course_references=course_references,
             all_semesters=all_semesters,
@@ -94,22 +94,24 @@ def refresh(
     run(ctx, action)
 
 
-def refresh_for_search(ctx: typer.Context) -> None:
+async def refresh_for_search(ctx: typer.Context) -> None:
     """Refresh searchable current-semester data for a search command."""
 
-    _refresh_cache(ctx, course_references=(), all_semesters=False, search_only=True)
+    await _refresh_cache(ctx, course_references=(), all_semesters=False, search_only=True)
 
 
-def refresh_course_for_search(ctx: typer.Context, course_reference: str) -> None:
+async def refresh_course_for_search(ctx: typer.Context, course_reference: str) -> None:
     """Refresh searchable data for one course before a course-scoped search."""
 
-    refresh_courses_for_search(ctx, (course_reference,))
+    await refresh_courses_for_search(ctx, (course_reference,))
 
 
-def refresh_courses_for_search(ctx: typer.Context, course_references: Iterable[str]) -> None:
+async def refresh_courses_for_search(
+    ctx: typer.Context, course_references: Iterable[str]
+) -> None:
     """Refresh searchable data for selected courses before a search."""
 
-    _refresh_cache(
+    await _refresh_cache(
         ctx,
         course_references=course_references,
         all_semesters=False,
@@ -117,7 +119,7 @@ def refresh_courses_for_search(ctx: typer.Context, course_references: Iterable[s
     )
 
 
-def _refresh_cache(
+async def _refresh_cache(
     ctx: typer.Context,
     *,
     course_references: Iterable[str],
@@ -134,8 +136,8 @@ def _refresh_cache(
     if cache is None:
         raise CacheError("Log in before refreshing the local cache.", operation="refresh")
 
-    with make_api(cache_store=None) as api:
-        discovered = api.courses.list(semester=semester, all_semesters=all_semesters)
+    async with make_api(cache_store=None) as api:
+        discovered = await api.courses.list(semester=semester, all_semesters=all_semesters)
         courses = (
             _unique_courses(discovered)
             if not references
@@ -179,18 +181,18 @@ def _refresh_cache(
         refreshed: list[CacheRefreshItemPayload] = []
         for course in courses:
             try:
-                folders = api.materials.folders(course.cv_cid, detail=True)
+                folders = await api.materials.folders(course.cv_cid, detail=True)
                 materials = [material for folder in folders for material in folder.materials]
-                assignments = api.assignments.list(course.cv_cid, detail=True)
-                announcements = api.announcements.list(course.cv_cid, detail=True)
-                meetings = api.meetings.list(course.cv_cid, detail=True)
-                playlists = api.playlists.list(course.cv_cid)
+                assignments = await api.assignments.list(course.cv_cid, detail=True)
+                announcements = await api.announcements.list(course.cv_cid, detail=True)
+                meetings = await api.meetings.list(course.cv_cid, detail=True)
+                playlists = await api.playlists.list(course.cv_cid)
                 if search_only:
                     schedule = None
                     groups = []
                 else:
-                    schedule = api.schedule.list(course.cv_cid)
-                    groups = api.groups.list(course.cv_cid)
+                    schedule = await api.schedule.list(course.cv_cid)
+                    groups = await api.groups.list(course.cv_cid)
 
                 if not search_only:
                     cache.replace_folders(folders, cv_cid=course.cv_cid)

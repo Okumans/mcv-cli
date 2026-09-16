@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import tarfile
 import zipfile
@@ -18,10 +19,23 @@ from mcv_api.core.errors import (
     TransportError,
     UpstreamError,
 )
+from mcv_api.core.transport import MCVTransport
 from mcv_api.facade import MCVAPI
+from mcv_api.resources.about.models import CourseAbout
+from mcv_api.resources.announcements.models import Announcement
 from mcv_api.resources.assignments.models import Assignment
 from mcv_api.resources.assignments.parser import parse_assignment_detail, parse_assignments
 from mcv_api.resources.courses.models import Course
+from mcv_api.resources.groups.models import StudentGroup
+from mcv_api.resources.materials.models import (
+    ArchiveResult,
+    DownloadResult,
+    Material,
+    MaterialFolder,
+)
+from mcv_api.resources.meetings.models import MeetingCollection
+from mcv_api.resources.portfolio.models import Portfolio
+from mcv_api.resources.schedule.models import ScheduleCollection
 
 
 class FakeAuth:
@@ -328,15 +342,21 @@ def resource_response_for(request: httpx.Request) -> httpx.Response:
 def test_client_normalizes_courses_materials_and_assignments() -> None:
     auth = FakeAuth()
     transport = httpx.MockTransport(response_for)
-    with httpx.Client(
-        base_url=BASE_URL,
-        transport=transport,
-        follow_redirects=False,
-    ) as http_client:
-        client = MCVAPI(auth, http_client=http_client)
-        courses = client.courses.list(semester="2026/1")
-        materials = client.materials.list(123)
-        assignments = client.assignments.list(123)
+
+    async def exercise() -> tuple[list[Course], list[Material], list[Assignment]]:
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            transport=transport,
+            follow_redirects=False,
+        ) as http_client:
+            async with MCVAPI(auth, http_client=http_client) as client:
+                return (
+                    await client.courses.list(semester="2026/1"),
+                    await client.materials.list(123),
+                    await client.assignments.list(123),
+                )
+
+    courses, materials, assignments = asyncio.run(exercise())
 
     assert courses[0].cv_cid == 123
     assert courses[0].course_no == "2110101"
@@ -346,22 +366,76 @@ def test_client_normalizes_courses_materials_and_assignments() -> None:
     assert assignments[0].title == "Homework"
 
 
+def test_transport_honors_the_configured_concurrency_limit() -> None:
+    active = 0
+    maximum = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal active, maximum
+        active += 1
+        maximum = max(maximum, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        return httpx.Response(200, text="ok", request=request)
+
+    async def exercise() -> list[httpx.Response]:
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            transport=httpx.MockTransport(handler),
+        ) as client:
+            transport = MCVTransport(client, asyncio.sleep, max_concurrency=2)
+            return await asyncio.gather(
+                *(transport.request("GET", f"/request/{index}") for index in range(6))
+            )
+
+    responses = asyncio.run(exercise())
+
+    assert len(responses) == 6
+    assert all(response.status_code == 200 for response in responses)
+    assert maximum == 2
+
+
 def test_client_parses_student_resources() -> None:
-    with httpx.Client(
-        base_url=BASE_URL,
-        transport=httpx.MockTransport(resource_response_for),
-        follow_redirects=False,
-    ) as http_client:
-        client = MCVAPI(FakeAuth(), http_client=http_client)
-        materials = client.materials.list(123)
-        folders = client.materials.folders(123)
-        assignments = client.assignments.list(123)
-        announcements = client.announcements.list(123)
-        meetings = client.meetings.list(123)
-        schedule = client.schedule.list(123)
-        about = client.about.get(123)
-        groups = client.groups.list(123)
-        portfolio = client.portfolio.get(123)
+    async def exercise() -> tuple[
+        list[Material],
+        list[MaterialFolder],
+        list[Assignment],
+        list[Announcement],
+        MeetingCollection,
+        ScheduleCollection,
+        CourseAbout,
+        list[StudentGroup],
+        Portfolio,
+    ]:
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            transport=httpx.MockTransport(resource_response_for),
+            follow_redirects=False,
+        ) as http_client:
+            async with MCVAPI(FakeAuth(), http_client=http_client) as client:
+                return (
+                    await client.materials.list(123),
+                    await client.materials.folders(123),
+                    await client.assignments.list(123),
+                    await client.announcements.list(123),
+                    await client.meetings.list(123),
+                    await client.schedule.list(123),
+                    await client.about.get(123),
+                    await client.groups.list(123),
+                    await client.portfolio.get(123),
+                )
+
+    (
+        materials,
+        folders,
+        assignments,
+        announcements,
+        meetings,
+        schedule,
+        about,
+        groups,
+        portfolio,
+    ) = asyncio.run(exercise())
 
     assert materials[0].itemid == 9
     assert materials[0].folder_name == "Week 1"
@@ -416,9 +490,7 @@ def test_assignment_status_preserves_the_web_status_cell() -> None:
     </table>
     """
 
-    with httpx.Client(base_url=BASE_URL) as http_client:
-        _client = MCVAPI(FakeAuth(), http_client=http_client)
-        assignments = parse_assignments(html, 123)
+    assignments = parse_assignments(html, 123)
 
     assert assignments[0].status == "Graded"
     assert assignments[0].submitted_at == "02 Sep 2026 10:00"
@@ -444,9 +516,7 @@ def test_assignment_status_supports_semantic_status_icons() -> None:
     </tbody></table>
     """
 
-    with httpx.Client(base_url=BASE_URL) as http_client:
-        _client = MCVAPI(FakeAuth(), http_client=http_client)
-        assignments = parse_assignments(html, 123)
+    assignments = parse_assignments(html, 123)
 
     assert assignments[0].status == "Not submitted"
     assert assignments[0].outdate is None
@@ -455,25 +525,17 @@ def test_assignment_status_supports_semantic_status_icons() -> None:
 def test_assignment_detail_extracts_rich_text_and_submission_files() -> None:
     detail_url = f"{BASE_URL}/?q=courseville/worksheet/85386/2174162"
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, text=ASSIGNMENT_DETAIL_HTML, request=request)
-
-    with httpx.Client(
-        base_url=BASE_URL,
-        transport=httpx.MockTransport(handler),
-    ) as http_client:
-        _client = MCVAPI(FakeAuth(), http_client=http_client)
-        assignment = parse_assignment_detail(
-            Assignment(
-                itemid=2174162,
-                cv_cid=85386,
-                title="HW05 Cyclic Code",
-                detail_url=detail_url,
-                outdate="01 January 1970",
-            ),
-            ASSIGNMENT_DETAIL_HTML,
-            detail_url,
-        )
+    assignment = parse_assignment_detail(
+        Assignment(
+            itemid=2174162,
+            cv_cid=85386,
+            title="HW05 Cyclic Code",
+            detail_url=detail_url,
+            outdate="01 January 1970",
+        ),
+        ASSIGNMENT_DETAIL_HTML,
+        detail_url,
+    )
 
     instruction_url = f"{BASE_URL}{ASSIGNMENT_INSTRUCTION_PATH}"
     submission_url = (
@@ -505,19 +567,11 @@ def test_question_set_submission_can_be_exposed_without_a_link() -> None:
     <div id="courseville-worksheet-work-status">No submission has been made.</div>
     """
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, text=html, request=request)
-
-    with httpx.Client(
-        base_url=BASE_URL,
-        transport=httpx.MockTransport(handler),
-    ) as http_client:
-        _client = MCVAPI(FakeAuth(), http_client=http_client)
-        assignment = parse_assignment_detail(
-            Assignment(itemid=2174162, cv_cid=85386),
-            html,
-            detail_url,
-        )
+    assignment = parse_assignment_detail(
+        Assignment(itemid=2174162, cv_cid=85386),
+        html,
+        detail_url,
+    )
 
     assert assignment.question_set_submission is not None
     assert assignment.question_set_submission.action == "Answer a question set"
@@ -577,27 +631,35 @@ def test_client_downloads_material_folder_as_zip_and_tar(tmp_path: Path) -> None
 
     transport = httpx.MockTransport(resource_response_for)
     progress = RecordingProgress()
-    with httpx.Client(
-        base_url=BASE_URL,
-        transport=transport,
-        follow_redirects=False,
-    ) as http_client, httpx.Client(
-        transport=transport,
-        follow_redirects=False,
-    ) as download_client:
-        client = MCVAPI(
-            FakeAuth(),
-            http_client=http_client,
-            download_client=download_client,
-        )
-        zip_path = tmp_path / "materials.zip"
-        tar_path = tmp_path / "materials.tar"
-        tar_gz_path = tmp_path / "materials.tar.gz"
-        fallback_path = tmp_path / "materials.archive"
-        zip_result = client.materials.archive(123, "Week 1", zip_path, progress=progress)
-        tar_result = client.materials.archive(123, "folder-1", tar_path)
-        tar_gz_result = client.materials.archive(123, "folder-1", tar_gz_path)
-        fallback_result = client.materials.archive(123, "folder-1", fallback_path)
+    zip_path = tmp_path / "materials.zip"
+    tar_path = tmp_path / "materials.tar"
+    tar_gz_path = tmp_path / "materials.tar.gz"
+    fallback_path = tmp_path / "materials.archive"
+
+    async def exercise() -> tuple[ArchiveResult, ArchiveResult, ArchiveResult, ArchiveResult]:
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            transport=transport,
+            follow_redirects=False,
+        ) as http_client, httpx.AsyncClient(
+            transport=transport,
+            follow_redirects=False,
+        ) as download_client:
+            async with MCVAPI(
+                FakeAuth(),
+                http_client=http_client,
+                download_client=download_client,
+            ) as client:
+                return (
+                    await client.materials.archive(
+                        123, "Week 1", zip_path, progress=progress
+                    ),
+                    await client.materials.archive(123, "folder-1", tar_path),
+                    await client.materials.archive(123, "folder-1", tar_gz_path),
+                    await client.materials.archive(123, "folder-1", fallback_path),
+                )
+
+    zip_result, tar_result, tar_gz_result, fallback_result = asyncio.run(exercise())
 
     assert zip_result.files == 1
     assert progress.tasks == [("Downloading materials", 1)]
@@ -623,44 +685,54 @@ def test_client_rejects_expired_session_after_401() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(401, json={"error": "expired"}, request=request)
 
-    with httpx.Client(
-        base_url=BASE_URL,
-        transport=httpx.MockTransport(handler),
-        follow_redirects=False,
-    ) as http_client:
-        client = MCVAPI(FakeAuth(), http_client=http_client)
-        try:
-            client.courses.list()
-        except AuthenticationRequired as error:
-            assert "auth login" in error.message
-        else:
-            raise AssertionError("expected AuthenticationRequired")
+    async def exercise() -> None:
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            transport=httpx.MockTransport(handler),
+            follow_redirects=False,
+        ) as http_client:
+            async with MCVAPI(FakeAuth(), http_client=http_client) as client:
+                try:
+                    await client.courses.list()
+                except AuthenticationRequired as error:
+                    assert "auth login" in error.message
+                else:
+                    raise AssertionError("expected AuthenticationRequired")
+
+    asyncio.run(exercise())
 
 
 def test_client_reports_transport_error_details() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("DNS unavailable", request=request)
 
-    with httpx.Client(
-        base_url=BASE_URL,
-        transport=httpx.MockTransport(handler),
-        follow_redirects=False,
-    ) as http_client:
-        client = MCVAPI(FakeAuth(), http_client=http_client, sleeper=lambda _delay: None)
-        with pytest.raises(TransportError) as raised:
-            client.courses.list()
+    async def no_sleep(_delay: float) -> None:
+        return None
 
-    error = raised.value
-    assert "GET" in error.message
-    assert "DNS unavailable" in error.message
-    assert error.code == "transport_error"
-    assert error.details == {
-        "method": "GET",
-        "target": "/",
-        "exception": "ConnectError",
-        "reason": "DNS unavailable",
-        "attempts": 3,
-    }
+    async def exercise() -> None:
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            transport=httpx.MockTransport(handler),
+            follow_redirects=False,
+        ) as http_client:
+            async with MCVAPI(
+                FakeAuth(), http_client=http_client, sleeper=no_sleep
+            ) as client:
+                with pytest.raises(TransportError) as raised:
+                    await client.courses.list()
+        error = raised.value
+        assert "GET" in error.message
+        assert "DNS unavailable" in error.message
+        assert error.code == "transport_error"
+        assert error.details == {
+            "method": "GET",
+            "target": "/",
+            "exception": "ConnectError",
+            "reason": "DNS unavailable",
+            "attempts": 3,
+        }
+
+    asyncio.run(exercise())
 
 
 def test_client_retries_http_408_before_returning_a_response() -> None:
@@ -674,13 +746,19 @@ def test_client_retries_http_408_before_returning_a_response() -> None:
             return httpx.Response(408, request=request)
         return httpx.Response(200, text=MATERIALS_HTML, request=request)
 
-    with httpx.Client(
-        base_url=BASE_URL,
-        transport=httpx.MockTransport(handler),
-        follow_redirects=False,
-    ) as http_client:
-        client = MCVAPI(FakeAuth(), http_client=http_client, sleeper=delays.append)
-        materials = client.materials.list(123)
+    async def record_sleep(delay: float) -> None:
+        delays.append(delay)
+
+    async def exercise() -> list[Material]:
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            transport=httpx.MockTransport(handler),
+            follow_redirects=False,
+        ) as http_client:
+            async with MCVAPI(FakeAuth(), http_client=http_client, sleeper=record_sleep) as client:
+                return await client.materials.list(123)
+
+    materials = asyncio.run(exercise())
 
     assert attempts == 3
     assert delays == [0.5, 1.0]
@@ -703,34 +781,40 @@ def test_client_redacts_sensitive_upstream_error_details() -> None:
             request=request,
         )
 
-    with httpx.Client(
-        base_url=BASE_URL,
-        transport=httpx.MockTransport(handler),
-        follow_redirects=False,
-    ) as http_client:
-        client = MCVAPI(FakeAuth(), http_client=http_client)
-        with pytest.raises(UpstreamError) as raised:
-            client.materials.list(123)
+    async def exercise() -> None:
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            transport=httpx.MockTransport(handler),
+            follow_redirects=False,
+        ) as http_client:
+            async with MCVAPI(FakeAuth(), http_client=http_client) as client:
+                with pytest.raises(UpstreamError) as raised:
+                    await client.materials.list(123)
 
-    error = raised.value
-    assert "secret-token" not in error.message
-    assert "secret-password" not in error.message
-    assert "nested-secret-token" not in error.message
-    assert "[redacted]" in error.message
+        error = raised.value
+        assert "secret-token" not in error.message
+        assert "secret-password" not in error.message
+        assert "nested-secret-token" not in error.message
+        assert "[redacted]" in error.message
+
+    asyncio.run(exercise())
 
 
 def test_client_parses_semester_selector() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, text=CURRENT_COURSE_HOME_HTML, request=request)
 
-    with httpx.Client(
-        base_url=BASE_URL,
-        transport=httpx.MockTransport(handler),
-        follow_redirects=False,
-    ) as http_client:
-        client = MCVAPI(FakeAuth(), http_client=http_client)
-        semesters, _current = client.courses._get_semester_options()
-        assert semesters == ["2026/2", "2026/1"]
+    async def exercise() -> list[str]:
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            transport=httpx.MockTransport(handler),
+            follow_redirects=False,
+        ) as http_client:
+            async with MCVAPI(FakeAuth(), http_client=http_client) as client:
+                semesters, _current = await client.courses._get_semester_options()
+                return semesters
+
+    assert asyncio.run(exercise()) == ["2026/2", "2026/1"]
 
 
 def test_client_defaults_to_current_semester() -> None:
@@ -743,14 +827,17 @@ def test_client_defaults_to_current_semester() -> None:
         requested_semesters.append(payload["yearsem"])
         return httpx.Response(200, json={"status": True, "data": []}, request=request)
 
-    with httpx.Client(
-        base_url=BASE_URL,
-        transport=httpx.MockTransport(handler),
-        follow_redirects=False,
-    ) as http_client:
-        client = MCVAPI(FakeAuth(), http_client=http_client)
-        assert client.courses.list() == []
-        assert client.courses.last_current_semester == "2026/1"
+    async def exercise() -> str | None:
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            transport=httpx.MockTransport(handler),
+            follow_redirects=False,
+        ) as http_client:
+            async with MCVAPI(FakeAuth(), http_client=http_client) as client:
+                assert await client.courses.list() == []
+                return client.courses.last_current_semester
+
+    assert asyncio.run(exercise()) == "2026/1"
 
     assert requested_semesters == ["2026/1"]
 
@@ -759,7 +846,7 @@ def test_resolve_course_can_target_a_selected_semester() -> None:
     requested_semesters: list[str | None] = []
 
     class SelectedSemesterCourses:
-        def list(
+        async def list(
             self,
             semester: str | None = None,
             *,
@@ -777,14 +864,17 @@ def test_resolve_course_can_target_a_selected_semester() -> None:
                 )
             ]
 
-        def resolve(self, reference: str, *, semester: str | None = None) -> Course:
+        async def resolve(self, reference: str, *, semester: str | None = None) -> Course:
             del reference
-            return self.list(semester=semester)[0]
+            return (await self.list(semester=semester))[0]
 
-    with httpx.Client(base_url=BASE_URL) as http_client:
-        client = MCVAPI(FakeAuth(), http_client=http_client)
-        client.courses = SelectedSemesterCourses()  # pyright: ignore[reportAttributeAccessIssue]
-        course = client.courses.resolve("2110575", semester="2025/2")
+    async def exercise() -> Course:
+        async with httpx.AsyncClient(base_url=BASE_URL) as http_client:
+            async with MCVAPI(FakeAuth(), http_client=http_client) as client:
+                client.courses = SelectedSemesterCourses()  # pyright: ignore[reportAttributeAccessIssue]
+                return await client.courses.resolve("2110575", semester="2025/2")
+
+    course = asyncio.run(exercise())
 
     assert course.cv_cid == 85386
     assert requested_semesters == ["2025/2"]
@@ -800,13 +890,16 @@ def test_client_can_list_all_semesters() -> None:
         requested_semesters.append(payload["yearsem"])
         return httpx.Response(200, json={"status": True, "data": []}, request=request)
 
-    with httpx.Client(
-        base_url=BASE_URL,
-        transport=httpx.MockTransport(handler),
-        follow_redirects=False,
-    ) as http_client:
-        client = MCVAPI(FakeAuth(), http_client=http_client)
-        assert client.courses.list(all_semesters=True) == []
+    async def exercise() -> list[Course]:
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            transport=httpx.MockTransport(handler),
+            follow_redirects=False,
+        ) as http_client:
+            async with MCVAPI(FakeAuth(), http_client=http_client) as client:
+                return await client.courses.list(all_semesters=True)
+
+    assert asyncio.run(exercise()) == []
 
     assert requested_semesters == ["2026/2", "2026/1"]
 
@@ -821,13 +914,16 @@ def test_client_can_list_selected_semesters() -> None:
         requested_semesters.append(payload["yearsem"])
         return httpx.Response(200, json={"status": True, "data": []}, request=request)
 
-    with httpx.Client(
-        base_url=BASE_URL,
-        transport=httpx.MockTransport(handler),
-        follow_redirects=False,
-    ) as http_client:
-        client = MCVAPI(FakeAuth(), http_client=http_client)
-        assert client.courses.list(semesters=("2026/1", "2026/2")) == []
+    async def exercise() -> list[Course]:
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            transport=httpx.MockTransport(handler),
+            follow_redirects=False,
+        ) as http_client:
+            async with MCVAPI(FakeAuth(), http_client=http_client) as client:
+                return await client.courses.list(semesters=("2026/1", "2026/2"))
+
+    assert asyncio.run(exercise()) == []
 
     assert requested_semesters == ["2026/2", "2026/1"]
 
@@ -842,13 +938,16 @@ def test_client_can_select_all_terms_in_a_year() -> None:
         requested_semesters.append(payload["yearsem"])
         return httpx.Response(200, json={"status": True, "data": []}, request=request)
 
-    with httpx.Client(
-        base_url=BASE_URL,
-        transport=httpx.MockTransport(handler),
-        follow_redirects=False,
-    ) as http_client:
-        client = MCVAPI(FakeAuth(), http_client=http_client)
-        assert client.courses.list(semesters=("2026",)) == []
+    async def exercise() -> list[Course]:
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            transport=httpx.MockTransport(handler),
+            follow_redirects=False,
+        ) as http_client:
+            async with MCVAPI(FakeAuth(), http_client=http_client) as client:
+                return await client.courses.list(semesters=("2026",))
+
+    assert asyncio.run(exercise()) == []
 
     assert requested_semesters == ["2026/2", "2026/1"]
 
@@ -866,13 +965,16 @@ def test_client_sends_session_cookie() -> None:
             request=request,
         )
 
-    with httpx.Client(
-        base_url=BASE_URL,
-        transport=httpx.MockTransport(handler),
-        follow_redirects=False,
-    ) as http_client:
-        client = MCVAPI(FakeAuth(), http_client=http_client)
-        assert client.courses.list() == []
+    async def exercise() -> list[Course]:
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            transport=httpx.MockTransport(handler),
+            follow_redirects=False,
+        ) as http_client:
+            async with MCVAPI(FakeAuth(), http_client=http_client) as client:
+                return await client.courses.list()
+
+    assert asyncio.run(exercise()) == []
 
     assert seen_cookie == ["laravel_session=session-cookie", "laravel_session=session-cookie"]
 
@@ -890,20 +992,23 @@ def test_download_does_not_send_bearer_to_external_host(tmp_path: Path) -> None:
 
     output = tmp_path / "lecture.pdf"
     transport = httpx.MockTransport(handler)
-    with httpx.Client(
-        base_url=BASE_URL,
-        transport=transport,
-        follow_redirects=False,
-    ) as http_client, httpx.Client(
-        transport=transport,
-        follow_redirects=False,
-    ) as download_client:
-        client = MCVAPI(
-            FakeAuth(),
-            http_client=http_client,
-            download_client=download_client,
-        )
-        result = client.materials.download(123, 9, output)
+    async def exercise() -> DownloadResult:
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            transport=transport,
+            follow_redirects=False,
+        ) as http_client, httpx.AsyncClient(
+            transport=transport,
+            follow_redirects=False,
+        ) as download_client:
+            async with MCVAPI(
+                FakeAuth(),
+                http_client=http_client,
+                download_client=download_client,
+            ) as client:
+                return await client.materials.download(123, 9, output)
+
+    result = asyncio.run(exercise())
 
     assert output.read_bytes() == b"pdf-content"
     assert seen_headers == [(None, None)]
@@ -920,20 +1025,23 @@ def test_download_uses_remote_filename_by_default(tmp_path: Path, monkeypatch) -
         return httpx.Response(200, content=b"pdf-content", request=request)
 
     transport = httpx.MockTransport(handler)
-    with httpx.Client(
-        base_url=BASE_URL,
-        transport=transport,
-        follow_redirects=False,
-    ) as http_client, httpx.Client(
-        transport=transport,
-        follow_redirects=False,
-    ) as download_client:
-        client = MCVAPI(
-            FakeAuth(),
-            http_client=http_client,
-            download_client=download_client,
-        )
-        result = client.materials.download(123, 9)
+    async def exercise() -> DownloadResult:
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            transport=transport,
+            follow_redirects=False,
+        ) as http_client, httpx.AsyncClient(
+            transport=transport,
+            follow_redirects=False,
+        ) as download_client:
+            async with MCVAPI(
+                FakeAuth(),
+                http_client=http_client,
+                download_client=download_client,
+            ) as client:
+                return await client.materials.download(123, 9)
+
+    result = asyncio.run(exercise())
 
     output = tmp_path / "lecture-1.pdf"
     assert output.read_bytes() == b"pdf-content"
@@ -943,21 +1051,28 @@ def test_download_uses_remote_filename_by_default(tmp_path: Path, monkeypatch) -
 def test_archive_uses_remote_folder_name_by_default(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     transport = httpx.MockTransport(resource_response_for)
-    with httpx.Client(
-        base_url=BASE_URL,
-        transport=transport,
-        follow_redirects=False,
-    ) as http_client, httpx.Client(
-        transport=transport,
-        follow_redirects=False,
-    ) as download_client:
-        client = MCVAPI(
-            FakeAuth(),
-            http_client=http_client,
-            download_client=download_client,
-        )
-        zip_result = client.materials.archive(123, "Week 1")
-        tar_result = client.materials.archive(123, "folder-1", archive_format="tar.gz")
+    async def exercise() -> tuple[ArchiveResult, ArchiveResult]:
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            transport=transport,
+            follow_redirects=False,
+        ) as http_client, httpx.AsyncClient(
+            transport=transport,
+            follow_redirects=False,
+        ) as download_client:
+            async with MCVAPI(
+                FakeAuth(),
+                http_client=http_client,
+                download_client=download_client,
+            ) as client:
+                return (
+                    await client.materials.archive(123, "Week 1"),
+                    await client.materials.archive(
+                        123, "folder-1", archive_format="tar.gz"
+                    ),
+                )
+
+    zip_result, tar_result = asyncio.run(exercise())
 
     assert zip_result.path == "Week 1.zip"
     assert zip_result.format == "zip"
@@ -968,25 +1083,28 @@ def test_archive_uses_remote_folder_name_by_default(tmp_path: Path, monkeypatch)
 
 
 def test_get_material_raises_for_unknown_item() -> None:
-    with httpx.Client(
-        base_url=BASE_URL,
-        transport=httpx.MockTransport(response_for),
-        follow_redirects=False,
-    ) as http_client:
-        client = MCVAPI(FakeAuth(), http_client=http_client)
-        try:
-            client.materials.get(123, 999)
-        except NotFoundError as error:
-            assert "999" in error.message
-        else:
-            raise AssertionError("expected NotFoundError")
+    async def exercise() -> None:
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            transport=httpx.MockTransport(response_for),
+            follow_redirects=False,
+        ) as http_client:
+            async with MCVAPI(FakeAuth(), http_client=http_client) as client:
+                try:
+                    await client.materials.get(123, 999)
+                except NotFoundError as error:
+                    assert "999" in error.message
+                else:
+                    raise AssertionError("expected NotFoundError")
+
+    asyncio.run(exercise())
 
 
 def test_get_many_preserves_input_order_and_fails_fast(monkeypatch) -> None:
     assignment = Assignment(itemid=1, cv_cid=86428, title="Homework")
     calls: list[str] = []
 
-    def fake_get(self, reference):
+    async def fake_get(self, reference):
         calls.append(str(reference))
         if len(calls) == 2:
             raise NotFoundError("missing")
@@ -996,7 +1114,7 @@ def test_get_many_preserves_input_order_and_fails_fast(monkeypatch) -> None:
     client = MCVAPI.__new__(MCVAPI)
 
     with pytest.raises(NotFoundError):
-        client.get_many(["mcv:assignment:86428:1", "mcv:assignment:86428:2"])
+        asyncio.run(client.get_many(["mcv:assignment:86428:1", "mcv:assignment:86428:2"]))
 
     assert calls == ["mcv:assignment:86428:1", "mcv:assignment:86428:2"]
 
@@ -1005,29 +1123,31 @@ def test_get_rejects_invalid_reference_with_public_error() -> None:
     client = MCVAPI.__new__(MCVAPI)
 
     with pytest.raises(InvalidReferenceError) as raised:
-        client.get("mcv:unknown:86428:1")
+        asyncio.run(client.get("mcv:unknown:86428:1"))
 
     assert raised.value.code == "invalid_ref"
     assert raised.value.details == {"reference": "mcv:unknown:86428:1"}
 
 
 def test_resolve_course_rejects_unknown_numeric_reference() -> None:
-    with httpx.Client(
-        base_url=BASE_URL,
-        transport=httpx.MockTransport(response_for),
-        follow_redirects=False,
-    ) as http_client:
-        client = MCVAPI(FakeAuth(), http_client=http_client)
-        with pytest.raises(NotFoundError) as raised:
-            client.courses.resolve("999")
+    async def exercise() -> None:
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            transport=httpx.MockTransport(response_for),
+            follow_redirects=False,
+        ) as http_client:
+            async with MCVAPI(FakeAuth(), http_client=http_client) as client:
+                with pytest.raises(NotFoundError) as raised:
+                    await client.courses.resolve("999")
+        assert raised.value.resource == "course"
+        assert raised.value.operation == "resolve"
 
-    assert raised.value.resource == "course"
-    assert raised.value.operation == "resolve"
+    asyncio.run(exercise())
 
 
 def test_resolve_course_rejects_ambiguous_title() -> None:
     class AmbiguousCourses:
-        def list(
+        async def list(
             self,
             semester: str | None = None,
             *,
@@ -1049,42 +1169,44 @@ def test_resolve_course_rejects_ambiguous_title() -> None:
                 ),
             ]
 
-        def resolve(self, reference: str, *, semester: str | None = None) -> Course:
+        async def resolve(self, reference: str, *, semester: str | None = None) -> Course:
             from mcv_api.resources.courses.client import CourseClient
 
             resolver = CourseClient.__new__(CourseClient)
             resolver.list = self.list  # type: ignore[method-assign]
-            return CourseClient.resolve(resolver, reference, semester=semester)
+            return await CourseClient.resolve(resolver, reference, semester=semester)
 
-    with httpx.Client(
-        base_url=BASE_URL,
-        transport=httpx.MockTransport(response_for),
-        follow_redirects=False,
-    ) as http_client:
-        client = MCVAPI(FakeAuth(), http_client=http_client)
-        client.courses = AmbiguousCourses()  # pyright: ignore[reportAttributeAccessIssue]
-        with pytest.raises(AmbiguousError) as raised:
-            client.courses.resolve(" operating   systems ")
+    async def exercise() -> None:
+        async with httpx.AsyncClient(
+            base_url=BASE_URL,
+            transport=httpx.MockTransport(response_for),
+            follow_redirects=False,
+        ) as http_client:
+            async with MCVAPI(FakeAuth(), http_client=http_client) as client:
+                client.courses = AmbiguousCourses()  # pyright: ignore[reportAttributeAccessIssue]
+                with pytest.raises(AmbiguousError) as raised:
+                    await client.courses.resolve(" operating   systems ")
+        assert raised.value.code == "ambiguous"
+        assert raised.value.details == {
+            "reference": "operating systems",
+            "matches": [
+                {
+                    "cv_cid": 123,
+                    "course_no": "2110101",
+                    "title": "Operating Systems",
+                    "year": None,
+                    "semester": None,
+                    "section": "1",
+                },
+                {
+                    "cv_cid": 456,
+                    "course_no": "2110101",
+                    "title": "Operating Systems",
+                    "year": None,
+                    "semester": None,
+                    "section": "2",
+                },
+            ],
+        }
 
-    assert raised.value.code == "ambiguous"
-    assert raised.value.details == {
-        "reference": "operating systems",
-        "matches": [
-            {
-                "cv_cid": 123,
-                "course_no": "2110101",
-                "title": "Operating Systems",
-                "year": None,
-                "semester": None,
-                "section": "1",
-            },
-            {
-                "cv_cid": 456,
-                "course_no": "2110101",
-                "title": "Operating Systems",
-                "year": None,
-                "semester": None,
-                "section": "2",
-            },
-        ],
-    }
+    asyncio.run(exercise())

@@ -1,5 +1,14 @@
 # Release notes
 
+## 0.6.2
+
+- Converted the public `mcv_api` network and aggregate surface to async methods
+  with `async with MCVAPI(...)` lifecycle management.
+- Added bounded aggregate fan-out through the configurable `max_concurrency`
+  setting while preserving deterministic result ordering and fail-fast errors.
+- Updated CLI, live adapters, tests, and Python API documentation for the async
+  contract.
+
 ## 0.6.1
 
 This patch release makes shell completion fast enough for interactive use.

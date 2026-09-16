@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
-from typing import cast
+from typing import Any, cast
 from zoneinfo import ZoneInfo
 
 from mcv_api.aggregates.announcements import AnnouncementsAggregate
@@ -14,8 +15,12 @@ from mcv_api.resources.courses.models import Course
 from mcv_api.resources.meetings.models import MeetingCollection, OnlineMeeting
 
 
+def run_async(awaitable: object) -> object:
+    return asyncio.run(cast("Any", awaitable))
+
+
 class FakeCourses:
-    def list(
+    async def list(
         self,
         *,
         semester: str | None = None,
@@ -30,7 +35,7 @@ class FakeCourses:
 
 
 class FakeAssignments:
-    def list(self, cv_cid: int) -> list[Assignment]:
+    async def list(self, cv_cid: int) -> list[Assignment]:
         if cv_cid == 86428:
             return [
                 Assignment(
@@ -54,7 +59,7 @@ class FakeAssignments:
 
 
 class FakeMeetings:
-    def list(self, cv_cid: int) -> MeetingCollection:
+    async def list(self, cv_cid: int) -> MeetingCollection:
         if cv_cid != 86428:
             return MeetingCollection(cv_cid=cv_cid, available=False)
         return MeetingCollection(
@@ -96,7 +101,7 @@ class FakeAPI:
 def test_assignment_service_aggregates_context_and_filters() -> None:
     service = AssignmentService(cast(object, FakeAPI()))
 
-    assignments = service.list(pending=True, due=True)
+    assignments = cast(list[Assignment], run_async(service.list(pending=True, due=True)))
 
     assert len(assignments) == 1
     assert assignments[0].itemid == 2161042
@@ -121,9 +126,15 @@ def test_meeting_service_shows_today_by_default() -> None:
     service = MeetingService(cast(object, FakeAPI()))
     now = datetime(2026, 9, 12, 12, 0, tzinfo=ZoneInfo("Asia/Bangkok"))
 
-    today = service.list_for_course(86428, now=now)
-    upcoming = service.list_for_course(86428, today_only=False, now=now)
-    all_meetings = service.list_for_course(86428, include_past=True, now=now)
+    today = cast(list[OnlineMeeting], run_async(service.list_for_course(86428, now=now)))
+    upcoming = cast(
+        list[OnlineMeeting],
+        run_async(service.list_for_course(86428, today_only=False, now=now)),
+    )
+    all_meetings = cast(
+        list[OnlineMeeting],
+        run_async(service.list_for_course(86428, include_past=True, now=now)),
+    )
 
     assert [meeting.itemid for meeting in today] == [29633]
     assert [meeting.itemid for meeting in upcoming] == [29633, 29631, 29632]
@@ -132,7 +143,7 @@ def test_meeting_service_shows_today_by_default() -> None:
 
 def test_meeting_service_includes_elapsed_meetings_from_today() -> None:
     class TodayMeetings:
-        def list(self, cv_cid: int) -> MeetingCollection:
+        async def list(self, cv_cid: int) -> MeetingCollection:
             return MeetingCollection(
                 cv_cid=cv_cid,
                 meetings=[
@@ -150,19 +161,23 @@ def test_meeting_service_includes_elapsed_meetings_from_today() -> None:
     service = MeetingService(cast(object, TodayAPI()))
     now = datetime(2026, 9, 14, 14, 1, tzinfo=ZoneInfo("Asia/Bangkok"))
 
-    assert [meeting.itemid for meeting in service.list_for_course(86428, now=now)] == [30452]
+    meetings = cast(
+        list[OnlineMeeting],
+        run_async(service.list_for_course(86428, now=now)),
+    )
+    assert [meeting.itemid for meeting in meetings] == [30452]
 
 
 def test_status_service_builds_a_typed_current_work_snapshot() -> None:
     now = datetime(2026, 9, 14, 12, 0, tzinfo=ZoneInfo("Asia/Bangkok"))
 
     class StatusCourses:
-        def list(self, **kwargs: object) -> list[Course]:
+        async def list(self, **kwargs: object) -> list[Course]:
             assert kwargs == {"semester": "2026/1"}
             return [Course(cv_cid=86428, course_no="2110575", title="IoT")]
 
     class StatusAssignments:
-        def list(self, cv_cid: int) -> list[Assignment]:
+        async def list(self, cv_cid: int) -> list[Assignment]:
             return [
                 Assignment(
                     itemid=1,
@@ -200,7 +215,7 @@ def test_status_service_builds_a_typed_current_work_snapshot() -> None:
             ]
 
     class StatusAnnouncements:
-        def list(self, cv_cid: int) -> list[Announcement]:
+        async def list(self, cv_cid: int) -> list[Announcement]:
             return [
                 Announcement(
                     itemid=10,
@@ -225,7 +240,7 @@ def test_status_service_builds_a_typed_current_work_snapshot() -> None:
             ]
 
     class StatusMeetings:
-        def list(self, cv_cid: int) -> MeetingCollection:
+        async def list(self, cv_cid: int) -> MeetingCollection:
             return MeetingCollection(
                 cv_cid=cv_cid,
                 meetings=[
@@ -269,10 +284,15 @@ def test_status_service_builds_a_typed_current_work_snapshot() -> None:
             self.advances.append((task_id, amount))
 
     progress = StatusProgress()
-    snapshot = StatusAggregate(cast(object, StatusAPI())).snapshot(
-        semester="2026/1",
-        now=now,
-        progress=progress,
+    snapshot = cast(
+        StatusSnapshot,
+        run_async(
+            StatusAggregate(cast(object, StatusAPI())).snapshot(
+                semester="2026/1",
+                now=now,
+                progress=progress,
+            )
+        ),
     )
 
     assert isinstance(snapshot, StatusSnapshot)
@@ -291,7 +311,7 @@ def test_status_service_rejects_invalid_windows() -> None:
     service = StatusAggregate(cast(object, EmptyAPI()))
 
     try:
-        service.snapshot(assignment_window_days=0)
+        run_async(service.snapshot(assignment_window_days=0))
     except ValueError as error:
         assert str(error) == "Status windows must be at least one day."
     else:
@@ -300,7 +320,7 @@ def test_status_service_rejects_invalid_windows() -> None:
 
 def test_cross_course_resource_aggregates_report_progress_per_course() -> None:
     class EmptyAnnouncements:
-        def list(self, _cv_cid: int) -> list[Announcement]:
+        async def list(self, _cv_cid: int) -> list[Announcement]:
             return []
 
     class RecordingProgress:
@@ -327,7 +347,7 @@ def test_cross_course_resource_aggregates_report_progress_per_course() -> None:
         (MeetingService(cast(object, AggregateAPI())), "Fetching meetings"),
     ):
         progress = RecordingProgress()
-        service.list(progress=progress)
+        run_async(service.list(progress=progress))
         assert progress.tasks == [(description, 2)]
         assert progress.advances == [(description, 1), (description, 1)]
 
@@ -336,7 +356,7 @@ def test_aggregate_services_forward_semester_scope() -> None:
     calls: list[dict[str, object]] = []
 
     class ScopedCourses:
-        def list(self, **kwargs: object) -> list[Course]:
+        async def list(self, **kwargs: object) -> list[Course]:
             calls.append(kwargs)
             return []
 
@@ -346,8 +366,8 @@ def test_aggregate_services_forward_semester_scope() -> None:
 
     service = AssignmentService(cast(object, ScopedAPI()))
 
-    service.list(semesters=("2025/1", "2026/1"))
-    service.list(all_semesters=True)
+    run_async(service.list(semesters=("2025/1", "2026/1")))
+    run_async(service.list(all_semesters=True))
 
     assert calls == [
         {"semesters": ("2025/1", "2026/1")},

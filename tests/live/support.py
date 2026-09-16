@@ -8,6 +8,7 @@ availability fields.
 
 from __future__ import annotations
 
+import asyncio
 import errno
 import json
 import os
@@ -608,6 +609,7 @@ class PythonAdapter:
     """Adapter over :class:`MCVAPI`, using an isolated cache root."""
 
     def __init__(self, *, cache_root: Path) -> None:
+        self._runner = asyncio.Runner()
         settings = Settings(cache_dir=cache_root)
         self._manager = AuthManager(settings=settings, output=lambda _message: None)
         profile = self._manager.profile()
@@ -623,7 +625,13 @@ class PythonAdapter:
         return self._api
 
     def close(self) -> None:
-        self._api.close()
+        try:
+            self._runner.run(self._api.aclose())
+        finally:
+            self._runner.close()
+
+    def _run(self, awaitable: Any) -> Any:
+        return self._runner.run(awaitable)
 
     def course_list(
         self,
@@ -633,10 +641,10 @@ class PythonAdapter:
         expanded: bool = False,
     ) -> Any:
         del expanded
-        return self._api.courses.list(semester=semester, all_semesters=all_semesters)
+        return self._run(self._api.courses.list(semester=semester, all_semesters=all_semesters))
 
     def course_show(self, fixture: CourseFixture, semester: str) -> Any:
-        return self._api.courses.resolve(fixture.selector, semester=semester)
+        return self._run(self._api.courses.resolve(fixture.selector, semester=semester))
 
     def collection(
         self,
@@ -646,45 +654,66 @@ class PythonAdapter:
         *,
         include_past: bool = False,
     ) -> Any:
-        cv_cid = self._course_id(fixture, semester)
+        return self._run(
+            self._collection(
+                fixture,
+                feature,
+                semester,
+                include_past=include_past,
+            )
+        )
+
+    async def _collection(
+        self,
+        fixture: CourseFixture,
+        feature: str,
+        semester: str,
+        *,
+        include_past: bool,
+    ) -> Any:
+        cv_cid = await self._course_id(fixture, semester)
         if feature == "materials":
-            return self._api.materials.list(cv_cid)
+            return await self._api.materials.list(cv_cid)
         if feature == "folders":
-            return self._api.materials.folders(cv_cid)
+            return await self._api.materials.folders(cv_cid)
         if feature == "assignments":
-            return self._api.assignments.list(cv_cid)
+            return await self._api.assignments.list(cv_cid)
         if feature == "announcements":
-            return self._api.announcements.list(cv_cid)
+            return await self._api.announcements.list(cv_cid)
         if feature == "meetings":
-            return self._api.aggregates.meetings.collection_for_course(
+            return await self._api.aggregates.meetings.collection_for_course(
                 cv_cid, include_past=include_past
             )
         if feature == "schedule":
-            return self._api.schedule.list(cv_cid)
+            return await self._api.schedule.list(cv_cid)
         if feature == "about":
-            return self._api.about.get(cv_cid)
+            return await self._api.about.get(cv_cid)
         if feature == "groups":
-            return self._api.groups.list(cv_cid)
+            return await self._api.groups.list(cv_cid)
         if feature == "portfolio":
-            return self._api.portfolio.get(cv_cid)
+            return await self._api.portfolio.get(cv_cid)
         if feature == "playlists":
-            return self._api.playlists.list(cv_cid)
+            return await self._api.playlists.list(cv_cid)
         if feature == "web_resources":
-            return self._api.web_resources.list(cv_cid)
+            return await self._api.web_resources.list(cv_cid)
         raise ValueError(f"Unknown live collection: {feature}")
 
     def aggregate(self, feature: str, semester: str, *, pending: bool = False) -> Any:
         if feature == "assignments":
-            return self._api.aggregates.assignments.list(semester=semester, pending=pending)
+            return self._run(
+                self._api.aggregates.assignments.list(semester=semester, pending=pending)
+            )
         if feature == "announcements":
-            return self._api.aggregates.announcements.list(semester=semester)
+            return self._run(self._api.aggregates.announcements.list(semester=semester))
         if feature == "meetings":
-            return self._api.aggregates.meetings.list(semester=semester, include_past=pending)
+            return self._run(
+                self._api.aggregates.meetings.list(semester=semester, include_past=pending)
+            )
         raise ValueError(f"Unknown live aggregate: {feature}")
 
     def aggregate_show(self, feature: str, reference: str) -> Any:
         del feature
-        return self._api.get(reference)
+        return self._run(self._api.get(reference))
 
     def aggregate_search(
         self,
@@ -710,7 +739,12 @@ class PythonAdapter:
         )
 
     def detail(self, fixture: CourseFixture, feature: str, item_id: int, semester: str) -> Any:
-        cv_cid = self._course_id(fixture, semester)
+        return self._run(self._detail(fixture, feature, item_id, semester))
+
+    async def _detail(
+        self, fixture: CourseFixture, feature: str, item_id: int, semester: str
+    ) -> Any:
+        cv_cid = await self._course_id(fixture, semester)
         clients = {
             "materials": self._api.materials,
             "assignments": self._api.assignments,
@@ -720,7 +754,7 @@ class PythonAdapter:
         client = clients.get(feature)
         if client is None:
             raise ValueError(f"{feature} is not item-addressable")
-        return client.get(cv_cid, item_id)
+        return await client.get(cv_cid, item_id)
 
     def course_resource_search(
         self,
@@ -738,29 +772,51 @@ class PythonAdapter:
         }.get(feature)
         if resource_type is None:
             raise ValueError(f"{feature} is not searchable")
+        return self._run(self._course_resource_search(fixture, feature, query, semester))
+
+    async def _course_resource_search(
+        self,
+        fixture: CourseFixture,
+        feature: str,
+        query: str,
+        semester: str,
+    ) -> Any:
+        resource_type = {
+            "materials": ResourceType.MATERIAL,
+            "assignments": ResourceType.ASSIGNMENT,
+            "announcements": ResourceType.ANNOUNCEMENT,
+            "meetings": ResourceType.MEETING,
+            "playlists": ResourceType.PLAYLIST,
+        }.get(feature)
+        if resource_type is None:
+            raise ValueError(f"{feature} is not searchable")
+        cv_cid = await self._course_id(fixture, semester)
         return self._api.search.search(
             query,
-            cv_cid=self._course_id(fixture, semester),
+            cv_cid=cv_cid,
             resource_types=(resource_type,),
         )
 
     def get(self, reference: str) -> Any:
-        return self._api.get(reference)
+        return self._run(self._api.get(reference))
 
     def get_many(self, references: list[str], *, jsonl: bool = False) -> Any:
         del jsonl
-        return self._api.get_many(references)
+        return self._run(self._api.get_many(references))
 
     def cache_refresh(self, fixture: CourseFixture, semester: str) -> Any:
-        course = self._api.courses.resolve(fixture.selector, semester=semester)
-        folders = self._api.materials.folders(course.cv_cid)
+        return self._run(self._cache_refresh(fixture, semester))
+
+    async def _cache_refresh(self, fixture: CourseFixture, semester: str) -> Any:
+        course = await self._api.courses.resolve(fixture.selector, semester=semester)
+        folders = await self._api.materials.folders(course.cv_cid)
         materials = [material for folder in folders for material in folder.materials]
-        assignments = self._api.assignments.list(course.cv_cid)
-        announcements = self._api.announcements.list(course.cv_cid)
-        meetings = self._api.meetings.list(course.cv_cid)
-        schedule = self._api.schedule.list(course.cv_cid)
-        groups = self._api.groups.list(course.cv_cid)
-        playlists = self._api.playlists.list(course.cv_cid)
+        assignments = await self._api.assignments.list(course.cv_cid)
+        announcements = await self._api.announcements.list(course.cv_cid)
+        meetings = await self._api.meetings.list(course.cv_cid)
+        schedule = await self._api.schedule.list(course.cv_cid)
+        groups = await self._api.groups.list(course.cv_cid)
+        playlists = await self._api.playlists.list(course.cv_cid)
         self._cache.upsert_courses([course])
         self._cache.replace_folders(folders, cv_cid=course.cv_cid)
         self._cache.replace_resources(ResourceType.MATERIAL, course.cv_cid, materials)
@@ -839,13 +895,25 @@ class PythonAdapter:
         raise LiveAdapterError("python human search", code="presentation_boundary")
 
     def download(self, fixture: CourseFixture, item_id: int, output: Path, semester: str) -> Any:
-        return self._api.materials.download(self._course_id(fixture, semester), item_id, output)
+        return self._run(self._download(fixture, item_id, output, semester))
 
     def archive(self, fixture: CourseFixture, folder: str, output: Path, semester: str) -> Any:
-        return self._api.materials.archive(self._course_id(fixture, semester), folder, output)
+        return self._run(self._archive(fixture, folder, output, semester))
 
-    def _course_id(self, fixture: CourseFixture, semester: str) -> int:
-        course = self._api.courses.resolve(fixture.selector, semester=semester)
+    async def _download(
+        self, fixture: CourseFixture, item_id: int, output: Path, semester: str
+    ) -> Any:
+        cv_cid = await self._course_id(fixture, semester)
+        return await self._api.materials.download(cv_cid, item_id, output)
+
+    async def _archive(
+        self, fixture: CourseFixture, folder: str, output: Path, semester: str
+    ) -> Any:
+        cv_cid = await self._course_id(fixture, semester)
+        return await self._api.materials.archive(cv_cid, folder, output)
+
+    async def _course_id(self, fixture: CourseFixture, semester: str) -> int:
+        course = await self._api.courses.resolve(fixture.selector, semester=semester)
         if fixture.cv_cid is not None and course.cv_cid != fixture.cv_cid:
             raise LiveAdapterError("course resolution", code="course_mismatch")
         return course.cv_cid

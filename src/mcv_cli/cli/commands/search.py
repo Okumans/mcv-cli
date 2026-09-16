@@ -487,7 +487,7 @@ def _run_search_command(
     refresh: bool,
     allow_semester_scope: bool,
 ) -> None:
-    def action() -> list[SearchResult] | ShellIdList | None:
+    async def action() -> list[SearchResult] | ShellIdList | None:
         if query is None and not fuzzy:
             raise UsageError("Search query is required unless --fuzzy is supplied.")
         if exact and fuzzy:
@@ -501,9 +501,9 @@ def _run_search_command(
         cache = cache_namespace()
         if refresh:
             if references:
-                refresh_courses_for_search(ctx, references)
+                await refresh_courses_for_search(ctx, references)
             else:
-                refresh_for_search(ctx)
+                await refresh_for_search(ctx)
             cache = cache_namespace()
 
         cv_cids = _resolve_course_ids(cache, references) if references else None

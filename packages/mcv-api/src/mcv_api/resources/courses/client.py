@@ -13,7 +13,7 @@ from .parser import list_payload, normalize_course, semester_options
 
 
 class CourseClient(ResourceClient):
-    def list(
+    async def list(
         self,
         semester: str | None = None,
         *,
@@ -24,7 +24,7 @@ class CourseClient(ResourceClient):
             raise ValueError("Use either semester or semesters, not both.")
         if all_semesters and (semester is not None or semesters is not None):
             raise ValueError("Use either a semester selection or all_semesters, not both.")
-        available_semesters, current_semester = self._get_semester_options()
+        available_semesters, current_semester = await self._get_semester_options()
         self._last_current_semester = current_semester
         if all_semesters:
             selected_semesters = available_semesters
@@ -40,7 +40,7 @@ class CourseClient(ResourceClient):
         courses: list[Course] = []
         seen: set[tuple[int, str]] = set()
         for selected in selected_semesters:
-            payload = self.post_json(
+            payload = await self.post_json(
                 course_filter_url(),
                 data={"yearsem": selected, "role": "all", "type": "course"},
             )
@@ -58,8 +58,8 @@ class CourseClient(ResourceClient):
 
         return getattr(self, "_last_current_semester", None)
 
-    def get(self, cv_cid: int, *, semester: str | None = None) -> Course:
-        matches = [item for item in self.list(semester=semester) if item.cv_cid == cv_cid]
+    async def get(self, cv_cid: int, *, semester: str | None = None) -> Course:
+        matches = [item for item in await self.list(semester=semester) if item.cv_cid == cv_cid]
         if len(matches) == 1:
             return matches[0]
         if len(matches) > 1:
@@ -70,7 +70,7 @@ class CourseClient(ResourceClient):
             operation="get",
         )
 
-    def resolve(self, reference: str, *, semester: str | None = None) -> Course:
+    async def resolve(self, reference: str, *, semester: str | None = None) -> Course:
         reference = " ".join(reference.split())
         if not reference:
             raise NotFoundError(
@@ -78,7 +78,7 @@ class CourseClient(ResourceClient):
                 resource="course",
                 operation="resolve",
             )
-        courses = self.list(semester=semester)
+        courses = await self.list(semester=semester)
         normalized = reference.casefold()
         id_matches = [item for item in courses if str(item.cv_cid) == reference]
         if id_matches:
@@ -136,8 +136,8 @@ class CourseClient(ResourceClient):
             details=details,
         )
 
-    def _get_semester_options(self) -> tuple[list[str], str]:
-        response = self.request("GET", course_home_url())
+    async def _get_semester_options(self) -> tuple[list[str], str]:
+        response = await self.request("GET", course_home_url())
         return semester_options(html_from_response(response))
 
 

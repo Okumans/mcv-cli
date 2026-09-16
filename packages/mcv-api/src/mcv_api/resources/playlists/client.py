@@ -12,9 +12,9 @@ from .parser import parse_playlist, playlist_ids
 class PlaylistClient(ResourceClient):
     """Read the playlist page belonging to one enrolled course."""
 
-    def list(self, cv_cid: int) -> PlaylistCollection:
+    async def list(self, cv_cid: int) -> PlaylistCollection:
         url = detail_url(cv_cid)
-        response = self.request("GET", url)
+        response = await self.request("GET", url)
         page_html = html_from_response(response)
         collection = parse_playlist(page_html, cv_cid, source_url=url)
         deferred_ids = playlist_ids(page_html)
@@ -23,7 +23,7 @@ class PlaylistClient(ResourceClient):
 
         loaded: dict[str, Playlist] = {}
         for playlist_id in deferred_ids:
-            payload = self.post_json(
+            payload = await self.post_json(
                 loaded_detail_url(),
                 data={"cvcid": str(cv_cid), "playlistid": playlist_id},
             )

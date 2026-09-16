@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping
+import asyncio
+import inspect
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from typing import TypedDict, TypeVar, cast
 
 import typer
@@ -128,10 +130,10 @@ def progress_options(ctx: typer.Context) -> ProgressOptions:
     return {"progress": progress} if progress is not None else {}
 
 
-def fetch_many(
+async def fetch_many(
     ctx: typer.Context,
     values: Iterable[_FetchInput],
-    fetch: Callable[[_FetchInput], _FetchOutput],
+    fetch: Callable[[_FetchInput], Awaitable[_FetchOutput]],
     *,
     description: str,
 ) -> list[_FetchOutput]:
@@ -145,7 +147,7 @@ def fetch_many(
     results: list[_FetchOutput] = []
     for item in items:
         try:
-            results.append(fetch(item))
+            results.append(await fetch(item))
         finally:
             if progress is not None and task is not None:
                 progress.advance(task)
@@ -206,9 +208,13 @@ def course_semester(course: Course) -> str | None:
     return f"{course.year}/{course.semester}"
 
 
+async def _await_result(value: Awaitable[_RunResult | None]) -> _RunResult | None:
+    return await value
+
+
 def run(
     ctx: typer.Context,
-    action: Callable[[], _RunResult | None],
+    action: Callable[[], _RunResult | Awaitable[_RunResult | None] | None],
     *,
     display_mode: DisplayMode = "collection",
 ) -> None:
@@ -217,7 +223,13 @@ def run(
     with ProgressReporter(progress_enabled(ctx)) as progress:
         object_for(ctx)["progress"] = progress
         try:
-            result = action()
+            raw_result = action()
+            if inspect.isawaitable(raw_result):
+                result = asyncio.run(
+                    _await_result(cast(Awaitable[_RunResult | None], raw_result))
+                )
+            else:
+                result = cast(_RunResult | None, raw_result)
         except Exception as error:
             caught_error = as_cli_error(error)
         finally:
@@ -247,8 +259,8 @@ def parse_resource_ref(value: str) -> ResourceRef:
         raise InvalidReferenceError(str(error), reference=value) from error
 
 
-def course_id(api: MCVAPI, reference: str, *, semester: str | None = None) -> int:
-    return api.courses.resolve(reference, semester=semester).cv_cid
+async def course_id(api: MCVAPI, reference: str, *, semester: str | None = None) -> int:
+    return (await api.courses.resolve(reference, semester=semester)).cv_cid
 
 
 def resource_item_id_for_course(

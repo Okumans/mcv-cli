@@ -37,23 +37,23 @@ class MaterialsClient(ResourceClient):
     def __init__(
         self,
         transport: MCVTransport,
-        http_client: httpx.Client,
+        http_client: httpx.AsyncClient,
         *,
-        download_client: httpx.Client,
+        download_client: httpx.AsyncClient,
         cache_sink: Callable[[object, str], None] | None = None,
     ) -> None:
         super().__init__(transport, http_client, cache_sink=cache_sink)
         self.download_client = download_client
 
-    def list(self, cv_cid: int, *, detail: bool = False) -> list[Material]:
-        materials = parse_materials(self.course_home_html(cv_cid), cv_cid)
+    async def list(self, cv_cid: int, *, detail: bool = False) -> list[Material]:
+        materials = parse_materials(await self.course_home_html(cv_cid), cv_cid)
         if detail:
-            materials = [self._detail(material) for material in materials]
+            materials = [await self._detail(material) for material in materials]
         return self.record_result(materials, detail_level="detail" if detail else "summary")
 
-    def folders(self, cv_cid: int, *, detail: bool = False) -> list[MaterialFolder]:
+    async def folders(self, cv_cid: int, *, detail: bool = False) -> list[MaterialFolder]:
         folders: dict[str, MaterialFolder] = {}
-        for material in self.list(cv_cid, detail=detail):
+        for material in await self.list(cv_cid, detail=detail):
             folder_id = material.folder_id or "ungrouped"
             folder_name = material.folder_name or "Ungrouped"
             folder = folders.setdefault(
@@ -65,11 +65,11 @@ class MaterialsClient(ResourceClient):
             list(folders.values()), detail_level="detail" if detail else "summary"
         )
 
-    def get(self, cv_cid: int, item_id: int) -> Material:
-        for material in self.list(cv_cid):
+    async def get(self, cv_cid: int, item_id: int) -> Material:
+        for material in await self.list(cv_cid):
             if material.itemid == item_id:
                 if material.detail_url and not material.filepath:
-                    material = self._detail(material)
+                    material = await self._detail(material)
                     return self.record_result(material, detail_level="detail")
                 return self.record_result(material, detail_level="summary")
         raise NotFoundError(
@@ -78,17 +78,17 @@ class MaterialsClient(ResourceClient):
             operation="get",
         )
 
-    def _detail(self, material: Material) -> Material:
+    async def _detail(self, material: Material) -> Material:
         if not material.detail_url:
             return material
-        response = self.request("GET", material.detail_url)
+        response = await self.request("GET", material.detail_url)
         return parse_material_detail(
             material,
             html_from_response(response),
             material.detail_url,
         )
 
-    def download(
+    async def download(
         self,
         cv_cid: int,
         item_id: int,
@@ -96,7 +96,7 @@ class MaterialsClient(ResourceClient):
         *,
         force: bool = False,
     ) -> DownloadResult:
-        material = self.get(cv_cid, item_id)
+        material = await self.get(cv_cid, item_id)
         if not material.filepath:
             raise DownloadError(f"Material {item_id} does not contain a downloadable file URL.")
         if output is None:
@@ -116,7 +116,7 @@ class MaterialsClient(ResourceClient):
             set_private_fd(fd)
             temporary_path = Path(temporary_name)
             with os.fdopen(fd, "wb") as destination:
-                total = self._download_url(material.filepath, destination, digest)
+                total = await self._download_url(material.filepath, destination, digest)
             os.replace(temporary_path, output)
             temporary_path = None
             set_private_file(output)
@@ -129,7 +129,7 @@ class MaterialsClient(ResourceClient):
             if temporary_path is not None:
                 temporary_path.unlink(missing_ok=True)
 
-    def archive(
+    async def archive(
         self,
         cv_cid: int,
         folder: str,
@@ -142,7 +142,7 @@ class MaterialsClient(ResourceClient):
         selected = next(
             (
                 item
-                for item in self.folders(cv_cid)
+                for item in await self.folders(cv_cid)
                 if item.folder_id.casefold() == folder.casefold()
                 or item.name.casefold() == folder.casefold()
             ),
@@ -190,7 +190,7 @@ class MaterialsClient(ResourceClient):
                     try:
                         current = material
                         if current.detail_url and not current.filepath:
-                            current = self._detail(current)
+                            current = await self._detail(current)
                         if not current.filepath:
                             skipped.append(current.title or str(current.itemid))
                             continue
@@ -202,7 +202,7 @@ class MaterialsClient(ResourceClient):
                         material_path = Path(material_name)
                         try:
                             with material_path.open("wb") as destination:
-                                self._download_url(current.filepath, destination, None)
+                                await self._download_url(current.filepath, destination, None)
                             if resolved_format == "zip":
                                 assert isinstance(archive, zipfile.ZipFile)
                                 archive.write(material_path, arcname=filename)
@@ -233,7 +233,7 @@ class MaterialsClient(ResourceClient):
             if temporary_path is not None:
                 temporary_path.unlink(missing_ok=True)
 
-    def _download_url(
+    async def _download_url(
         self,
         url: str,
         destination: BinaryIO,
@@ -246,7 +246,7 @@ class MaterialsClient(ResourceClient):
             if parsed.scheme != "https" or not parsed.netloc:
                 raise DownloadError("MyCourseVille returned a non-HTTPS material URL.")
             client = self.http_client if _is_official_origin(current_url) else self.download_client
-            with client.stream("GET", current_url) as response:
+            async with client.stream("GET", current_url) as response:
                 if response.is_redirect:
                     location = response.headers.get("location")
                     if not location:
@@ -261,7 +261,7 @@ class MaterialsClient(ResourceClient):
                     raise DownloadError(
                         f"Material download failed with HTTP {response.status_code}."
                     )
-                for chunk in response.iter_bytes():
+                async for chunk in response.aiter_bytes():
                     destination.write(chunk)
                     if digest is not None:
                         digest.update(chunk)

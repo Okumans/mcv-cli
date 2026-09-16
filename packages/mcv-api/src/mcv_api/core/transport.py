@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import re
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from urllib.parse import urlparse
 
 import httpx
@@ -27,11 +28,22 @@ _SENSITIVE_QUERY = re.compile(
 class MCVTransport:
     """Authenticated HTTP boundary for MyCourseVille routes."""
 
-    def __init__(self, client: httpx.Client, sleeper: Callable[[float], None]) -> None:
+    def __init__(
+        self,
+        client: httpx.AsyncClient,
+        sleeper: Callable[[float], Awaitable[None]],
+        *,
+        max_concurrency: int = 8,
+    ) -> None:
+        if not isinstance(max_concurrency, int) or isinstance(max_concurrency, bool):
+            raise ValueError("max_concurrency must be a positive integer.")
+        if max_concurrency < 1:
+            raise ValueError("max_concurrency must be a positive integer.")
         self._client = client
         self._sleeper = sleeper
+        self._limiter = asyncio.Semaphore(max_concurrency)
 
-    def request(
+    async def request(
         self,
         method: str,
         url: str,
@@ -41,10 +53,11 @@ class MCVTransport:
     ) -> httpx.Response:
         for attempt in range(3):
             try:
-                response = self._client.request(method, url, params=params, data=data)
+                async with self._limiter:
+                    response = await self._client.request(method, url, params=params, data=data)
             except httpx.HTTPError as exc:
                 if attempt < 2:
-                    self._sleeper(self._retry_delay(attempt, None))
+                    await self._sleeper(self._retry_delay(attempt, None))
                     continue
                 target = self._request_target(url)
                 reason = _redact(str(exc).strip() or type(exc).__name__)
@@ -75,7 +88,9 @@ class MCVTransport:
                 )
 
             if response.status_code in _RETRYABLE_STATUSES and attempt < 2:
-                self._sleeper(self._retry_delay(attempt, response.headers.get("retry-after")))
+                await self._sleeper(
+                    self._retry_delay(attempt, response.headers.get("retry-after"))
+                )
                 continue
 
             if response.status_code >= 400:

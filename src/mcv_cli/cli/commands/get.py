@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 
 import typer
@@ -57,9 +58,9 @@ def _get_resources(
 ) -> None:
     if not jsonl_mode(ctx):
 
-        def action() -> Resource | list[Resource]:
+        async def action() -> Resource | list[Resource]:
             parsed = [_parse_reference(reference, expected_type) for reference in references]
-            with make_api() as api:
+            async with make_api() as api:
                 progress = progress_for(ctx)
                 task = (
                     progress.add_task("Fetching resources", total=len(parsed)) if progress else None
@@ -67,7 +68,7 @@ def _get_resources(
                 values: list[Resource] = []
                 for reference in parsed:
                     try:
-                        values.append(api.get(reference))
+                        values.append(await api.get(reference))
                     finally:
                         if progress:
                             progress.advance(task)
@@ -88,38 +89,43 @@ def _get_resources(
         task = progress.add_task("Fetching resources", total=len(parsed))
         api: MCVAPI | None = None
         api_error: MCVError | None = None
-        if valid:
-            try:
-                api = make_api()
-            except Exception as raw_error:
-                api_error = as_cli_error(raw_error)
-        try:
-            for item in parsed:
+
+        async def process_jsonl() -> None:
+            nonlocal api, api_error
+            if valid:
                 try:
-                    if isinstance(item, MCVError):
-                        failures.append(item)
-                        _emit_error_line(item, envelope=envelope_mode(ctx))
-                    elif api is None:
-                        error = api_error or MCVError(
-                            "Unable to create the MyCourseVille API client."
-                        )
-                        failures.append(error)
-                        _emit_error_line(error, envelope=envelope_mode(ctx))
-                    else:
-                        try:
-                            value = api.get(item)
-                        except Exception as raw_error:
-                            error = as_cli_error(raw_error)
+                    api = make_api()
+                except Exception as raw_error:
+                    api_error = as_cli_error(raw_error)
+            try:
+                for item in parsed:
+                    try:
+                        if isinstance(item, MCVError):
+                            failures.append(item)
+                            _emit_error_line(item, envelope=envelope_mode(ctx))
+                        elif api is None:
+                            error = api_error or MCVError(
+                                "Unable to create the MyCourseVille API client."
+                            )
                             failures.append(error)
                             _emit_error_line(error, envelope=envelope_mode(ctx))
                         else:
-                            for line in serialize_jsonl(value, envelope=envelope_mode(ctx)):
-                                print(line)
-                finally:
-                    progress.advance(task)
-        finally:
-            if api is not None:
-                api.close()
+                            try:
+                                value = await api.get(item)
+                            except Exception as raw_error:
+                                error = as_cli_error(raw_error)
+                                failures.append(error)
+                                _emit_error_line(error, envelope=envelope_mode(ctx))
+                            else:
+                                for line in serialize_jsonl(value, envelope=envelope_mode(ctx)):
+                                    print(line)
+                    finally:
+                        progress.advance(task)
+            finally:
+                if api is not None:
+                    await api.aclose()
+
+        asyncio.run(process_jsonl())
     if failures:
         raise typer.Exit(max(exit_code_for(error) for error in failures))
 

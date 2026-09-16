@@ -37,9 +37,9 @@ def list_announcements(
         help="Show expanded rows with ids and canonical references.",
     ),
 ) -> None:
-    def action() -> list[Announcement] | ShellIdList:
-        with make_api() as api:
-            values = api.aggregates.announcements.list(
+    async def action() -> list[Announcement] | ShellIdList:
+        async with make_api() as api:
+            values = await api.aggregates.announcements.list(
                 **semester_scope_kwargs(ctx),
                 **progress_options(ctx),
             )

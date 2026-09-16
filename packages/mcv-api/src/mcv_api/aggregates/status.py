@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Collection
 from datetime import datetime, time, timedelta
-from typing import cast
+from typing import NamedTuple, cast
 
 from pydantic import BaseModel, Field
 
@@ -10,9 +11,16 @@ from ..core.dates import COURSEVILLE_TIMEZONE, parse_courseville_date
 from ..core.progress import ProgressLike
 from ..resources.announcements.models import Announcement
 from ..resources.assignments.models import Assignment
-from ..resources.meetings.models import OnlineMeeting
+from ..resources.courses.models import Course
+from ..resources.meetings.models import MeetingCollection, OnlineMeeting
 from ._protocols import AggregateAPI
-from .assignments import _course_sort_key, _semester_kwargs, _with_course_context, is_pending
+from .assignments import (
+    _course_sort_key,
+    _gather_fail_fast,
+    _semester_kwargs,
+    _with_course_context,
+    is_pending,
+)
 
 
 class StatusSnapshot(BaseModel):
@@ -26,13 +34,19 @@ class StatusSnapshot(BaseModel):
     announcements_recent: list[Announcement] = Field(default_factory=list)
 
 
+class _StatusResources(NamedTuple):
+    assignments: list[Assignment]
+    meetings: MeetingCollection
+    announcements: list[Announcement]
+
+
 class StatusAggregate:
     """Build a small current-work snapshot with one course discovery pass."""
 
     def __init__(self, api: object) -> None:
         self.api = cast(AggregateAPI, api)
 
-    def snapshot(
+    async def snapshot(
         self,
         *,
         semester: str | None = None,
@@ -53,7 +67,7 @@ class StatusAggregate:
         meetings: list[OnlineMeeting] = []
         announcements: list[Announcement] = []
         courses = sorted(
-            self.api.courses.list(
+            await self.api.courses.list(
                 **_semester_kwargs(
                     semester=semester,
                     semesters=semesters,
@@ -68,31 +82,34 @@ class StatusAggregate:
             else None
         )
 
-        for course in courses:
+        async def fetch_course(course: Course) -> _StatusResources:
             try:
-                for assignment in self.api.assignments.list(course.cv_cid):
-                    assignment = _with_course_context(assignment, course)
-                    if is_pending(assignment) and _assignment_in_window(
-                        assignment,
-                        current=current,
-                        deadline=assignment_deadline,
-                    ):
-                        assignments.append(assignment)
-
-                collection = self.api.meetings.list(course.cv_cid)
-                meetings.extend(
-                    _with_course_context(item, course)
-                    for item in collection.meetings
-                    if _meeting_is_today(item, current)
-                )
-
-                for announcement in self.api.announcements.list(course.cv_cid):
-                    announcement = _with_course_context(announcement, course)
-                    if _announcement_in_window(announcement, announcement_cutoff):
-                        announcements.append(announcement)
+                return await self._fetch_course_resources(course.cv_cid)
             finally:
                 if progress is not None:
                     progress.advance(task)
+
+        fetched = await _gather_fail_fast(fetch_course(course) for course in courses)
+        for course, resources in zip(courses, fetched, strict=True):
+            for assignment in resources.assignments:
+                assignment = _with_course_context(assignment, course)
+                if is_pending(assignment) and _assignment_in_window(
+                    assignment,
+                    current=current,
+                    deadline=assignment_deadline,
+                ):
+                    assignments.append(assignment)
+
+            meetings.extend(
+                _with_course_context(item, course)
+                for item in resources.meetings.meetings
+                if _meeting_is_today(item, current)
+            )
+
+            for announcement in resources.announcements:
+                announcement = _with_course_context(announcement, course)
+                if _announcement_in_window(announcement, announcement_cutoff):
+                    announcements.append(announcement)
 
         assignments.sort(key=_assignment_sort_key)
         meetings.sort(key=_meeting_sort_key)
@@ -105,6 +122,20 @@ class StatusAggregate:
             meetings_today=meetings,
             announcements_recent=announcements,
         )
+
+    async def _fetch_course_resources(self, cv_cid: int) -> _StatusResources:
+        assignments_task = asyncio.create_task(self.api.assignments.list(cv_cid))
+        meetings_task = asyncio.create_task(self.api.meetings.list(cv_cid))
+        announcements_task = asyncio.create_task(self.api.announcements.list(cv_cid))
+        tasks = (assignments_task, meetings_task, announcements_task)
+        try:
+            assignments, meetings, announcements = await asyncio.gather(*tasks)
+        except BaseException:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
+        return _StatusResources(assignments, meetings, announcements)
 
 
 def _status_now(now: datetime | None) -> datetime:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import time
-from collections.abc import Callable, Iterable
+import asyncio
+from collections.abc import Awaitable, Callable, Iterable
 
 import httpx
 
@@ -32,10 +32,11 @@ class MCVAPI:
         self,
         auth: SessionProvider,
         *,
-        http_client: httpx.Client | None = None,
-        download_client: httpx.Client | None = None,
+        http_client: httpx.AsyncClient | None = None,
+        download_client: httpx.AsyncClient | None = None,
         timeout: float | None = None,
-        sleeper: Callable[[float], None] = time.sleep,
+        sleeper: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        max_concurrency: int = 8,
         cache_store: LocalStore | None = None,
     ) -> None:
         self._cache_store = cache_store
@@ -56,6 +57,7 @@ class MCVAPI:
             http_client=http_client,
             timeout=timeout,
             sleeper=sleeper,
+            max_concurrency=max_concurrency,
         )
         (
             self._download_client,
@@ -112,22 +114,22 @@ class MCVAPI:
         self.aggregates = AggregateClients(self)
         self.search = SearchClient(cache_store)
 
-    def __enter__(self) -> MCVAPI:
+    async def __aenter__(self) -> MCVAPI:
         return self
 
-    def __exit__(self, *_: object) -> None:
-        self.close()
+    async def __aexit__(self, *_: object) -> None:
+        await self.aclose()
 
-    def close(self) -> None:
+    async def aclose(self) -> None:
         if self._owns_client:
-            self._http_client.close()
+            await self._http_client.aclose()
         if self._owns_download_client:
-            self._download_client.close()
+            await self._download_client.aclose()
 
-    def get(self, reference: str | ResourceRef) -> Resource:
+    async def get(self, reference: str | ResourceRef) -> Resource:
         ref = ResourceRef.parse(reference) if isinstance(reference, str) else reference
         if ref.resource_type is ResourceType.PLAYLIST:
-            return self.playlists.list(ref.cv_cid)
+            return await self.playlists.list(ref.cv_cid)
         if ref.item_id is None:
             raise InvalidReferenceError(
                 f"{ref.resource_type.value} references require an item id.",
@@ -136,16 +138,16 @@ class MCVAPI:
             )
         match ref.resource_type.value:
             case "material":
-                return self.materials.get(ref.cv_cid, ref.item_id)
+                return await self.materials.get(ref.cv_cid, ref.item_id)
             case "assignment":
-                return self.assignments.get(ref.cv_cid, ref.item_id)
+                return await self.assignments.get(ref.cv_cid, ref.item_id)
             case "announcement":
-                return self.announcements.get(ref.cv_cid, ref.item_id)
+                return await self.announcements.get(ref.cv_cid, ref.item_id)
             case "meeting":
-                return self.meetings.get(ref.cv_cid, ref.item_id)
+                return await self.meetings.get(ref.cv_cid, ref.item_id)
         raise UnsupportedResourceError(ref.resource_type.value)
 
-    def get_many(self, references: Iterable[str | ResourceRef]) -> list[Resource]:
+    async def get_many(self, references: Iterable[str | ResourceRef]) -> list[Resource]:
         """Resolve references sequentially in input order, failing fast."""
 
-        return [self.get(reference) for reference in references]
+        return [await self.get(reference) for reference in references]

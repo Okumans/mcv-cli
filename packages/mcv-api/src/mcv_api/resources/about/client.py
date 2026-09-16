@@ -7,6 +7,6 @@ from .parser import parse_about
 
 
 class AboutClient(ResourceClient):
-    def get(self, cv_cid: int) -> CourseAbout:
-        response = self.request("GET", self.course_subpage_url(cv_cid, "about"))
+    async def get(self, cv_cid: int) -> CourseAbout:
+        response = await self.request("GET", self.course_subpage_url(cv_cid, "about"))
         return self.record_result(parse_about(html_from_response(response), cv_cid))
