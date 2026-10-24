@@ -14,6 +14,8 @@ jobs:
   quality:
     name: quality (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
     strategy:
       fail-fast: false
       matrix:
@@ -127,6 +129,8 @@ jobs:
   windows-quality:
     name: Windows (Python ${{ matrix.python-version }})
     runs-on: windows-latest
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
     strategy:
       fail-fast: false
       matrix:
@@ -220,6 +224,7 @@ jobs:
       )
     runs-on: ubuntu-latest
     env:
+      UV_PYTHON: "3.11"
       MCV_E2E_USERNAME: ${{ secrets.MCV_E2E_USERNAME }}
       MCV_E2E_PASSWORD: ${{ secrets.MCV_E2E_PASSWORD }}
       MCV_STORAGE_PASSPHRASE: ${{ secrets.MCV_STORAGE_PASSPHRASE }}
